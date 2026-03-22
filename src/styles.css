@@ -1,0 +1,376 @@
+/* ── Reset & Canvas ─────────────────────────────────── */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  overflow: hidden;
+  background: #000;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #fff;
+}
+
+#game-canvas {
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* ── Utility ────────────────────────────────────────── */
+.hidden {
+  display: none !important;
+}
+
+/* ── Overlay (shared) ───────────────────────────────── */
+#overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 10;
+}
+
+.screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+  max-width: 420px;
+  width: 90%;
+  text-align: center;
+}
+
+/* ── Menu Screen ────────────────────────────────────── */
+.title {
+  font-size: 4rem;
+  font-weight: 900;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+  text-shadow: 0 0 20px rgba(230, 126, 34, 0.6);
+}
+
+.subtitle {
+  font-size: 1.1rem;
+  opacity: 0.7;
+  margin-bottom: 12px;
+}
+
+.menu-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.menu-buttons button,
+#play-again-btn,
+#pass-ready-btn {
+  padding: 14px 32px;
+  font-size: 1.15rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #e67e22;
+  color: #fff;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.menu-buttons button:hover,
+#play-again-btn:hover,
+#pass-ready-btn:hover {
+  background: #cf6d17;
+  transform: scale(1.03);
+}
+
+.menu-buttons button:active,
+#play-again-btn:active,
+#pass-ready-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Matching Screen ────────────────────────────────── */
+.spinner {
+  width: 48px;
+  height: 48px;
+  border: 5px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #e67e22;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#matching-screen p {
+  font-size: 1.2rem;
+  opacity: 0.8;
+}
+
+/* ── Build Screen ───────────────────────────────────── */
+#build-screen h2 {
+  font-size: 1.8rem;
+}
+
+#build-ui {
+  padding: 20px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  width: 100%;
+  min-height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Preset Buttons (Build Phase) ──────────────────── */
+.preset-buttons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.preset-btn {
+  padding: 16px 20px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s, border-color 0.2s, transform 0.1s;
+}
+
+.preset-btn:hover {
+  background: rgba(230, 126, 34, 0.2);
+  border-color: #e67e22;
+  transform: scale(1.02);
+}
+
+.preset-btn h3 {
+  font-size: 1.2rem;
+  margin-bottom: 4px;
+}
+
+.preset-btn p {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin: 0;
+}
+
+/* ── Pass Device Screen ─────────────────────────────── */
+#pass-device-screen {
+  background: none;
+}
+
+#pass-device-screen::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.92);
+  z-index: -1;
+}
+
+#pass-title {
+  font-size: 2.4rem;
+  font-weight: 700;
+}
+
+/* ── Result Screen ──────────────────────────────────── */
+#result-text {
+  font-size: 3rem;
+  font-weight: 900;
+  text-shadow: 0 0 16px rgba(230, 126, 34, 0.5);
+  margin-bottom: 8px;
+}
+
+/* ── Game UI (in-match HUD) ─────────────────────────── */
+#game-ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#quit-btn {
+  position: absolute;
+  top: 20px;
+  left: 20px;
+  padding: 8px 18px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  pointer-events: auto;
+  background: rgba(192, 57, 43, 0.8);
+  color: #fff;
+  transition: background 0.2s;
+}
+
+#quit-btn:hover {
+  background: rgba(192, 57, 43, 1);
+}
+
+/* Turn Indicator — top center */
+#turn-indicator {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+#turn-indicator {
+  display: inline-block;
+  padding: 8px 24px;
+  border-radius: 20px;
+  font-size: 1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+#turn-indicator.my-turn {
+  background: #27ae60;
+  color: #fff;
+}
+
+#turn-indicator.their-turn {
+  background: #c0392b;
+  color: #fff;
+}
+
+/* Status Text — below turn indicator */
+#status-text {
+  position: absolute;
+  top: 68px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 18px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.6);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+
+#status-text:empty {
+  display: none;
+}
+
+/* Controls Hint — bottom center */
+#controls-hint {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 16px;
+  padding: 10px 22px;
+  border-radius: 20px;
+  background: rgba(0, 0, 0, 0.65);
+  font-size: 0.85rem;
+  opacity: 0.85;
+}
+
+#controls-hint span {
+  white-space: nowrap;
+}
+
+/* Power Meter — right side, vertical bar */
+#power-meter {
+  position: absolute;
+  right: 32px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 28px;
+  height: 220px;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+#power-fill {
+  width: 100%;
+  height: 50%;
+  border-radius: 0 0 12px 12px;
+  background: linear-gradient(to top, #27ae60, #e67e22, #c0392b);
+  transition: height 0.1s;
+}
+
+#power-value {
+  position: absolute;
+  right: 38px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+}
+
+/* ── HP Display ────────────────────────────────────── */
+#hp-display {
+  position: absolute;
+  top: 60px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+}
+
+.hp-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  padding: 4px 12px;
+  border-radius: 12px;
+}
+
+.hp-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin: 0 4px;
+}
+
+.hp-icon {
+  font-size: 1.3rem;
+  transition: all 0.3s;
+}
+
+.hp-icon.full {
+  color: #e74c3c;
+  text-shadow: 0 0 6px rgba(231, 76, 60, 0.5);
+}
+
+.hp-icon.empty {
+  color: rgba(255, 255, 255, 0.15);
+  text-shadow: none;
+}
+
+/* ── Minimap ───────────────────────────────────────── */
+#minimap-frame {
+  position: absolute;
+  bottom: 60px;
+  right: 16px;
+  width: 160px;
+  height: 160px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-radius: 8px;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.2);
+}

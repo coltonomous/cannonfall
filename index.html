@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cannonade</title>
+</head>
+<body>
+  <canvas id="game-canvas"></canvas>
+
+  <!-- Overlay Screens -->
+  <div id="overlay">
+    <!-- Main Menu -->
+    <div id="menu-screen" class="screen">
+      <h1 class="title">Cannonade</h1>
+      <p class="subtitle">3D Turn-Based Artillery</p>
+      <div class="menu-buttons">
+        <button id="local-match-btn">Local Match</button>
+        <button id="online-match-btn">Online Match</button>
+      </div>
+    </div>
+
+    <!-- Matchmaking -->
+    <div id="matching-screen" class="screen hidden">
+      <div class="spinner"></div>
+      <p>Finding opponent...</p>
+    </div>
+
+    <!-- Castle Builder -->
+    <div id="build-screen" class="screen hidden">
+      <h2>Build Your Castle</h2>
+      <div id="build-ui">
+        <p>Castle builder UI — coming soon</p>
+      </div>
+    </div>
+
+    <!-- Pass Device (Local Multiplayer) -->
+    <div id="pass-device-screen" class="screen hidden">
+      <h1 id="pass-title">Pass to Player 2</h1>
+      <button id="pass-ready-btn">Ready</button>
+    </div>
+
+    <!-- Result -->
+    <div id="result-screen" class="screen hidden">
+      <h2 id="result-text">You Win!</h2>
+      <button id="play-again-btn">Play Again</button>
+    </div>
+  </div>
+
+  <!-- In-Game UI -->
+  <div id="game-ui" class="hidden">
+    <button id="quit-btn">Quit</button>
+    <div id="hp-display">
+      <div id="hp-left" class="hp-bar">
+        <span class="hp-label">P1</span>
+        <span class="hp-icon full">♥</span>
+        <span class="hp-icon full">♥</span>
+        <span class="hp-icon full">♥</span>
+      </div>
+      <div id="hp-right" class="hp-bar">
+        <span class="hp-icon full">♥</span>
+        <span class="hp-icon full">♥</span>
+        <span class="hp-icon full">♥</span>
+        <span class="hp-label">P2</span>
+      </div>
+    </div>
+    <div id="turn-indicator"></div>
+
+    <div id="status-text"></div>
+
+    <div id="controls-hint">
+      <span>WASD/Arrows: Aim</span>
+      <span>Q/E: Power</span>
+      <span>Space: Fire</span>
+    </div>
+
+    <div id="power-meter">
+      <div id="power-fill"></div>
+      <span id="power-value">30</span>
+    </div>
+    <div id="minimap-frame"></div>
+  </div>
+
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>

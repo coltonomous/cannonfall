@@ -1,0 +1,5 @@
+services:
+  cannonade:
+    build: .
+    ports:
+      - "4000:3000"

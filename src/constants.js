@@ -1,0 +1,47 @@
+// ── Block & Castle Dimensions ──────────────────────────
+export const BLOCK_SIZE = 1;
+
+export const CASTLE_WIDTH = 9;
+export const CASTLE_DEPTH = 9;
+export const CASTLE_OFFSET_X = 20;
+
+// ── Cannon ─────────────────────────────────────────────
+export const CANNON_HEIGHT = 10;
+export const CANNON_BARREL_LENGTH = 2;
+
+// ── Cannonball ─────────────────────────────────────────
+export const CANNONBALL_RADIUS = 0.4;
+export const CANNONBALL_MASS = 4;
+
+// ── Block Physics ──────────────────────────────────────
+export const BLOCK_MASS = 2;
+
+// ── Aim Limits ─────────────────────────────────────────
+export const MIN_PITCH = -0.15; // allows aiming slightly below horizontal
+export const MAX_PITCH = Math.PI / 3;
+export const MAX_YAW_OFFSET = Math.PI / 4;
+
+// ── Power ──────────────────────────────────────────────
+export const MIN_POWER = 10;
+export const MAX_POWER = 50;
+export const DEFAULT_POWER = 30;
+
+// ── Input Speeds ───────────────────────────────────────
+export const AIM_SPEED = 0.012;
+export const POWER_SPEED = 0.5;
+
+// ── Physics ────────────────────────────────────────────
+export const PHYSICS_STEP = 1 / 60;
+
+// ── Building ───────────────────────────────────────────
+export const BUILD_BUDGET = 500;
+
+export const BLOCK_TYPES = {
+  CUBE:      { cost: 3, size: [1, 1, 1] },
+  HALF_SLAB: { cost: 1, size: [1, 0.5, 1] },
+  WALL:      { cost: 2, size: [1, 1, 0.5] },
+  RAMP:      { cost: 2, size: [1, 1, 1] },
+};
+
+// ── HP ────────────────────────────────────────────────
+export const MAX_HP = 3;

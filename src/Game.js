@@ -42,6 +42,8 @@ export class Game {
     this.cannons = [null, null];
     this.castleData = [null, null]; // stored build preset data
     this.projectile = null;
+    this.charging = false;
+    this.chargeTime = 0;
     this.power = C.DEFAULT_POWER;
     this.settleTimer = 0;
 
@@ -57,7 +59,7 @@ export class Game {
 
     // Trajectory preview (hidden by default, toggle with backtick)
     this.trajectoryLine = null;
-    this.debugTrajectory = false;
+    this.debugTrajectory = true;
     this.createTrajectoryLine();
 
     // Input
@@ -270,6 +272,27 @@ export class Game {
     pos1.x -= 4;
     this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1);
     this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1);
+
+    // Cannons on layer 1 only — visible to main camera, hidden from minimap
+    for (const c of this.cannons) {
+      c.group.traverse(obj => { obj.layers.set(1); });
+    }
+
+    // Target markers on layer 2 — visible to minimap only, always above blocks
+    this.targetMarkers = [];
+    for (let i = 0; i < 2; i++) {
+      const tp = this.castles[i].getTargetPosition();
+      if (!tp) continue;
+      const ring = new THREE.Mesh(
+        new THREE.RingGeometry(0.6, 0.9, 16),
+        new THREE.MeshBasicMaterial({ color: 0xff2222, side: THREE.DoubleSide })
+      );
+      ring.rotation.x = -Math.PI / 2; // flat horizontal
+      ring.position.set(tp.x, 25, tp.z); // high above everything
+      ring.layers.set(2); // minimap only
+      this.sceneManager.scene.add(ring);
+      this.targetMarkers.push(ring);
+    }
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -299,7 +322,9 @@ export class Game {
     this.cannons[this.currentTurn].group.visible = true;
     this.cannons[1 - this.currentTurn].group.visible = false;
 
-    this.power = C.DEFAULT_POWER;
+    this.power = C.MIN_POWER;
+    this.charging = false;
+    this.chargeTime = 0;
     this.ui.updatePower(this.power, C.MIN_POWER, C.MAX_POWER);
     this.ui.setStatus('');
 
@@ -321,23 +346,41 @@ export class Game {
   fire() {
     if (this.state !== State.MY_TURN) return;
 
+    // Detect perfect shot (power in the sweet spot)
+    const powerFrac = (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
+    this._perfectShot = powerFrac >= C.PERFECT_MIN && powerFrac <= C.PERFECT_MAX;
+
     const cannon = this.cannons[this.currentTurn];
     const pos = cannon.getFirePosition();
     const dir = cannon.getFireDirection();
     const velocity = dir.multiplyScalar(this.power);
 
     this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity);
+
+    // Perfect shot: heavier cannonball punches deeper
+    if (this._perfectShot) {
+      this.projectile.body.mass = C.CANNONBALL_MASS * 1.5;
+      this.projectile.body.updateMassProperties();
+    }
+
     this.state = State.FIRING;
     this.trajectoryLine.visible = false;
     this.settleTimer = 0;
     this.fireTime = performance.now();
-    this.ui.setStatus('Firing...');
 
-    // Muzzle flash particles
+    // Muzzle flash — bigger and golden for perfect shots
     this._impactEmitted = false;
-    this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
-      5, { r: 1, g: 0.7, b: 0.2 }, 30, 0.6);
-    this.sceneManager.shake(0.3, 0.2);
+    if (this._perfectShot) {
+      this.ui.setStatus('PERFECT!');
+      this.particles.emit(pos, { x: dir.x * 10, y: dir.y * 10, z: dir.z * 10 },
+        6, { r: 1, g: 0.85, b: 0.2 }, 50, 0.8);
+      this.sceneManager.shake(0.5, 0.3);
+    } else {
+      this.ui.setStatus('Firing...');
+      this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
+        5, { r: 1, g: 0.7, b: 0.2 }, 30, 0.6);
+      this.sceneManager.shake(0.3, 0.2);
+    }
 
     if (this.mode === 'online') {
       this.network.sendFire(cannon.yaw, cannon.pitch, this.power);
@@ -386,21 +429,25 @@ export class Game {
     if (this.keys['ArrowUp'] || this.keys['KeyW']) cannon.adjustPitch(C.AIM_SPEED);
     if (this.keys['ArrowDown'] || this.keys['KeyS']) cannon.adjustPitch(-C.AIM_SPEED);
 
-    // Power (Q/E)
-    if (this.keys['KeyQ']) {
-      this.power = Math.max(C.MIN_POWER, this.power - C.POWER_SPEED);
-      this.ui.updatePower(this.power, C.MIN_POWER, C.MAX_POWER);
-    }
-    if (this.keys['KeyE']) {
-      this.power = Math.min(C.MAX_POWER, this.power + C.POWER_SPEED);
-      this.ui.updatePower(this.power, C.MIN_POWER, C.MAX_POWER);
+    // Power charge: hold Space to charge, release to fire
+    if (this.keys['Space'] && !this.charging) {
+      this.charging = true;
+      this.chargeTime = 0;
+      this.power = C.MIN_POWER;
     }
 
-    // Fire (Space)
-    if (this.keys['Space']) {
-      this.keys['Space'] = false; // consume to prevent repeat firing
-      this.fire();
-      return;
+    if (this.charging) {
+      // Sine-wave oscillation: parabolic feel — slow at extremes, fast in middle
+      this.chargeTime += dt;
+      const t = this.chargeTime * C.CHARGE_FREQ;
+      this.power = C.MIN_POWER + (C.MAX_POWER - C.MIN_POWER) * (0.5 - 0.5 * Math.cos(t));
+      this.ui.updatePower(this.power, C.MIN_POWER, C.MAX_POWER);
+
+      if (!this.keys['Space']) {
+        this.charging = false;
+        this.fire();
+        return;
+      }
     }
 
     this.updateCamera();
@@ -549,6 +596,12 @@ export class Game {
     this.repositioner.stop();
     this.castles[damagedPlayerIndex].repositionTarget(newTargetPos);
 
+    // Update minimap target marker
+    const tp = this.castles[damagedPlayerIndex].getTargetPosition();
+    if (tp && this.targetMarkers && this.targetMarkers[damagedPlayerIndex]) {
+      this.targetMarkers[damagedPlayerIndex].position.set(tp.x, 25, tp.z);
+    }
+
     // Resume battle — turn goes to the damaged player (shooter already used theirs)
     this.currentTurn = damagedPlayerIndex;
     this.ui.showGame();
@@ -600,6 +653,22 @@ export class Game {
     const lookAt = camPos.clone().add(halfPitchDir.multiplyScalar(60));
 
     this.sceneManager.setCameraPosition(camPos, lookAt);
+  }
+
+  cleanupFallenBlocks() {
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (let i = castle.blocks.length - 1; i >= 0; i--) {
+        const { mesh, body } = castle.blocks[i];
+        if (body.position.y < -5 || Math.abs(body.position.x) > 60 || Math.abs(body.position.z) > 60) {
+          castle.sceneManager.scene.remove(mesh);
+          castle.physicsWorld.world.removeBody(body);
+          const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
+          if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
+          castle.blocks.splice(i, 1);
+        }
+      }
+    }
   }
 
   followProjectile() {
@@ -657,6 +726,7 @@ export class Game {
     if (this.state !== State.GAME_OVER) {
       this.physicsWorld.step(dt);
       this.physicsWorld.sync();
+      this.cleanupFallenBlocks();
     }
 
     this.checkProjectile(dt);
@@ -710,6 +780,10 @@ export class Game {
     this.particles.clear();
     this.builder.stop();
     this.repositioner.stop();
+    if (this.targetMarkers) {
+      for (const m of this.targetMarkers) this.sceneManager.scene.remove(m);
+      this.targetMarkers = [];
+    }
     this.hp = [C.MAX_HP, C.MAX_HP];
     this.sceneManager.disableMinimap();
 

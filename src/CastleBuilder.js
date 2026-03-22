@@ -425,6 +425,8 @@ export class CastleBuilder {
     if (x < 0 || x >= CASTLE_WIDTH || z < 0 || z >= CASTLE_DEPTH) return false;
     if (y < 0 || y > 4) return false;
     if (this.hasBlockAt(x, y, z)) return false;
+    // Can't place a block on the target — it must remain exposed
+    if (x === this.targetPos.x && y === (this.targetPos.y || 0) && z === this.targetPos.z) return false;
     // Must be on floor (y=0) or on top of another block
     if (y === 0) return true;
     return this.hasBlockAt(x, y - 1, z);
@@ -475,6 +477,8 @@ export class CastleBuilder {
   }
 
   placeTarget(x, z) {
+    // Don't allow placing target inside a block
+    if (this.hasBlockAt(x, 0, z)) return;
     this.targetPos = { x, y: 0, z };
     this.updateTargetMesh();
   }

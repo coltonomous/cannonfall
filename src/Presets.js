@@ -85,7 +85,7 @@ function bunkerPreset() {
   layout.push({ x: 6, y: 0, z: 2, type: 'CUBE', rotation: 0 });
   layout.push({ x: 2, y: 0, z: 6, type: 'CUBE', rotation: 0 });
   layout.push({ x: 6, y: 0, z: 6, type: 'CUBE', rotation: 0 });
-  layout.push({ x: 4, y: 0, z: 4, type: 'CUBE', rotation: 0 });
+  // No center column — target sits here
 
   // Full cube roof at y=1, with a hole at center for target visibility + weak point
   for (let x = 0; x < 9; x++) {

@@ -43,8 +43,9 @@ export class TargetRepositioner {
 
   start(castle, damagedPlayerIndex, onConfirm) {
     this.onConfirm = onConfirm;
+    this.castle = castle;
     this.centerX = castle.centerX;
-    this.targetPos = { x: 4, z: 4 };
+    this.targetPos = { x: 4, y: 0, z: 4 };
 
     this.orbitCenter.set(this.centerX, 2, 0);
     this.orbitAngle = damagedPlayerIndex === 0 ? Math.PI / 4 : -Math.PI * 3 / 4;
@@ -52,10 +53,15 @@ export class TargetRepositioner {
     this.group = new THREE.Group();
     this.sceneManager.scene.add(this.group);
 
-    // Invisible raycast plane at floor level
+    // Raycast plane at floor level — semi-transparent so the player can see the grid
     this.gridPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(CASTLE_WIDTH * 2, CASTLE_DEPTH * 2),
-      new THREE.MeshBasicMaterial({ visible: false })
+      new THREE.PlaneGeometry(CASTLE_WIDTH * 3, CASTLE_DEPTH * 3),
+      new THREE.MeshBasicMaterial({
+        color: 0x44ff44,
+        transparent: true,
+        opacity: 0.15,
+        side: THREE.DoubleSide,
+      })
     );
     this.gridPlane.rotation.x = -Math.PI / 2;
     this.gridPlane.position.set(this.centerX, BLOCK_SIZE + 0.5, 0);
@@ -162,6 +168,11 @@ export class TargetRepositioner {
     return { x: gx, z: gz };
   }
 
+  getHitY(point) {
+    // Returns the Y position to place the target — on top of whatever was hit
+    return Math.max(BLOCK_SIZE + 0.5, point.y + 0.5);
+  }
+
   // === EVENT HANDLERS ===
 
   setupEventListeners() {
@@ -193,9 +204,27 @@ export class TargetRepositioner {
   _raycastGrid(e) {
     this._updateMouse(e);
     this.raycaster.setFromCamera(this.mouse, this.camera);
+
+    // Raycast against castle blocks first — allows placing on top of rubble
+    if (this.castle) {
+      const blockMeshes = this.castle.blocks.map(b => b.mesh);
+      const blockHits = this.raycaster.intersectObjects(blockMeshes);
+      if (blockHits.length > 0) {
+        const hit = blockHits[0];
+        const gridPos = this.getGridPos(hit.point);
+        if (gridPos) {
+          gridPos.hitY = hit.point.y + 0.5; // on top of the hit block face
+          return gridPos;
+        }
+      }
+    }
+
+    // Fallback: raycast against the floor plane
     const hits = this.raycaster.intersectObject(this.gridPlane);
     if (hits.length === 0) return null;
-    return this.getGridPos(hits[0].point);
+    const gridPos = this.getGridPos(hits[0].point);
+    if (gridPos) gridPos.hitY = BLOCK_SIZE + 0.5; // floor level
+    return gridPos;
   }
 
   _handleMouseDown(e) {
@@ -239,9 +268,10 @@ export class TargetRepositioner {
     }
 
     const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const hitY = gridPos.hitY || (BLOCK_SIZE + 0.5);
     this.ghostTarget.position.set(
       this.centerX + (gridPos.x - halfW) * BLOCK_SIZE,
-      BLOCK_SIZE + 0.5,
+      hitY,
       (gridPos.z - halfW) * BLOCK_SIZE
     );
     this.ghostTarget.visible = true;
@@ -258,7 +288,26 @@ export class TargetRepositioner {
     const gridPos = this._raycastGrid(e);
     if (!gridPos) return;
 
-    this.targetPos = gridPos;
+    // Compute target Y: use hit surface position, convert to grid layer
+    const hitY = gridPos.hitY || (BLOCK_SIZE + 0.5);
+    const gridY = Math.max(0, Math.round((hitY - BLOCK_SIZE - 0.5) / BLOCK_SIZE));
+    this.targetPos = { x: gridPos.x, y: gridY, z: gridPos.z };
+
+    // Immediate visual feedback — move the castle's actual target
+    if (this.castle) {
+      this.castle.repositionTarget(this.targetPos);
+    }
+
+    // Also show the ghost at the new position
+    if (this.ghostTarget) {
+      const halfW = Math.floor(CASTLE_WIDTH / 2);
+      this.ghostTarget.position.set(
+        this.centerX + (gridPos.x - halfW) * BLOCK_SIZE,
+        hitY,
+        (gridPos.z - halfW) * BLOCK_SIZE
+      );
+      this.ghostTarget.visible = true;
+    }
   }
 
   _handleWheel(e) {

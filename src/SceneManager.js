@@ -6,9 +6,13 @@ export class SceneManager {
     this.scene.background = new THREE.Color(0x87CEEB);
     this.scene.fog = new THREE.Fog(0x87CEEB, 100, 200);
 
+    // Layer 0: default (blocks, ground, etc) — both cameras see
+    // Layer 1: main-camera-only (cannons)
+    // Layer 2: minimap-only (target markers)
     this.camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 200);
     this.camera.position.set(0, 25, 35);
     this.camera.lookAt(0, 3, 0);
+    this.camera.layers.enable(1); // main camera sees cannons
 
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -28,11 +32,12 @@ export class SceneManager {
     this._shakeDuration = 0;
     this._shakeTimer = 0;
 
-    // Minimap camera (orthographic, top-down)
+    // Minimap camera (orthographic, top-down) — sees layers 0 + 2
     this.minimapCamera = new THREE.OrthographicCamera(-7, 7, 7, -7, 0.1, 50);
     this.minimapCamera.position.set(0, 30, 0);
-    this.minimapCamera.up.set(0, 0, -1); // orient so +X is right in minimap
+    this.minimapCamera.up.set(0, 0, -1);
     this.minimapCamera.lookAt(0, 0, 0);
+    this.minimapCamera.layers.enable(2); // minimap sees target markers
     this.minimapEnabled = false;
 
     this.setupLighting();

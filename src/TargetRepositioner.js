@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { BLOCK_SIZE } from './constants.js';
+import { OrbitController } from './OrbitController.js';
 
 /**
  * Minimal orbit-camera + click-to-place-target UI for the reposition phase.
@@ -15,17 +16,12 @@ export class TargetRepositioner {
     this.centerX = 0;
     this.targetPos = { x: 4, z: 4 };
 
-    // Orbit camera
-    this.orbitAngle = Math.PI / 4;
-    this.orbitPitch = Math.PI / 4;
-    this.orbitDistance = 16;
-    this.orbitCenter = new THREE.Vector3(0, 2, 0);
-    this.isDragging = false;
-    this.lastMouse = { x: 0, y: 0 };
-
-    // Raycasting
-    this.raycaster = new THREE.Raycaster();
-    this.mouse = new THREE.Vector2();
+    // Orbit camera + raycasting (shared controller)
+    this.orbit = new OrbitController(sceneManager);
+    this.orbit.orbitPitch = Math.PI / 4;
+    this.orbit.orbitDistance = 16;
+    this.orbit.maxDistance = 25;
+    this.orbit.onMouseMove = (e) => this._handleHover(e);
 
     // 3D objects (created in start)
     this.group = null;
@@ -33,12 +29,8 @@ export class TargetRepositioner {
     this.ghostTarget = null;
 
     // Bound handlers
-    this._onMouseDown = this._handleMouseDown.bind(this);
-    this._onMouseUp = this._handleMouseUp.bind(this);
-    this._onMouseMove = this._handleMouseMove.bind(this);
     this._onClick = this._handleClick.bind(this);
     this._onContextMenu = (e) => e.preventDefault();
-    this._onWheel = this._handleWheel.bind(this);
     this._onKeyDown = this._handleKeyDown.bind(this);
   }
 
@@ -50,8 +42,8 @@ export class TargetRepositioner {
     this.castleGridD = castle.gridDepth || 9;
     this.targetPos = { x: Math.floor(this.castleGridW / 2), y: 0, z: Math.floor(this.castleGridD / 2) };
 
-    this.orbitCenter.set(this.centerX, 2, 0);
-    this.orbitAngle = damagedPlayerIndex === 0 ? Math.PI / 4 : -Math.PI * 3 / 4;
+    this.orbit.orbitCenter.set(this.centerX, 2, 0);
+    this.orbit.orbitAngle = damagedPlayerIndex === 0 ? Math.PI / 4 : -Math.PI * 3 / 4;
     this.currentLayer = 0;
     this._savedMaterials = [];
 
@@ -97,7 +89,7 @@ export class TargetRepositioner {
     this.group.add(gridLine);
 
     this.setupEventListeners();
-    this.updateCamera();
+    this.orbit.updateCamera();
     this.createUI();
   }
 
@@ -113,14 +105,7 @@ export class TargetRepositioner {
     this.ghostTarget = null;
   }
 
-  // === CAMERA ===
-
-  updateCamera() {
-    const x = this.orbitCenter.x + this.orbitDistance * Math.cos(this.orbitPitch) * Math.sin(this.orbitAngle);
-    const y = this.orbitCenter.y + this.orbitDistance * Math.sin(this.orbitPitch);
-    const z = this.orbitCenter.z + this.orbitDistance * Math.cos(this.orbitPitch) * Math.cos(this.orbitAngle);
-    this.sceneManager.snapCamera(new THREE.Vector3(x, y, z), this.orbitCenter);
-  }
+  // === CAMERA (delegated to OrbitController) ===
 
   // === UI ===
 
@@ -261,40 +246,28 @@ export class TargetRepositioner {
 
   setupEventListeners() {
     const canvas = this.renderer.domElement;
-    canvas.addEventListener('mousedown', this._onMouseDown);
-    canvas.addEventListener('mouseup', this._onMouseUp);
-    canvas.addEventListener('mousemove', this._onMouseMove);
+    this.orbit.setupListeners(canvas);
     canvas.addEventListener('click', this._onClick);
     canvas.addEventListener('contextmenu', this._onContextMenu);
-    canvas.addEventListener('wheel', this._onWheel, { passive: false });
     window.addEventListener('keydown', this._onKeyDown);
   }
 
   removeEventListeners() {
     const canvas = this.renderer.domElement;
+    this.orbit.removeListeners(canvas);
     window.removeEventListener('keydown', this._onKeyDown);
-    canvas.removeEventListener('mousedown', this._onMouseDown);
-    canvas.removeEventListener('mouseup', this._onMouseUp);
-    canvas.removeEventListener('mousemove', this._onMouseMove);
     canvas.removeEventListener('click', this._onClick);
     canvas.removeEventListener('contextmenu', this._onContextMenu);
-    canvas.removeEventListener('wheel', this._onWheel);
-  }
-
-  _updateMouse(e) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
   }
 
   _raycastGrid(e) {
-    this._updateMouse(e);
-    this.raycaster.setFromCamera(this.mouse, this.camera);
+    this.orbit.updateMouse(e);
+    this.orbit.raycaster.setFromCamera(this.orbit.mouse, this.orbit.camera);
 
     // Raycast against castle blocks first — allows placing on top of rubble
     if (this.castle) {
       const blockMeshes = this.castle.blocks.map(b => b.mesh);
-      const blockHits = this.raycaster.intersectObjects(blockMeshes);
+      const blockHits = this.orbit.raycaster.intersectObjects(blockMeshes);
       if (blockHits.length > 0) {
         const hit = blockHits[0];
         const gridPos = this.getGridPos(hit.point);
@@ -306,47 +279,15 @@ export class TargetRepositioner {
     }
 
     // Fallback: raycast against the floor plane
-    const hits = this.raycaster.intersectObject(this.gridPlane);
+    const hits = this.orbit.raycaster.intersectObject(this.gridPlane);
     if (hits.length === 0) return null;
     const gridPos = this.getGridPos(hits[0].point);
     if (gridPos) gridPos.hitY = BLOCK_SIZE + 0.5; // floor level
     return gridPos;
   }
 
-  _handleMouseDown(e) {
-    this._clickStart = { x: e.clientX, y: e.clientY };
-    if (e.button === 0) {
-      this._leftDown = true;
-    }
-  }
-
-  _handleMouseUp(e) {
-    this.isDragging = false;
-    this._leftDown = false;
-  }
-
-  _handleMouseMove(e) {
-    // Promote to drag if threshold exceeded
-    if (this._leftDown && !this.isDragging && this._clickStart) {
-      const dx = e.clientX - this._clickStart.x;
-      const dy = e.clientY - this._clickStart.y;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-        this.isDragging = true;
-        this.lastMouse = { x: e.clientX, y: e.clientY };
-      }
-    }
-
-    if (this.isDragging) {
-      const dx = e.clientX - this.lastMouse.x;
-      const dy = e.clientY - this.lastMouse.y;
-      this.orbitAngle -= dx * 0.008;
-      this.orbitPitch = Math.max(0.1, Math.min(Math.PI / 2.5, this.orbitPitch + dy * 0.008));
-      this.lastMouse = { x: e.clientX, y: e.clientY };
-      this.updateCamera();
-      return;
-    }
-
-    // Update ghost position
+  _handleHover(e) {
+    // Update ghost position (called by OrbitController when not dragging)
     const gridPos = this._raycastGrid(e);
     if (!gridPos || !this.ghostTarget) {
       if (this.ghostTarget) this.ghostTarget.visible = false;
@@ -366,11 +307,7 @@ export class TargetRepositioner {
 
   _handleClick(e) {
     if (e.button !== 0) return;
-    if (this._clickStart) {
-      const dx = e.clientX - this._clickStart.x;
-      const dy = e.clientY - this._clickStart.y;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) return; // was a drag
-    }
+    if (this.orbit.wasDrag(e)) return;
 
     const gridPos = this._raycastGrid(e);
     if (!gridPos) return;
@@ -396,12 +333,6 @@ export class TargetRepositioner {
       );
       this.ghostTarget.visible = true;
     }
-  }
-
-  _handleWheel(e) {
-    e.preventDefault();
-    this.orbitDistance = Math.max(8, Math.min(25, this.orbitDistance + e.deltaY * 0.02));
-    this.updateCamera();
   }
 
   _handleKeyDown(e) {

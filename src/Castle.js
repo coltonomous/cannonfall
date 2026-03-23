@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES } from './constants.js';
-import { createAllBlockGeometries } from './BlockGeometry.js';
+import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape } from './BlockGeometry.js';
 
 export class Castle {
   constructor(sceneManager, physicsWorld, centerX, color, gridConfig) {
@@ -41,8 +41,8 @@ export class Castle {
       THRUSTER: new CANNON.Cylinder(0.25, 0.3, 0.8, 8),
       SHIELD: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
       HALF_BULLNOSE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-      RAMP: this.createRampShape(),
-      QUARTER_DOME: this.createQuarterDomeShape(),
+      RAMP: createRampPhysicsShape(),
+      QUARTER_DOME: createQuarterDomePhysicsShape(),
     };
 
     const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
@@ -174,49 +174,6 @@ export class Castle {
 
     // Create target
     this.createTarget(targetPosition, halfW, halfD);
-  }
-
-  createRampShape() {
-    // cannon-es ConvexPolyhedron for the ramp
-    const vertices = [
-      new CANNON.Vec3(-0.5, -0.5, -0.5),
-      new CANNON.Vec3( 0.5, -0.5, -0.5),
-      new CANNON.Vec3(-0.5, -0.5,  0.5),
-      new CANNON.Vec3( 0.5, -0.5,  0.5),
-      new CANNON.Vec3(-0.5,  0.5, -0.5),
-      new CANNON.Vec3(-0.5,  0.5,  0.5),
-    ];
-    const faces = [
-      [0, 1, 3, 2], // bottom
-      [0, 2, 5, 4], // left
-      [0, 4, 1],    // back triangle
-      [2, 3, 5],    // front triangle (corrected winding)
-      [1, 4, 5, 3], // slope
-    ];
-    return new CANNON.ConvexPolyhedron({ vertices, faces });
-  }
-
-  createQuarterDomeShape() {
-    // Approximate quarter dome as a convex hull for physics
-    const verts = [
-      new CANNON.Vec3(-0.5, -0.5, -0.5), // origin corner
-      new CANNON.Vec3( 0.0, -0.5, -0.5), // bottom edge X
-      new CANNON.Vec3(-0.5, -0.5,  0.0), // bottom edge Z
-      new CANNON.Vec3(-0.5,  0.0, -0.5), // side edge Y
-      new CANNON.Vec3( 0.0,  0.0, -0.5), // curve approx
-      new CANNON.Vec3(-0.5,  0.0,  0.0), // curve approx
-      new CANNON.Vec3( 0.0, -0.5,  0.0), // curve approx
-    ];
-    const faces = [
-      [0, 1, 4, 3], // back face (XY plane)
-      [0, 3, 5, 2], // left face (YZ plane)
-      [0, 2, 6, 1], // bottom face (XZ plane)
-      [1, 6, 4],     // front-right
-      [2, 5, 6],     // front-left
-      [3, 4, 5],     // top
-      [4, 6, 5],     // curved face approx
-    ];
-    return new CANNON.ConvexPolyhedron({ vertices: verts, faces });
   }
 
   createTarget(gridPos, halfW, halfD) {

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { BLOCK_SIZE, BUILD_BUDGET, BLOCK_TYPES } from './constants.js';
 import { getPreset } from './Presets.js';
 import { createAllBlockGeometries } from './BlockGeometry.js';
+import { OrbitController } from './OrbitController.js';
 
 export class CastleBuilder {
   constructor(sceneManager) {
@@ -26,26 +27,14 @@ export class CastleBuilder {
     this.targetMesh = null;
     this.floorMeshes = [];
 
-    // Orbit camera state
-    this.orbitAngle = Math.PI / 4; // horizontal angle
-    this.orbitPitch = Math.PI / 5; // vertical angle (from horizontal)
-    this.orbitDistance = 18;
-    this.orbitCenter = new THREE.Vector3(0, 2, 0);
-    this.isDragging = false;
-    this.lastMouse = { x: 0, y: 0 };
-
-    // Raycasting
-    this.raycaster = new THREE.Raycaster();
-    this.mouse = new THREE.Vector2();
+    // Orbit camera + raycasting (shared controller)
+    this.orbit = new OrbitController(sceneManager);
+    this.orbit.onMouseMove = (e) => this._handleHover(e);
     this.gridPlane = null; // invisible plane for raycasting at current layer
 
     // Bound event handlers (for cleanup)
-    this._onMouseDown = this._handleMouseDown.bind(this);
-    this._onMouseUp = this._handleMouseUp.bind(this);
-    this._onMouseMove = this._handleMouseMove.bind(this);
     this._onClick = this._handleClick.bind(this);
     this._onContextMenu = this._handleContextMenu.bind(this);
-    this._onWheel = this._handleWheel.bind(this);
     this._onKeyDown = this._handleKeyDown.bind(this);
   }
 
@@ -69,7 +58,7 @@ export class CastleBuilder {
 
     this.setupScene();
     this.setupEventListeners();
-    this.updateCamera();
+    this.orbit.updateCamera();
     this.createBuildUI();
     this.rebuildMeshes();
   }
@@ -610,97 +599,36 @@ export class CastleBuilder {
     this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
   }
 
-  // === CAMERA ===
-
-  updateCamera() {
-    const x = this.orbitCenter.x + this.orbitDistance * Math.cos(this.orbitPitch) * Math.sin(this.orbitAngle);
-    const y = this.orbitCenter.y + this.orbitDistance * Math.sin(this.orbitPitch);
-    const z = this.orbitCenter.z + this.orbitDistance * Math.cos(this.orbitPitch) * Math.cos(this.orbitAngle);
-    this.sceneManager.snapCamera(
-      new THREE.Vector3(x, y, z),
-      this.orbitCenter
-    );
-  }
+  // === CAMERA (delegated to OrbitController) ===
 
   // === EVENT HANDLERS ===
 
   setupEventListeners() {
     const canvas = this.renderer.domElement;
-    canvas.addEventListener('mousedown', this._onMouseDown);
-    canvas.addEventListener('mouseup', this._onMouseUp);
-    canvas.addEventListener('mousemove', this._onMouseMove);
+    this.orbit.setupListeners(canvas);
     canvas.addEventListener('click', this._onClick);
     canvas.addEventListener('contextmenu', this._onContextMenu);
-    canvas.addEventListener('wheel', this._onWheel, { passive: false });
     window.addEventListener('keydown', this._onKeyDown);
   }
 
   removeEventListeners() {
     const canvas = this.renderer.domElement;
-    canvas.removeEventListener('mousedown', this._onMouseDown);
-    canvas.removeEventListener('mouseup', this._onMouseUp);
-    canvas.removeEventListener('mousemove', this._onMouseMove);
+    this.orbit.removeListeners(canvas);
     canvas.removeEventListener('click', this._onClick);
     canvas.removeEventListener('contextmenu', this._onContextMenu);
-    canvas.removeEventListener('wheel', this._onWheel);
     window.removeEventListener('keydown', this._onKeyDown);
   }
 
-  _updateMouse(e) {
-    const rect = this.renderer.domElement.getBoundingClientRect();
-    this.mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
-    this.mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
-  }
-
   _getHoveredGridPos(e) {
-    this._updateMouse(e);
-    this.raycaster.setFromCamera(this.mouse, this.camera);
-    const hits = this.raycaster.intersectObject(this.gridPlane);
+    this.orbit.updateMouse(e);
+    this.orbit.raycaster.setFromCamera(this.orbit.mouse, this.orbit.camera);
+    const hits = this.orbit.raycaster.intersectObject(this.gridPlane);
     if (hits.length === 0) return null;
     return this.getGridPos(hits[0].point);
   }
 
-  _handleMouseDown(e) {
-    if (e.button === 1 || (e.button === 0 && e.altKey)) {
-      // Middle click or Alt+click: start orbit immediately
-      this.isDragging = true;
-      this.lastMouse = { x: e.clientX, y: e.clientY };
-      e.preventDefault();
-    } else if (e.button === 0) {
-      // Left click: track start position; orbit begins once drag threshold exceeded
-      this.isDragging = false;
-      this._clickStart = { x: e.clientX, y: e.clientY };
-      this._leftDown = true;
-      this.lastMouse = { x: e.clientX, y: e.clientY };
-    }
-  }
-
-  _handleMouseUp(e) {
-    this.isDragging = false;
-    this._leftDown = false;
-  }
-
-  _handleMouseMove(e) {
-    // Left-click drag: promote to orbit once threshold exceeded
-    if (this._leftDown && !this.isDragging && this._clickStart) {
-      const dx = e.clientX - this._clickStart.x;
-      const dy = e.clientY - this._clickStart.y;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-        this.isDragging = true;
-      }
-    }
-
-    if (this.isDragging) {
-      const dx = e.clientX - this.lastMouse.x;
-      const dy = e.clientY - this.lastMouse.y;
-      this.orbitAngle -= dx * 0.008;
-      this.orbitPitch = Math.max(0.1, Math.min(Math.PI / 2.5, this.orbitPitch + dy * 0.008));
-      this.lastMouse = { x: e.clientX, y: e.clientY };
-      this.updateCamera();
-      return;
-    }
-
-    // Update ghost position
+  _handleHover(e) {
+    // Update ghost position (called by OrbitController when not dragging)
     const gridPos = this._getHoveredGridPos(e);
     if (!gridPos) {
       if (this.ghostMesh) this.ghostMesh.visible = false;
@@ -735,14 +663,7 @@ export class CastleBuilder {
     if (e.button !== 0) return;
 
     // Check if this was a drag (not a click)
-    if (this._clickStart) {
-      const dx = e.clientX - this._clickStart.x;
-      const dy = e.clientY - this._clickStart.y;
-      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
-        // Was a drag for orbit, not a click
-        return;
-      }
-    }
+    if (this.orbit.wasDrag(e)) return;
 
     const gridPos = this._getHoveredGridPos(e);
     if (!gridPos) return;
@@ -760,12 +681,6 @@ export class CastleBuilder {
     const gridPos = this._getHoveredGridPos(e);
     if (!gridPos) return;
     this.removeBlock(gridPos.x, this.currentLayer, gridPos.z);
-  }
-
-  _handleWheel(e) {
-    e.preventDefault();
-    this.orbitDistance = Math.max(8, Math.min(30, this.orbitDistance + e.deltaY * 0.02));
-    this.updateCamera();
   }
 
   _handleKeyDown(e) {

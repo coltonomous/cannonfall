@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES, CASTLE_WIDTH, CASTLE_DEPTH } from './constants.js';
+import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES } from './constants.js';
+import { createAllBlockGeometries } from './BlockGeometry.js';
 
 export class Castle {
   constructor(sceneManager, physicsWorld, centerX, color, gridConfig) {
@@ -8,17 +9,17 @@ export class Castle {
     this.physicsWorld = physicsWorld;
     this.centerX = centerX;
     this.color = new THREE.Color(color);
-    this.gridWidth = gridConfig?.gridWidth || CASTLE_WIDTH;
-    this.gridDepth = gridConfig?.gridDepth || CASTLE_DEPTH;
+    this.gridWidth = gridConfig?.gridWidth || 9;
+    this.gridDepth = gridConfig?.gridDepth || 9;
     this.blocks = []; // { mesh, body }
     this.target = null; // THREE.Mesh
     this.targetBody = null; // CANNON.Body
   }
 
-  // Build from a layout array: [{ x, y, z, type: 'CUBE'|'HALF_SLAB'|'WALL'|'RAMP', rotation: 0-3 }]
+  // Build from a layout array: [{ x, y, z, type, rotation }]
   // and a targetPosition: { x, y, z }
-  // x, z are in grid coords (0-6), y is layer (0-5)
-  // Grid origin is the castle center, so offset by -3 to +3
+  // x, z are grid coords, y is layer index
+  // Grid origin is the castle center
   buildFromLayout(layout, targetPosition, customFloor) {
     this.clear();
     this.layoutData = layout;
@@ -27,19 +28,7 @@ export class Castle {
     const halfD = Math.floor(this.gridDepth / 2);
 
     // Shared geometries for each block type (create once, reuse)
-    const geometries = {
-      CUBE: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
-      HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
-      WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
-      RAMP: this.createRampGeometry(),
-      COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
-      QUARTER_DOME: this.createQuarterDomeGeometry(),
-      HALF_ARCH: this.createHalfArchGeometry(),
-      BULLNOSE: this.createBullnoseGeometry(true),
-      HALF_BULLNOSE: this.createBullnoseGeometry(false),
-      THRUSTER: this.createThrusterGeometry(),
-      SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
-    };
+    const geometries = createAllBlockGeometries();
 
     // Physics shapes
     const shapes = {
@@ -207,47 +196,6 @@ export class Castle {
     this.createTarget(targetPosition, halfW, halfD);
   }
 
-  createRampGeometry() {
-    // Wedge/ramp: triangular prism
-    // Base is 1x1 on XZ, height 1 on Y
-    // Creates a right-triangle cross-section
-    const geo = new THREE.BufferGeometry();
-    const vertices = new Float32Array([
-      // Front face (triangle)
-      -0.5, -0.5,  0.5,
-       0.5, -0.5,  0.5,
-      -0.5,  0.5,  0.5,
-      // Back face (triangle)
-      -0.5, -0.5, -0.5,
-      -0.5,  0.5, -0.5,
-       0.5, -0.5, -0.5,
-      // Bottom face (quad as 2 tris)
-      -0.5, -0.5, -0.5,
-       0.5, -0.5, -0.5,
-       0.5, -0.5,  0.5,
-      -0.5, -0.5, -0.5,
-       0.5, -0.5,  0.5,
-      -0.5, -0.5,  0.5,
-      // Left face (quad as 2 tris)
-      -0.5, -0.5, -0.5,
-      -0.5, -0.5,  0.5,
-      -0.5,  0.5,  0.5,
-      -0.5, -0.5, -0.5,
-      -0.5,  0.5,  0.5,
-      -0.5,  0.5, -0.5,
-      // Slope face (quad as 2 tris)
-       0.5, -0.5, -0.5,
-      -0.5,  0.5, -0.5,
-      -0.5,  0.5,  0.5,
-       0.5, -0.5, -0.5,
-      -0.5,  0.5,  0.5,
-       0.5, -0.5,  0.5,
-    ]);
-    geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geo.computeVertexNormals();
-    return geo;
-  }
-
   createRampShape() {
     // cannon-es ConvexPolyhedron for the ramp
     const vertices = [
@@ -266,207 +214,6 @@ export class Castle {
       [1, 4, 5, 3], // slope
     ];
     return new CANNON.ConvexPolyhedron({ vertices, faces });
-  }
-
-  createThrusterGeometry() {
-    // Horizontal cylinder (engine nacelle) — cone shape, wider at back
-    const geo = new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8);
-    // Oriented along Y by default; rotation.z = PI/2 applied in buildFromLayout
-    return geo;
-  }
-
-  createHalfArchGeometry() {
-    // Half-arch: half-cube-width pillar with quarter-circle curve at top inner edge.
-    // Place two side by side (one rotated 180°) to form a full arch 1 cube wide.
-    // Width: 0.5, Height: 1, Depth: 1
-    const segs = 8;
-    const verts = [];
-    const idx = [];
-
-    // Outer face (x=0.5): full rectangle
-    verts.push(0.5, -0.5, -0.5); // 0
-    verts.push(0.5, -0.5, 0.5);  // 1
-    verts.push(0.5, 0.5, 0.5);   // 2
-    verts.push(0.5, 0.5, -0.5);  // 3
-    idx.push(0, 1, 2, 0, 2, 3);
-
-    // Bottom face
-    verts.push(0.0, -0.5, -0.5); // 4
-    verts.push(0.0, -0.5, 0.5);  // 5
-    idx.push(4, 0, 1, 4, 1, 5);
-
-    // Front face (z=0.5): rectangle + curve
-    // Inner edge has curve from (0, 0, 0.5) up to (0.5, 0.5, 0.5)
-    const frontCurveStart = verts.length / 3;
-    for (let i = 0; i <= segs; i++) {
-      const t = i / segs;
-      const angle = t * Math.PI / 2;
-      const x = 0.5 * (1 - Math.cos(angle)); // 0 → 0.5
-      const y = 0.5 * Math.sin(angle) - 0.5 + 0.5; // 0 → 0.5, shifted to -0.5+0.5=0 → 0.5
-      // Actually: spring at y=0, curve to y=0.5
-      verts.push(x, -0.5 + (1.0 * Math.sin(angle)), 0.5);
-    }
-    // Front lower rect: from (0,-0.5) to (0.5,-0.5) to curve start
-    // The curve starts at (0, -0.5, 0.5) when i=0: x=0, y=-0.5+0=-0.5. Hmm that's the bottom.
-    // Let me redo: curve from (0, 0, z) to (0.5, 0.5, z)
-    // At i=0: angle=0, x=0, y=sin(0)=0. At i=segs: angle=π/2, x=0.5, y=0.5.
-    // But the pillar below needs to go from y=-0.5 to y=0 at x=0.
-
-    // Restart front face approach:
-    // Bottom-inner (0, -0.5, 0.5) = vertex 5
-    // Bottom-outer (0.5, -0.5, 0.5) = vertex 1
-    // Top-outer (0.5, 0.5, 0.5) = vertex 2
-    // Curve points from (0, 0, 0.5) to (0.5, 0.5, 0.5)
-
-    // Clear and redo properly
-    verts.length = 0;
-    idx.length = 0;
-
-    const hw = 0.25; // half of 0.5 width
-    // Use x from -hw to hw (centered), or 0 to 0.5?
-    // Let's use 0 to 0.5 for the width
-
-    // 8 corners of the base box (0 to 0.5 in X, -0.5 to 0.5 in Y, -0.5 to 0.5 in Z)
-    // But the inner top edge is curved, not straight
-    // Simpler: use ExtrudeGeometry with a shape
-
-    const shape = new THREE.Shape();
-    // Start at bottom-outer
-    shape.moveTo(0.5, -0.5);
-    shape.lineTo(0.5, 0.5);  // up outer edge
-    // Curve from top-outer to inner spring point
-    for (let i = 0; i <= segs; i++) {
-      const angle = (i / segs) * Math.PI / 2;
-      const x = 0.5 * Math.cos(angle);
-      const y = 0.5 * Math.sin(angle);
-      shape.lineTo(x, y);
-    }
-    // At end of curve: x=0, y=0.5... no.
-    // cos(π/2)=0, sin(π/2)=1. So x=0, y=0.5. That goes from (0.5,0.5) to (0,0.5). That's a flat top, not an arch.
-    // I need the curve to go from (0.5, 0.5) down to (0, 0) — the inner edge.
-    // Quarter circle: from top-outer corner to inner-mid point
-    // Curve: x = 0.5*cos(θ), y = 0.5*sin(θ) for θ from π/2 to 0
-    // At θ=π/2: (0, 0.5). At θ=0: (0.5, 0). Hmm, that's the wrong direction.
-
-    // OK let me think about this shape in profile (XY cross section):
-    // Outer wall at x=0.5: full height from y=-0.5 to y=0.5
-    // Inner edge at x=0: from y=-0.5 up to y=0 (spring point)
-    // Curve from (x=0, y=0) to (x=0.5, y=0.5): quarter circle
-    // This creates a pillar on the left half with a curved top right
-
-    const shape2 = new THREE.Shape();
-    shape2.moveTo(0, -0.5);       // bottom-inner
-    shape2.lineTo(0.5, -0.5);     // bottom-outer
-    shape2.lineTo(0.5, 0.5);      // top-outer
-    // Quarter circle from (0.5, 0.5) to (0, 0)
-    for (let i = 1; i <= segs; i++) {
-      const angle = (Math.PI / 2) * (i / segs);
-      const x = 0.5 * Math.cos(angle);
-      const y = 0.5 * Math.sin(angle);
-      shape2.lineTo(x, y);
-    }
-    // Close: from (0, 0) back to (0, -0.5) is implicit
-
-    const extrudeSettings = { depth: 1, bevelEnabled: false };
-    const geo = new THREE.ExtrudeGeometry(shape2, extrudeSettings);
-    // Center on Z axis (extrude goes 0 to 1, shift to -0.5 to 0.5)
-    geo.translate(0, 0, -0.5);
-    // Shift X so it's centered: currently 0 to 0.5, shift to -0.25 to 0.25
-    geo.translate(-0.25, 0, 0);
-    geo.computeVertexNormals();
-    return geo;
-  }
-
-  createBullnoseGeometry(full) {
-    // Bullnose: a cube with rounded top edges along the Z axis.
-    // full=true: both top edges rounded (top becomes a half-cylinder).
-    // full=false: only one top edge rounded (half-bullnose).
-    const segs = 6;
-    const r = 0.5; // radius = half the block size
-    const shape = new THREE.Shape();
-
-    if (full) {
-      // Profile in YZ: rectangle with both top corners rounded
-      shape.moveTo(-0.5, -0.5);
-      shape.lineTo(0.5, -0.5);
-      shape.lineTo(0.5, 0);
-      // Right rounded corner: quarter circle from (0.5, 0) to (0, 0.5)
-      for (let i = 1; i <= segs; i++) {
-        const a = (Math.PI / 2) * (i / segs);
-        shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
-      }
-      // Left rounded corner: quarter circle from (0, 0.5) to (-0.5, 0)
-      for (let i = 1; i <= segs; i++) {
-        const a = (Math.PI / 2) + (Math.PI / 2) * (i / segs);
-        shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
-      }
-      // Close to (-0.5, -0.5)
-    } else {
-      // Half-bullnose: only one top corner rounded
-      shape.moveTo(-0.5, -0.5);
-      shape.lineTo(0.5, -0.5);
-      shape.lineTo(0.5, 0.5);
-      // Rounded corner from (0.5, 0.5) toward (0, 0.5)... actually let me do top-right
-      // Flat top from (0.5, 0.5) to (-0.5, 0.5) but with one corner rounded
-      // Round the top-left corner: from (-0.5, 0.5) to (-0.5, 0)
-      shape.lineTo(0, 0.5);
-      for (let i = 1; i <= segs; i++) {
-        const a = (Math.PI / 2) * (i / segs);
-        shape.lineTo(-0.5 * Math.sin(a), 0.5 * Math.cos(a));
-      }
-      // Now at (-0.5, 0), close to (-0.5, -0.5)
-    }
-
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
-    geo.translate(0, 0, -0.5);
-    geo.computeVertexNormals();
-    return geo;
-  }
-
-  createQuarterDomeGeometry() {
-    // Quarter sphere dome — sits in one corner of the block space
-    const segments = 6;
-    const vertices = [];
-    const indices = [];
-
-    // Generate quarter sphere vertices
-    for (let i = 0; i <= segments; i++) {
-      const phi = (i / segments) * Math.PI / 2; // 0 to PI/2
-      for (let j = 0; j <= segments; j++) {
-        const theta = (j / segments) * Math.PI / 2; // 0 to PI/2
-        const x = 0.5 * Math.cos(phi) * Math.cos(theta) - 0.5;
-        const y = 0.5 * Math.sin(phi) - 0.5;
-        const z = 0.5 * Math.cos(phi) * Math.sin(theta) - 0.5;
-        vertices.push(x, y, z);
-      }
-    }
-
-    // Generate faces
-    for (let i = 0; i < segments; i++) {
-      for (let j = 0; j < segments; j++) {
-        const a = i * (segments + 1) + j;
-        const b = a + segments + 1;
-        indices.push(a, b, a + 1);
-        indices.push(a + 1, b, b + 1);
-      }
-    }
-
-    // Add flat faces to close the shape
-    // Bottom face
-    for (let j = 0; j < segments; j++) {
-      indices.push(0, j + 1, j);
-    }
-    // Side face (phi=0 edge)
-    const stride = segments + 1;
-    for (let i = 0; i < segments; i++) {
-      indices.push(0, i * stride, (i + 1) * stride);
-    }
-
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    return geo;
   }
 
   createQuarterDomeShape() {

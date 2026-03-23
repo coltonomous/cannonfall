@@ -1,0 +1,137 @@
+import * as THREE from 'three';
+import { BLOCK_SIZE } from './constants.js';
+
+/**
+ * Shared block geometry factories used by both Castle.js (runtime) and
+ * CastleBuilder.js (build-phase preview).  Keeps the shape definitions
+ * in one place so they can't drift out of sync.
+ */
+
+export function createRampGeometry() {
+  const geo = new THREE.BufferGeometry();
+  const vertices = new Float32Array([
+    // Front face (triangle)
+    -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,  -0.5,  0.5,  0.5,
+    // Back face (triangle)
+    -0.5, -0.5, -0.5,  -0.5,  0.5, -0.5,   0.5, -0.5, -0.5,
+    // Bottom face (quad as 2 triangles)
+    -0.5, -0.5, -0.5,   0.5, -0.5, -0.5,   0.5, -0.5,  0.5,
+    -0.5, -0.5, -0.5,   0.5, -0.5,  0.5,  -0.5, -0.5,  0.5,
+    // Left face (quad as 2 triangles)
+    -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,  -0.5,  0.5,  0.5,
+    -0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,  -0.5,  0.5, -0.5,
+    // Slope face (quad as 2 triangles)
+     0.5, -0.5, -0.5,  -0.5,  0.5, -0.5,  -0.5,  0.5,  0.5,
+     0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,   0.5, -0.5,  0.5,
+  ]);
+  geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export function createHalfArchGeometry() {
+  const segs = 8;
+  const shape = new THREE.Shape();
+  shape.moveTo(0, -0.5);
+  shape.lineTo(0.5, -0.5);
+  shape.lineTo(0.5, 0.5);
+  for (let i = 1; i <= segs; i++) {
+    const a = (Math.PI / 2) * (i / segs);
+    shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
+  geo.translate(-0.25, 0, -0.5);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export function createBullnoseGeometry(full) {
+  const segs = 6;
+  const shape = new THREE.Shape();
+  if (full) {
+    shape.moveTo(-0.5, -0.5);
+    shape.lineTo(0.5, -0.5);
+    shape.lineTo(0.5, 0);
+    for (let i = 1; i <= segs; i++) {
+      const a = (Math.PI / 2) * (i / segs);
+      shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
+    }
+    for (let i = 1; i <= segs; i++) {
+      const a = (Math.PI / 2) + (Math.PI / 2) * (i / segs);
+      shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
+    }
+  } else {
+    shape.moveTo(-0.5, -0.5);
+    shape.lineTo(0.5, -0.5);
+    shape.lineTo(0.5, 0.5);
+    shape.lineTo(0, 0.5);
+    for (let i = 1; i <= segs; i++) {
+      const a = (Math.PI / 2) * (i / segs);
+      shape.lineTo(-0.5 * Math.sin(a), 0.5 * Math.cos(a));
+    }
+  }
+  const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
+  geo.translate(0, 0, -0.5);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export function createQuarterDomeGeometry() {
+  const segments = 6;
+  const vertices = [];
+  const indices = [];
+  for (let i = 0; i <= segments; i++) {
+    const phi = (i / segments) * Math.PI / 2;
+    for (let j = 0; j <= segments; j++) {
+      const theta = (j / segments) * Math.PI / 2;
+      const x = 0.5 * Math.cos(phi) * Math.cos(theta) - 0.5;
+      const y = 0.5 * Math.sin(phi) - 0.5;
+      const z = 0.5 * Math.cos(phi) * Math.sin(theta) - 0.5;
+      vertices.push(x, y, z);
+    }
+  }
+  for (let i = 0; i < segments; i++) {
+    for (let j = 0; j < segments; j++) {
+      const a = i * (segments + 1) + j;
+      const b = a + segments + 1;
+      indices.push(a, b, a + 1);
+      indices.push(a + 1, b, b + 1);
+    }
+  }
+  for (let j = 0; j < segments; j++) {
+    indices.push(0, j + 1, j);
+  }
+  const stride = segments + 1;
+  for (let i = 0; i < segments; i++) {
+    indices.push(0, i * stride, (i + 1) * stride);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+export function createThrusterGeometry() {
+  return new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8);
+}
+
+/**
+ * Returns a complete geometries map for all block types.
+ * Callers can use this instead of building the map themselves.
+ */
+export function createAllBlockGeometries() {
+  return {
+    CUBE: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
+    HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
+    WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
+    RAMP: createRampGeometry(),
+    COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
+    QUARTER_DOME: createQuarterDomeGeometry(),
+    HALF_ARCH: createHalfArchGeometry(),
+    BULLNOSE: createBullnoseGeometry(true),
+    HALF_BULLNOSE: createBullnoseGeometry(false),
+    THRUSTER: createThrusterGeometry(),
+    SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
+  };
+}

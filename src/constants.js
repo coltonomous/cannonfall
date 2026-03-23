@@ -1,8 +1,5 @@
-// ── Block & Castle Dimensions ──────────────────────────
+// ── Dimensions ─────────────────────────────────────────
 export const BLOCK_SIZE = 1;
-
-export const CASTLE_WIDTH = 9;
-export const CASTLE_DEPTH = 9;
 export const CASTLE_OFFSET_X = 20;
 
 // ── Cannon ─────────────────────────────────────────────

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
 import { SceneManager } from './SceneManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
 import { Castle } from './Castle.js';
@@ -6,7 +7,6 @@ import { CannonTower } from './CannonTower.js';
 import { Projectile } from './Projectile.js';
 import { Network } from './Network.js';
 import { UI } from './UI.js';
-import { getPreset } from './Presets.js';
 import { GAME_MODES } from './GameModes.js';
 import { ParticleManager } from './ParticleManager.js';
 import { CastleBuilder } from './CastleBuilder.js';
@@ -305,8 +305,8 @@ export class Game {
     // Cannons: placed on top of the front wall, offset outward so barrel is clear.
     // cannonPos is defined relative to +X facing (P0's front).
     // P1's castle faces -X, so mirror the x coordinate.
-    const gw = this.gameMode.gridWidth || C.CASTLE_WIDTH;
-    const gd = this.gameMode.gridDepth || C.CASTLE_DEPTH;
+    const gw = this.gameMode.gridWidth;
+    const gd = this.gameMode.gridDepth;
     const cp0 = data0.cannonPos || { x: gw - 1, z: Math.floor(gd / 2) };
     const cp1Raw = data1.cannonPos || { x: gw - 1, z: Math.floor(gd / 2) };
     const cp1 = { x: gw - 1 - cp1Raw.x, z: cp1Raw.z };
@@ -712,9 +712,7 @@ export class Game {
     const cannon = this.cannons[this.currentTurn];
     if (!cannon) return;
 
-    // Fixed spectator camera: elevated view showing both castles.
-    // Slightly offset toward active player's side for perspective.
-    // First-person over-the-shoulder cannon view.
+    // Over-the-shoulder cannon view.
     // Cannon is pushed 4 units forward of the wall — camera 3 behind stays clear.
     const fireDir = cannon.getFireDirection();
     const horizDir = new THREE.Vector3(fireDir.x, 0, fireDir.z).normalize();
@@ -754,7 +752,7 @@ export class Game {
           const ny = dy / dist;
           const nz = dz / dist;
           body.applyImpulse(
-            new this.physicsWorld.world.gravity.constructor(nx * strength, ny * strength, nz * strength)
+            new CANNON.Vec3(nx * strength, ny * strength, nz * strength)
           );
           body.wakeUp();
         }

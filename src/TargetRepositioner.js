@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { CASTLE_WIDTH, CASTLE_DEPTH, BLOCK_SIZE } from './constants.js';
+import { BLOCK_SIZE } from './constants.js';
 
 /**
  * Minimal orbit-camera + click-to-place-target UI for the reposition phase.
@@ -46,8 +46,8 @@ export class TargetRepositioner {
     this.onConfirm = onConfirm;
     this.castle = castle;
     this.centerX = castle.centerX;
-    this.castleGridW = castle.gridWidth || CASTLE_WIDTH;
-    this.castleGridD = castle.gridDepth || CASTLE_DEPTH;
+    this.castleGridW = castle.gridWidth || 9;
+    this.castleGridD = castle.gridDepth || 9;
     this.targetPos = { x: Math.floor(this.castleGridW / 2), y: 0, z: Math.floor(this.castleGridD / 2) };
 
     this.orbitCenter.set(this.centerX, 2, 0);

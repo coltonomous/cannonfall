@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import { CASTLE_WIDTH, CASTLE_DEPTH, BLOCK_SIZE, BUILD_BUDGET, BLOCK_TYPES } from './constants.js';
+import { BLOCK_SIZE, BUILD_BUDGET, BLOCK_TYPES } from './constants.js';
 import { getPreset } from './Presets.js';
+import { createAllBlockGeometries } from './BlockGeometry.js';
 
 export class CastleBuilder {
   constructor(sceneManager) {
@@ -55,8 +56,8 @@ export class CastleBuilder {
     this.modeConfig = modeConfig || null;
     this.maxBudget = modeConfig?.budget || BUILD_BUDGET;
     this.maxLayers = modeConfig?.maxLayers || 5;
-    this.gridW = modeConfig?.gridWidth || CASTLE_WIDTH;
-    this.gridD = modeConfig?.gridDepth || CASTLE_DEPTH;
+    this.gridW = modeConfig?.gridWidth || 9;
+    this.gridD = modeConfig?.gridDepth || 9;
     this.layout = [];
     this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
     this.selectedType = 'CUBE';
@@ -545,19 +546,7 @@ export class CastleBuilder {
 
     const halfW = Math.floor(this.gridW / 2);
     const halfD = Math.floor(this.gridD / 2);
-    const geometries = {
-      CUBE: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
-      HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
-      WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
-      RAMP: this.createRampGeometry(),
-      COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
-      QUARTER_DOME: this.createQuarterDomeGeometry(),
-      HALF_ARCH: this.createHalfArchGeometry(),
-      BULLNOSE: this.createBullnoseGeometry(true),
-      HALF_BULLNOSE: this.createBullnoseGeometry(false),
-      THRUSTER: new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8),
-      SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
-    };
+    const geometries = createAllBlockGeometries();
 
     for (const block of this.layout) {
       const geo = geometries[block.type] || geometries.CUBE;
@@ -600,8 +589,6 @@ export class CastleBuilder {
       this.gridGroup.add(mesh);
       this.blockMeshes.push({ mesh, block });
     }
-
-    // Custom floor rendering removed — hull bottom is now part of the layout
   }
 
   updateTargetMesh() {
@@ -618,129 +605,9 @@ export class CastleBuilder {
   updateGhostGeometry() {
     if (!this.ghostMesh) return;
     this.ghostMesh.geometry.dispose();
-    const geos = {
-      CUBE: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
-      HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
-      WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
-      RAMP: this.createRampGeometry(),
-      COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
-      QUARTER_DOME: this.createQuarterDomeGeometry(),
-      HALF_ARCH: this.createHalfArchGeometry(),
-      BULLNOSE: this.createBullnoseGeometry(true),
-      HALF_BULLNOSE: this.createBullnoseGeometry(false),
-      THRUSTER: new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8),
-      SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
-    };
+    const geos = createAllBlockGeometries();
     this.ghostMesh.geometry = geos[this.selectedType] || geos.CUBE;
     this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
-  }
-
-  createRampGeometry() {
-    // Wedge shape: full-height back face, slopes down to bottom front edge
-    const geo = new THREE.BufferGeometry();
-    const vertices = new Float32Array([
-      // Front face (triangle) — slopes from bottom-front to top-back
-      -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,  -0.5,  0.5,  0.5,
-      // Back face (triangle)
-      -0.5, -0.5, -0.5,  -0.5,  0.5, -0.5,   0.5, -0.5, -0.5,
-      // Bottom face (quad as 2 triangles)
-      -0.5, -0.5, -0.5,   0.5, -0.5, -0.5,   0.5, -0.5,  0.5,
-      -0.5, -0.5, -0.5,   0.5, -0.5,  0.5,  -0.5, -0.5,  0.5,
-      // Left face (quad as 2 triangles)
-      -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,  -0.5,  0.5,  0.5,
-      -0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,  -0.5,  0.5, -0.5,
-      // Slope face (quad as 2 triangles) — connects top back to bottom front
-       0.5, -0.5, -0.5,  -0.5,  0.5, -0.5,  -0.5,  0.5,  0.5,
-       0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,   0.5, -0.5,  0.5,
-    ]);
-    geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
-    geo.computeVertexNormals();
-    return geo;
-  }
-
-  createHalfArchGeometry() {
-    // Half-arch: half-cube-width pillar with quarter-circle curve at top.
-    // Two side by side (one rotated 180°) form a full arch 1 cube wide.
-    const segs = 8;
-    const shape = new THREE.Shape();
-    shape.moveTo(0, -0.5);
-    shape.lineTo(0.5, -0.5);
-    shape.lineTo(0.5, 0.5);
-    for (let i = 1; i <= segs; i++) {
-      const a = (Math.PI / 2) * (i / segs);
-      shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
-    }
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
-    geo.translate(-0.25, 0, -0.5);
-    geo.computeVertexNormals();
-    return geo;
-  }
-
-  createBullnoseGeometry(full) {
-    const segs = 6;
-    const shape = new THREE.Shape();
-    if (full) {
-      shape.moveTo(-0.5, -0.5);
-      shape.lineTo(0.5, -0.5);
-      shape.lineTo(0.5, 0);
-      for (let i = 1; i <= segs; i++) {
-        const a = (Math.PI / 2) * (i / segs);
-        shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
-      }
-      for (let i = 1; i <= segs; i++) {
-        const a = (Math.PI / 2) + (Math.PI / 2) * (i / segs);
-        shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
-      }
-    } else {
-      shape.moveTo(-0.5, -0.5);
-      shape.lineTo(0.5, -0.5);
-      shape.lineTo(0.5, 0.5);
-      shape.lineTo(0, 0.5);
-      for (let i = 1; i <= segs; i++) {
-        const a = (Math.PI / 2) * (i / segs);
-        shape.lineTo(-0.5 * Math.sin(a), 0.5 * Math.cos(a));
-      }
-    }
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
-    geo.translate(0, 0, -0.5);
-    geo.computeVertexNormals();
-    return geo;
-  }
-
-  createQuarterDomeGeometry() {
-    const segments = 6;
-    const vertices = [];
-    const indices = [];
-    for (let i = 0; i <= segments; i++) {
-      const phi = (i / segments) * Math.PI / 2;
-      for (let j = 0; j <= segments; j++) {
-        const theta = (j / segments) * Math.PI / 2;
-        const x = 0.5 * Math.cos(phi) * Math.cos(theta) - 0.5;
-        const y = 0.5 * Math.sin(phi) - 0.5;
-        const z = 0.5 * Math.cos(phi) * Math.sin(theta) - 0.5;
-        vertices.push(x, y, z);
-      }
-    }
-    for (let i = 0; i < segments; i++) {
-      for (let j = 0; j < segments; j++) {
-        const a = i * (segments + 1) + j;
-        const b = a + segments + 1;
-        indices.push(a, b, a + 1);
-        indices.push(a + 1, b, b + 1);
-      }
-    }
-    for (let j = 0; j < segments; j++) {
-      indices.push(0, j + 1, j);
-    }
-    const stride = segments + 1;
-    for (let i = 0; i < segments; i++) {
-      indices.push(0, i * stride, (i + 1) * stride);
-    }
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-    geo.setIndex(indices);
-    geo.computeVertexNormals();
-    return geo;
   }
 
   // === CAMERA ===

@@ -25,7 +25,6 @@ export class UI {
     this.hamburgerBtn = document.getElementById('hamburger-btn');
     this.menuPanel = document.getElementById('menu-panel');
     this.menuQuitBtn = document.getElementById('menu-quit-btn');
-    this.debugTrajectory = document.getElementById('debug-trajectory');
     this.debugPhysics = document.getElementById('debug-physics');
     this.debugPerfect = document.getElementById('debug-perfect');
     this.debugLogs = document.getElementById('debug-logs');

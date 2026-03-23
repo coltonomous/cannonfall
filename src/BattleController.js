@@ -1,0 +1,394 @@
+import * as THREE from 'three';
+import * as CANNON from 'cannon-es';
+import { Projectile } from './Projectile.js';
+import * as C from './constants.js';
+
+export class BattleController {
+  constructor({ sceneManager, physicsWorld, particles, ui, network }) {
+    this.sceneManager = sceneManager;
+    this.physicsWorld = physicsWorld;
+    this.particles = particles;
+    this.ui = ui;
+    this.network = network;
+
+    // Synced from Game before each battle
+    this.castles = [null, null];
+    this.cannons = [null, null];
+    this.currentTurn = 0;
+    this.mode = null;
+    this.playerIndex = 0;
+    this.gameMode = null;
+
+    // Battle state
+    this.projectile = null;
+    this.power = C.DEFAULT_POWER;
+    this.charging = false;
+    this.chargeTime = 0;
+    this.settleTimer = 0;
+    this.fireTime = 0;
+    this._impactEmitted = false;
+    this._perfectShot = false;
+    this._lastProjDir = null;
+
+    // Trajectory line
+    this.trajectoryLine = null;
+    this._createTrajectoryLine();
+
+    // Callbacks into Game (set via setCallbacks)
+    this._onHitLocal = null;
+    this._onShotMiss = null;
+    this._onReportShot = null;
+    this._debugLog = null;
+  }
+
+  setCallbacks({ onHitLocal, onShotMiss, onReportShot, debugLog }) {
+    this._onHitLocal = onHitLocal;
+    this._onShotMiss = onShotMiss;
+    this._onReportShot = onReportShot;
+    this._debugLog = debugLog;
+  }
+
+  sync({ castles, cannons, currentTurn, mode, playerIndex, gameMode }) {
+    this.castles = castles;
+    this.cannons = cannons;
+    this.currentTurn = currentTurn;
+    this.mode = mode;
+    this.playerIndex = playerIndex;
+    if (gameMode) this.gameMode = gameMode;
+  }
+
+  // ── Trajectory ────────────────────────────────────────────
+
+  _createTrajectoryLine() {
+    const mat = new THREE.LineDashedMaterial({
+      color: 0xffff00,
+      dashSize: 0.5,
+      gapSize: 0.3,
+    });
+    const geo = new THREE.BufferGeometry();
+    this.trajectoryLine = new THREE.Line(geo, mat);
+    this.trajectoryLine.visible = false;
+    this.sceneManager.scene.add(this.trajectoryLine);
+  }
+
+  updateTrajectory() {
+    this.trajectoryLine.visible = true;
+
+    const cannon = this.cannons[this.currentTurn];
+    const pos = cannon.getFirePosition();
+    const dir = cannon.getFireDirection();
+    const vel = dir.clone().multiplyScalar(this.power);
+
+    const points = [];
+    const g = Math.abs(this.gameMode.gravity);
+    const step = 0.05;
+    let px = pos.x, py = pos.y, pz = pos.z;
+    let vx = vel.x, vy = vel.y, vz = vel.z;
+
+    for (let i = 0; i < 120; i++) {
+      points.push(new THREE.Vector3(px, py, pz));
+      px += vx * step;
+      py += vy * step;
+      pz += vz * step;
+      vy -= g * step;
+      if (py < this.gameMode.outOfBoundsY) break;
+    }
+
+    this.trajectoryLine.geometry.dispose();
+    this.trajectoryLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+    this.trajectoryLine.computeLineDistances();
+  }
+
+  // ── Firing ────────────────────────────────────────────────
+
+  fire(debugPerfectShot) {
+    const powerFrac = (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
+    this._perfectShot = debugPerfectShot || (powerFrac >= C.PERFECT_MIN && powerFrac <= C.PERFECT_MAX);
+    if (this._debugLog) this._debugLog('Fire:', { power: this.power.toFixed(1), perfect: this._perfectShot, powerFrac: powerFrac.toFixed(3) });
+
+    const cannon = this.cannons[this.currentTurn];
+    const pos = cannon.getFirePosition();
+    const dir = cannon.getFireDirection();
+    const power = this.power;
+
+    this.trajectoryLine.visible = false;
+    this._impactEmitted = false;
+    this.settleTimer = 0;
+    this.fireTime = performance.now();
+
+    if (this.mode === 'online') {
+      this.network.sendFire(cannon.yaw, cannon.pitch, power);
+    }
+
+    const launchProjectile = () => {
+      const velocity = dir.clone().multiplyScalar(power);
+      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot, this.gameMode);
+
+      if (this.gameMode.explosiveProjectile) {
+        this.projectile.body.addEventListener('collide', () => {
+          if (!this.projectile || !this.projectile.alive) return;
+          this._handleSpaceImpact();
+        });
+      }
+
+      // Muzzle flash
+      if (this._perfectShot) {
+        this.particles.emit(pos, { x: dir.x * 12, y: dir.y * 12, z: dir.z * 12 },
+          7, this.gameMode.perfectMuzzleColor, 60, 1.0);
+        this.sceneManager.shake(0.7, 0.4);
+      } else {
+        this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
+          5, this.gameMode.muzzleColor, 30, 0.6);
+        this.sceneManager.shake(0.3, 0.2);
+      }
+    };
+
+    if (this._perfectShot) {
+      this.ui.setStatus('PERFECT!');
+      this.sceneManager.shake(0.2, 0.3);
+      this.particles.emit(pos, { x: 0, y: 3, z: 0 }, 3, { r: 1, g: 0.9, b: 0.3 }, 25, 0.5);
+      setTimeout(() => launchProjectile(), 350);
+    } else {
+      this.ui.setStatus('Firing...');
+      launchProjectile();
+    }
+  }
+
+  handleOpponentFire(data) {
+    const oppIndex = 1 - this.playerIndex;
+    const cannon = this.cannons[oppIndex];
+
+    cannon.yaw = data.yaw;
+    cannon.pitch = data.pitch;
+    cannon.updateAim();
+
+    const pos = cannon.getFirePosition();
+    const dir = cannon.getFireDirection();
+    const velocity = dir.multiplyScalar(data.power);
+
+    this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, false, this.gameMode);
+
+    if (!this.gameMode.hasGround) {
+      this.projectile.body.addEventListener('collide', () => {
+        if (!this.projectile || !this.projectile.alive) return;
+        this._handleSpaceImpact();
+      });
+    }
+
+    this.settleTimer = 0;
+    this.fireTime = performance.now();
+    this.ui.setStatus('Incoming!');
+
+    // Muzzle flash
+    this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
+      5, this.gameMode.muzzleColor, 30, 0.6);
+  }
+
+  // ── Projectile Tracking ───────────────────────────────────
+
+  checkProjectile(dt) {
+    if (!this.projectile || !this.projectile.alive) return false;
+
+    const pos = this.projectile.getPosition();
+
+    // Out of bounds
+    if (this.projectile.isOutOfBounds()) {
+      this.projectile.destroy();
+      this.projectile = null;
+      this._onShotMiss();
+      return true;
+    }
+
+    // Target collision
+    const targetCastle = this.castles[1 - this.currentTurn];
+    const targetPos = targetCastle.getTargetPosition();
+
+    if (targetPos && pos.distanceTo(targetPos) < 1.2) {
+      this.particles.emit(pos, { x: 0, y: 5, z: 0 }, 10, { r: 1, g: 0.3, b: 0.1 }, 60, 1.2);
+      this.sceneManager.shake(0.8, 0.5);
+      this.projectile.destroy();
+      this.projectile = null;
+
+      if (this.mode === 'online') {
+        this._onReportShot(true, this._perfectShot);
+        this.ui.setStatus('Hit detected...');
+      } else {
+        this._onHitLocal();
+      }
+      return true;
+    }
+
+    // First impact debris
+    const speed = this.projectile.getSpeed();
+    if (!this._impactEmitted && speed < this.power * 0.5 && pos.y < C.CANNON_HEIGHT) {
+      this._impactEmitted = true;
+      this.particles.emit(pos, { x: 0, y: 4, z: 0 }, 8, this.gameMode.impactColor, 40, 1.0);
+      this.sceneManager.shake(0.5, 0.3);
+    }
+
+    // Settled
+    if (speed < 0.5 && pos.y < C.CANNON_HEIGHT) {
+      this.settleTimer += dt;
+      if (this.settleTimer > 1.5) {
+        this.projectile.destroy();
+        this.projectile = null;
+        this._onShotMiss();
+        return true;
+      }
+    } else {
+      this.settleTimer = 0;
+    }
+
+    return false;
+  }
+
+  followProjectile() {
+    if (!this.projectile || !this.projectile.alive) return;
+
+    const pos = this.projectile.getPosition();
+    const vel = this.projectile.body.velocity;
+    const speed = this.projectile.getSpeed();
+
+    // Smoke trail
+    if (speed > 2) {
+      this.particles.emit(pos, { x: 0, y: 0.5, z: 0 }, 1.5,
+        this.gameMode.trailColor, 2, 0.8);
+    }
+
+    let dir;
+    if (speed > 1) {
+      dir = new THREE.Vector3(vel.x, vel.y, vel.z).normalize();
+      this._lastProjDir = dir.clone();
+    } else {
+      dir = this._lastProjDir || new THREE.Vector3(1, 0, 0);
+    }
+
+    const camPos = pos.clone().sub(dir.clone().multiplyScalar(6));
+    camPos.y += 3;
+
+    this.sceneManager.setCameraPosition(camPos, pos);
+  }
+
+  // ── Space Explosion ───────────────────────────────────────
+
+  _handleSpaceImpact() {
+    if (!this.projectile || !this.projectile.alive) return;
+
+    const impactPos = this.projectile.getPosition();
+    const gm = this.gameMode;
+    const blastRadius = this._perfectShot ? (gm.perfectBlastRadius || 6) : (gm.blastRadius || 4);
+    const blastForce = this._perfectShot ? (gm.perfectBlastForce || 25) : (gm.blastForce || 12);
+
+    // Explosive impulse to nearby blocks
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (const { body } of castle.blocks) {
+        if (body.mass === 0) continue;
+        const dx = body.position.x - impactPos.x;
+        const dy = body.position.y - impactPos.y;
+        const dz = body.position.z - impactPos.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < blastRadius && dist > 0.1) {
+          const strength = blastForce * (1 - dist / blastRadius);
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const nz = dz / dist;
+          body.applyImpulse(
+            new CANNON.Vec3(nx * strength, ny * strength, nz * strength)
+          );
+          body.wakeUp();
+        }
+      }
+    }
+
+    // Check target hit
+    const targetCastle = this.castles[1 - this.currentTurn];
+    const targetPos = targetCastle.getTargetPosition();
+    if (targetPos && impactPos.distanceTo(targetPos) < 2.0) {
+      this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 12,
+        this.gameMode.impactColor, 60, 1.2);
+      this.sceneManager.shake(0.8, 0.5);
+      this.projectile.destroy();
+      this.projectile = null;
+
+      if (this.mode === 'online') {
+        this._onReportShot(true, this._perfectShot);
+        this.ui.setStatus('Hit detected...');
+      } else {
+        setTimeout(() => this._onHitLocal(), this.gameMode.explosionDelay || 2500);
+      }
+      return;
+    }
+
+    // Miss explosion
+    this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 10,
+      this.gameMode.impactColor, 40, 1.0);
+    this.sceneManager.shake(0.5, 0.3);
+
+    this.projectile.destroy();
+    this.projectile = null;
+
+    this.ui.setStatus('');
+    setTimeout(() => this._onShotMiss(), this.gameMode.explosionDelay || 2500);
+  }
+
+  // ── Camera ────────────────────────────────────────────────
+
+  updateCamera() {
+    const cannon = this.cannons[this.currentTurn];
+    if (!cannon) return;
+
+    const fireDir = cannon.getFireDirection();
+    const horizDir = new THREE.Vector3(fireDir.x, 0, fireDir.z).normalize();
+    const cp = cannon.group.position;
+
+    const camPos = cp.clone().add(horizDir.clone().multiplyScalar(-3));
+    camPos.y += 3;
+
+    const halfPitchDir = fireDir.clone();
+    halfPitchDir.y *= 0.3;
+    halfPitchDir.normalize();
+    const lookAt = camPos.clone().add(halfPitchDir.multiplyScalar(60));
+
+    this.sceneManager.setCameraPosition(camPos, lookAt);
+  }
+
+  // ── Fallen Blocks ─────────────────────────────────────────
+
+  cleanupFallenBlocks() {
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (let i = castle.blocks.length - 1; i >= 0; i--) {
+        const { mesh, body } = castle.blocks[i];
+        if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > 60 || Math.abs(body.position.z) > 60) {
+          castle.sceneManager.scene.remove(mesh);
+          castle.physicsWorld.world.removeBody(body);
+          const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
+          if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
+          castle.blocks.splice(i, 1);
+        }
+      }
+    }
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+
+  destroyProjectile() {
+    if (this.projectile) {
+      this.projectile.destroy();
+      this.projectile = null;
+    }
+  }
+
+  reset() {
+    this.destroyProjectile();
+    this.trajectoryLine.visible = false;
+    this.power = C.DEFAULT_POWER;
+    this.charging = false;
+    this.chargeTime = 0;
+    this.settleTimer = 0;
+    this._lastProjDir = null;
+    this._perfectShot = false;
+    this._impactEmitted = false;
+  }
+}

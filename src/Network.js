@@ -4,21 +4,20 @@ const EVENTS = [
   'matched',
   'build-complete',
   'opponent-fired',
-  'turn',
   'game-over',
   'opponent-disconnected',
   'opponent-disconnected-temp',
   'opponent-reconnected',
   'reconnected',
-  'hit-confirmed',
+  'shot-resolved',
   'reposition-done',
 ];
 
 function getSessionId() {
-  let id = sessionStorage.getItem('cannonfall-session');
+  let id = sessionStorage.getItem('cannonade-session');
   if (!id) {
     id = crypto.randomUUID();
-    sessionStorage.setItem('cannonfall-session', id);
+    sessionStorage.setItem('cannonade-session', id);
   }
   return id;
 }
@@ -30,14 +29,28 @@ export class Network {
     this.sessionId = getSessionId();
   }
 
-  connect() {
-    return new Promise((resolve) => {
+  connect(timeoutMs = 5000) {
+    return new Promise((resolve, reject) => {
       this.socket = io({
         auth: { sessionId: this.sessionId },
       });
 
+      const timer = setTimeout(() => {
+        this.socket.disconnect();
+        this.socket = null;
+        reject(new Error('Connection timed out'));
+      }, timeoutMs);
+
       this.socket.on('connect', () => {
+        clearTimeout(timer);
         resolve(this.socket.id);
+      });
+
+      this.socket.on('connect_error', (err) => {
+        clearTimeout(timer);
+        this.socket.disconnect();
+        this.socket = null;
+        reject(err);
       });
 
       for (const event of EVENTS) {
@@ -62,8 +75,8 @@ export class Network {
     this.socket.emit('fire', { yaw, pitch, power });
   }
 
-  sendHitReport() {
-    this.socket.emit('hit-report', { targetHit: true });
+  sendShotResult(hit, perfect = false) {
+    this.socket.emit('shot-result', { hit, perfect });
   }
 
   sendRepositionComplete(targetPos) {

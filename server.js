@@ -2,7 +2,6 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { randomUUID } from 'crypto';
-import Redis from 'ioredis';
 
 const app = express();
 const http = createServer(app);
@@ -10,52 +9,138 @@ const io = new Server(http, { cors: { origin: '*' } });
 
 app.use(express.static('dist'));
 
-// --- Redis ---
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  retryStrategy: (times) => Math.min(times * 200, 5000),
-  maxRetriesPerRequest: 3,
-});
-redis.on('error', (err) => console.error('Redis error:', err.message));
+// --- In-memory store with TTL (replaces Redis) ---
+
+const store = new Map(); // key -> { value, timer }
+
+function storeSet(key, value, ttlSeconds) {
+  const existing = store.get(key);
+  if (existing?.timer) clearTimeout(existing.timer);
+  const timer = ttlSeconds
+    ? setTimeout(() => store.delete(key), ttlSeconds * 1000)
+    : null;
+  store.set(key, { value, timer });
+}
+
+function storeGet(key) {
+  const entry = store.get(key);
+  return entry ? entry.value : null;
+}
+
+function storeDel(key) {
+  const entry = store.get(key);
+  if (entry?.timer) clearTimeout(entry.timer);
+  store.delete(key);
+}
 
 const RECONNECT_GRACE = 30; // seconds to hold a game for a disconnected player
-const GAME_TTL = 3600; // 1 hour max game lifetime in Redis
+const GAME_TTL = 3600;      // 1 hour max game lifetime
 
-// --- Helpers ---
+// --- Game helpers ---
 
-async function getGame(gameId) {
-  const data = await redis.get(`game:${gameId}`);
-  return data ? JSON.parse(data) : null;
+function getGame(gameId) {
+  return storeGet(`game:${gameId}`);
 }
 
-async function saveGame(game) {
-  await redis.set(`game:${game.id}`, JSON.stringify(game), 'EX', GAME_TTL);
+function saveGame(game) {
+  storeSet(`game:${game.id}`, game, GAME_TTL);
 }
 
-async function deleteGame(gameId) {
-  await redis.del(`game:${gameId}`);
+function deleteGame(gameId) {
+  storeDel(`game:${gameId}`);
 }
 
-async function setPlayerGame(sessionId, gameId, playerIndex) {
-  await redis.set(`player:${sessionId}`, JSON.stringify({ gameId, playerIndex }), 'EX', GAME_TTL);
+function setPlayerGame(sessionId, gameId, playerIndex) {
+  storeSet(`player:${sessionId}`, { gameId, playerIndex }, GAME_TTL);
 }
 
-async function getPlayerGame(sessionId) {
-  const data = await redis.get(`player:${sessionId}`);
-  return data ? JSON.parse(data) : null;
+function getPlayerGame(sessionId) {
+  return storeGet(`player:${sessionId}`);
 }
 
-async function clearPlayerGame(sessionId) {
-  await redis.del(`player:${sessionId}`);
+function clearPlayerGame(sessionId) {
+  storeDel(`player:${sessionId}`);
 }
 
 // --- In-memory state (sockets can't be serialized) ---
 const queue = [];
-const liveSockets = new Map(); // sessionId -> socket
+const liveSockets = new Map();  // sessionId -> socket
 const turnTimeouts = new Map(); // gameId -> timeout handle
+const pendingShots = new Map(); // gameId -> { reports: Map<playerIndex, {hit,perfect}>, timer }
+
+// --- Shot resolution (server-authoritative) ---
+
+function resolveShot(gameId) {
+  const pending = pendingShots.get(gameId);
+  if (!pending) return;
+
+  if (pending.timer) clearTimeout(pending.timer);
+  pendingShots.delete(gameId);
+
+  const game = getGame(gameId);
+  if (!game || game.phase !== 'battle') return;
+
+  // Clear the fire turn timeout — shot resolution handles turn transitions now
+  if (turnTimeouts.has(gameId)) {
+    clearTimeout(turnTimeouts.get(gameId));
+    turnTimeouts.delete(gameId);
+  }
+
+  const attacker = game.currentTurn;
+  const defender = 1 - attacker;
+
+  const attackerReport = pending.reports.get(attacker);
+  const defenderReport = pending.reports.get(defender);
+
+  // Decision: trust defender if they reported; fall back to attacker on timeout
+  let isHit;
+  if (defenderReport) {
+    isHit = defenderReport.hit;
+  } else if (attackerReport) {
+    isHit = attackerReport.hit;
+  } else {
+    isHit = false;
+  }
+
+  if (isHit) {
+    const perfect = attackerReport?.perfect || false;
+    const damage = perfect ? 2 : 1;
+    const damagedPlayer = defender;
+    game.hp[damagedPlayer] = Math.max(0, game.hp[damagedPlayer] - damage);
+
+    if (game.hp[damagedPlayer] <= 0) {
+      game.phase = 'over';
+      saveGame(game);
+      for (const sid of game.sessionIds) {
+        const s = liveSockets.get(sid);
+        if (s) s.emit('game-over', { winner: attacker });
+      }
+      setTimeout(() => {
+        deleteGame(gameId);
+        for (const sid of game.sessionIds) clearPlayerGame(sid);
+      }, 10000);
+    } else {
+      game.phase = 'reposition';
+      saveGame(game);
+      for (const sid of game.sessionIds) {
+        const s = liveSockets.get(sid);
+        if (s) s.emit('shot-resolved', { hit: true, damagedPlayer, hp: [...game.hp] });
+      }
+    }
+  } else {
+    // Miss — advance turn
+    game.currentTurn = 1 - game.currentTurn;
+    saveGame(game);
+    for (const sid of game.sessionIds) {
+      const s = liveSockets.get(sid);
+      if (s) s.emit('shot-resolved', { hit: false, nextTurn: game.currentTurn });
+    }
+  }
+}
 
 // --- Socket.io ---
 
-io.on('connection', async (socket) => {
+io.on('connection', (socket) => {
   const sessionId = socket.handshake.auth.sessionId;
   if (!sessionId) {
     socket.disconnect();
@@ -66,16 +151,15 @@ io.on('connection', async (socket) => {
   socket.sessionId = sessionId;
 
   // Check for active game to reconnect to
-  const playerInfo = await getPlayerGame(sessionId);
+  const playerInfo = getPlayerGame(sessionId);
   if (playerInfo) {
-    const game = await getGame(playerInfo.gameId);
+    const game = getGame(playerInfo.gameId);
     if (game && game.phase !== 'over') {
       socket.gameId = game.id;
       socket.playerIndex = playerInfo.playerIndex;
 
       // Clear disconnect grace timer
-      const graceKey = `grace:${game.id}:${playerInfo.playerIndex}`;
-      await redis.del(graceKey);
+      storeDel(`grace:${game.id}:${playerInfo.playerIndex}`);
 
       // Send reconnection state
       socket.emit('reconnected', {
@@ -103,7 +187,6 @@ io.on('connection', async (socket) => {
   // --- Matchmaking ---
 
   socket.on('join-queue', () => {
-    // Remove if already in queue
     const idx = queue.findIndex(q => q.sessionId === sessionId);
     if (idx >= 0) queue.splice(idx, 1);
 
@@ -114,7 +197,7 @@ io.on('connection', async (socket) => {
     }
   });
 
-  async function matchPlayers(s1, s2) {
+  function matchPlayers(s1, s2) {
     const gameId = randomUUID();
     const currentTurn = Math.random() < 0.5 ? 0 : 1;
 
@@ -122,15 +205,14 @@ io.on('connection', async (socket) => {
       id: gameId,
       sessionIds: [s1.sessionId, s2.sessionId],
       currentTurn,
-      turnTimeout: null,
       phase: 'build',
       castles: [null, null],
       hp: [3, 3],
     };
 
-    await saveGame(game);
-    await setPlayerGame(s1.sessionId, gameId, 0);
-    await setPlayerGame(s2.sessionId, gameId, 1);
+    saveGame(game);
+    setPlayerGame(s1.sessionId, gameId, 0);
+    setPlayerGame(s2.sessionId, gameId, 1);
 
     s1.gameId = gameId;
     s1.playerIndex = 0;
@@ -143,9 +225,9 @@ io.on('connection', async (socket) => {
 
   // --- Build phase ---
 
-  socket.on('build-ready', async ({ castleData }) => {
+  socket.on('build-ready', ({ castleData }) => {
     if (!socket.gameId) return;
-    const game = await getGame(socket.gameId);
+    const game = getGame(socket.gameId);
     if (!game || game.phase !== 'build') return;
 
     game.castles[socket.playerIndex] = castleData;
@@ -153,7 +235,7 @@ io.on('connection', async (socket) => {
     if (game.castles[0] !== null && game.castles[1] !== null) {
       game.phase = 'battle';
     }
-    await saveGame(game);
+    saveGame(game);
 
     if (game.phase === 'battle') {
       const s0 = liveSockets.get(game.sessionIds[0]);
@@ -166,9 +248,9 @@ io.on('connection', async (socket) => {
 
   // --- Battle phase ---
 
-  socket.on('fire', async ({ yaw, pitch, power }) => {
+  socket.on('fire', ({ yaw, pitch, power }) => {
     if (!socket.gameId) return;
-    const game = await getGame(socket.gameId);
+    const game = getGame(socket.gameId);
     if (!game || game.phase !== 'battle') return;
     if (socket.playerIndex !== game.currentTurn) return;
 
@@ -177,68 +259,58 @@ io.on('connection', async (socket) => {
     const oppSocket = liveSockets.get(oppSessionId);
     if (oppSocket) oppSocket.emit('opponent-fired', { yaw, pitch, power });
 
-    // Turn timeout
+    // Safety timeout: if neither client reports within 10s, force miss
     if (turnTimeouts.has(game.id)) clearTimeout(turnTimeouts.get(game.id));
-
-    turnTimeouts.set(game.id, setTimeout(async () => {
-      const g = await getGame(game.id);
-      if (!g) return;
-      g.currentTurn = 1 - g.currentTurn;
-      await saveGame(g);
-      for (const sid of g.sessionIds) {
-        const s = liveSockets.get(sid);
-        if (s) s.emit('turn', { playerIndex: g.currentTurn });
-      }
+    turnTimeouts.set(game.id, setTimeout(() => {
       turnTimeouts.delete(game.id);
-    }, 6000));
+      // If no shot-result received, treat as miss
+      if (!pendingShots.has(game.id)) {
+        const g = getGame(game.id);
+        if (!g || g.phase !== 'battle') return;
+        g.currentTurn = 1 - g.currentTurn;
+        saveGame(g);
+        for (const sid of g.sessionIds) {
+          const s = liveSockets.get(sid);
+          if (s) s.emit('shot-resolved', { hit: false, nextTurn: g.currentTurn });
+        }
+      }
+    }, 10000));
   });
 
-  socket.on('hit-report', async ({ targetHit }) => {
-    if (!socket.gameId || !targetHit) return;
-    const game = await getGame(socket.gameId);
+  // --- Shot result (both clients report independently) ---
+
+  socket.on('shot-result', ({ hit, perfect }) => {
+    if (!socket.gameId) return;
+    const game = getGame(socket.gameId);
     if (!game || game.phase !== 'battle') return;
 
-    if (turnTimeouts.has(game.id)) {
-      clearTimeout(turnTimeouts.get(game.id));
-      turnTimeouts.delete(game.id);
+    let pending = pendingShots.get(game.id);
+    if (!pending) {
+      pending = { reports: new Map(), timer: null };
+      pendingShots.set(game.id, pending);
+
+      // Wait up to 3s for both clients to report
+      pending.timer = setTimeout(() => resolveShot(game.id), 3000);
     }
 
-    // Update HP
-    const damagedPlayer = 1 - game.currentTurn;
-    game.hp[damagedPlayer]--;
+    pending.reports.set(socket.playerIndex, { hit: !!hit, perfect: !!perfect });
 
-    if (game.hp[damagedPlayer] <= 0) {
-      // Game over
-      game.phase = 'over';
-      await saveGame(game);
-      for (const sid of game.sessionIds) {
-        const s = liveSockets.get(sid);
-        if (s) s.emit('game-over', { winner: game.currentTurn });
-      }
-      // Clean up after a delay
-      setTimeout(async () => {
-        await deleteGame(game.id);
-        for (const sid of game.sessionIds) await clearPlayerGame(sid);
-      }, 10000);
-    } else {
-      // Reposition phase
-      game.phase = 'reposition';
-      await saveGame(game);
-      for (const sid of game.sessionIds) {
-        const s = liveSockets.get(sid);
-        if (s) s.emit('hit-confirmed', { damagedPlayer, hp: game.hp });
-      }
+    // If both reported, resolve immediately
+    if (pending.reports.size >= 2) {
+      resolveShot(game.id);
     }
   });
 
-  socket.on('reposition-complete', async ({ targetPos }) => {
+  // --- Reposition ---
+
+  socket.on('reposition-complete', ({ targetPos }) => {
     if (!socket.gameId) return;
-    const game = await getGame(socket.gameId);
+    const game = getGame(socket.gameId);
     if (!game || game.phase !== 'reposition') return;
 
     game.phase = 'battle';
     game.currentTurn = 1 - game.currentTurn; // damaged player's turn next
-    await saveGame(game);
+    saveGame(game);
 
     for (const sid of game.sessionIds) {
       const s = liveSockets.get(sid);
@@ -248,44 +320,41 @@ io.on('connection', async (socket) => {
 
   // --- Disconnect with grace period ---
 
-  socket.on('disconnect', async () => {
+  socket.on('disconnect', () => {
     liveSockets.delete(sessionId);
 
-    // Remove from queue
     const qIdx = queue.findIndex(q => q.sessionId === sessionId);
     if (qIdx >= 0) queue.splice(qIdx, 1);
 
     if (!socket.gameId) return;
 
-    const game = await getGame(socket.gameId);
+    const game = getGame(socket.gameId);
     if (!game || game.phase === 'over') return;
 
-    // Set grace period — opponent notified, game preserved
+    // Notify opponent of temporary disconnect
     const oppSessionId = game.sessionIds[1 - socket.playerIndex];
     const oppSocket = liveSockets.get(oppSessionId);
     if (oppSocket) oppSocket.emit('opponent-disconnected-temp');
 
-    // After grace period, if still disconnected, forfeit
+    // Grace period — if player doesn't reconnect, forfeit
     const graceKey = `grace:${game.id}:${socket.playerIndex}`;
-    await redis.set(graceKey, '1', 'EX', RECONNECT_GRACE);
+    storeSet(graceKey, true, RECONNECT_GRACE);
 
-    setTimeout(async () => {
-      const stillGrace = await redis.get(graceKey);
-      if (!stillGrace) return; // player reconnected, grace was cleared
+    setTimeout(() => {
+      if (!storeGet(graceKey)) return; // player reconnected
 
-      // Forfeit
-      const g = await getGame(socket.gameId);
+      const g = getGame(socket.gameId);
       if (!g || g.phase === 'over') return;
 
       g.phase = 'over';
-      await saveGame(g);
+      saveGame(g);
 
       const opp = liveSockets.get(oppSessionId);
       if (opp) opp.emit('opponent-disconnected');
 
-      setTimeout(async () => {
-        await deleteGame(game.id);
-        for (const sid of game.sessionIds) await clearPlayerGame(sid);
+      setTimeout(() => {
+        deleteGame(game.id);
+        for (const sid of game.sessionIds) clearPlayerGame(sid);
       }, 5000);
     }, RECONNECT_GRACE * 1000);
   });
@@ -293,5 +362,5 @@ io.on('connection', async (socket) => {
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
-  console.log(`Cannonfall server listening on port ${PORT}`);
+  console.log(`Cannonade server listening on port ${PORT}`);
 });

@@ -1,4 +1,4 @@
-# Cannonade
+# Cannonfall
 
 ## Overview
 
@@ -162,7 +162,7 @@ docker compose down
 ## Project Structure
 
 ```
-cannonade/
+cannonfall/
 ├── package.json
 ├── vite.config.js
 ├── server.js

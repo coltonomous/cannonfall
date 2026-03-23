@@ -39,6 +39,7 @@ export class TargetRepositioner {
     this._onClick = this._handleClick.bind(this);
     this._onContextMenu = (e) => e.preventDefault();
     this._onWheel = this._handleWheel.bind(this);
+    this._onKeyDown = this._handleKeyDown.bind(this);
   }
 
   start(castle, damagedPlayerIndex, onConfirm) {
@@ -49,6 +50,8 @@ export class TargetRepositioner {
 
     this.orbitCenter.set(this.centerX, 2, 0);
     this.orbitAngle = damagedPlayerIndex === 0 ? Math.PI / 4 : -Math.PI * 3 / 4;
+    this.currentLayer = 0;
+    this._savedMaterials = [];
 
     this.group = new THREE.Group();
     this.sceneManager.scene.add(this.group);
@@ -97,6 +100,7 @@ export class TargetRepositioner {
   }
 
   stop() {
+    this.restoreBlockMaterials();
     this.removeEventListeners();
     this.removeUI();
     if (this.group) {
@@ -131,12 +135,30 @@ export class TargetRepositioner {
       ">Reposition Your Target</div>
       <div style="
         position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%);
-        display: flex; gap: 12px; z-index: 15;
+        display: flex; gap: 12px; align-items: center; z-index: 15;
       ">
         <div style="
           background: rgba(0,0,0,0.6); color: white; padding: 8px 16px;
           border-radius: 8px; font-size: 0.85rem;
-        ">Click to place target &bull; Drag to orbit</div>
+        ">Click: Place &bull; Drag: Orbit &bull; 1-5: Layer</div>
+        <div style="
+          background: rgba(0,0,0,0.6); padding: 4px 8px; border-radius: 8px;
+          display: flex; gap: 4px; align-items: center;
+        ">
+          <button id="repo-layer-down" style="
+            width:28px; height:28px; border:none; border-radius:4px; cursor:pointer;
+            background:rgba(255,255,255,0.15); color:white; font-size:1rem;
+            pointer-events:auto;
+          ">▼</button>
+          <span id="repo-layer-label" style="color:white; font-size:0.85rem; min-width:50px; text-align:center;">
+            Layer 1
+          </span>
+          <button id="repo-layer-up" style="
+            width:28px; height:28px; border:none; border-radius:4px; cursor:pointer;
+            background:rgba(255,255,255,0.15); color:white; font-size:1rem;
+            pointer-events:auto;
+          ">▲</button>
+        </div>
         <button id="reposition-confirm-btn" style="
           padding: 10px 28px; font-size: 1rem; font-weight: 700; border: none;
           border-radius: 8px; cursor: pointer; background: #27ae60; color: white;
@@ -147,15 +169,74 @@ export class TargetRepositioner {
     document.body.appendChild(container);
 
     document.getElementById('reposition-confirm-btn').addEventListener('click', () => {
+      this.restoreBlockMaterials();
       if (this.onConfirm) {
         this.onConfirm(this.targetPos);
       }
+    });
+
+    document.getElementById('repo-layer-up').addEventListener('click', () => {
+      this.setLayer(Math.min(4, this.currentLayer + 1));
+    });
+    document.getElementById('repo-layer-down').addEventListener('click', () => {
+      this.setLayer(Math.max(0, this.currentLayer - 1));
     });
   }
 
   removeUI() {
     const el = document.getElementById('reposition-ui');
     if (el) el.remove();
+  }
+
+  // === LAYER VISIBILITY ===
+
+  setLayer(layer) {
+    this.currentLayer = layer;
+    const label = document.getElementById('repo-layer-label');
+    if (label) label.textContent = `Layer ${layer + 1}`;
+
+    // Update raycast plane height
+    this.gridPlane.position.y = BLOCK_SIZE + layer * BLOCK_SIZE + 0.5;
+
+    this.applyLayerTransparency();
+  }
+
+  applyLayerTransparency() {
+    if (!this.castle) return;
+    // Blocks above the current layer go transparent so you can see inside
+    const layerWorldY = BLOCK_SIZE + this.currentLayer * BLOCK_SIZE;
+    for (const { mesh } of this.castle.blocks) {
+      const blockBottom = mesh.position.y - 0.5;
+      if (blockBottom > layerWorldY + 0.5) {
+        // Above current layer — make transparent
+        if (!mesh.userData._origOpacity) {
+          mesh.userData._origOpacity = mesh.material.opacity;
+          mesh.userData._origTransparent = mesh.material.transparent;
+        }
+        mesh.material.transparent = true;
+        mesh.material.opacity = 0.15;
+      } else {
+        // At or below — restore
+        if (mesh.userData._origOpacity !== undefined) {
+          mesh.material.opacity = mesh.userData._origOpacity;
+          mesh.material.transparent = mesh.userData._origTransparent;
+          delete mesh.userData._origOpacity;
+          delete mesh.userData._origTransparent;
+        }
+      }
+    }
+  }
+
+  restoreBlockMaterials() {
+    if (!this.castle) return;
+    for (const { mesh } of this.castle.blocks) {
+      if (mesh.userData._origOpacity !== undefined) {
+        mesh.material.opacity = mesh.userData._origOpacity;
+        mesh.material.transparent = mesh.userData._origTransparent;
+        delete mesh.userData._origOpacity;
+        delete mesh.userData._origTransparent;
+      }
+    }
   }
 
   // === GRID ===
@@ -183,10 +264,12 @@ export class TargetRepositioner {
     canvas.addEventListener('click', this._onClick);
     canvas.addEventListener('contextmenu', this._onContextMenu);
     canvas.addEventListener('wheel', this._onWheel, { passive: false });
+    window.addEventListener('keydown', this._onKeyDown);
   }
 
   removeEventListeners() {
     const canvas = this.renderer.domElement;
+    window.removeEventListener('keydown', this._onKeyDown);
     canvas.removeEventListener('mousedown', this._onMouseDown);
     canvas.removeEventListener('mouseup', this._onMouseUp);
     canvas.removeEventListener('mousemove', this._onMouseMove);
@@ -314,5 +397,15 @@ export class TargetRepositioner {
     e.preventDefault();
     this.orbitDistance = Math.max(8, Math.min(25, this.orbitDistance + e.deltaY * 0.02));
     this.updateCamera();
+  }
+
+  _handleKeyDown(e) {
+    if (e.code === 'Digit1') this.setLayer(0);
+    if (e.code === 'Digit2') this.setLayer(1);
+    if (e.code === 'Digit3') this.setLayer(2);
+    if (e.code === 'Digit4') this.setLayer(3);
+    if (e.code === 'Digit5') this.setLayer(4);
+    if (e.code === 'BracketRight') this.setLayer(Math.min(4, this.currentLayer + 1));
+    if (e.code === 'BracketLeft') this.setLayer(Math.max(0, this.currentLayer - 1));
   }
 }

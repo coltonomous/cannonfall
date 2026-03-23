@@ -1,5 +1,5 @@
 services:
-  cannonade:
+  cannonfall:
     build: .
     ports:
       - "4000:3000"

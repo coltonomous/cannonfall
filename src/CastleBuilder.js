@@ -233,6 +233,28 @@ export class CastleBuilder {
             <span style="font-size: 1.2rem;">&#9698;</span>
             <span>Ramp <small>(${BLOCK_TYPES.RAMP.cost})</small></span>
           </button>
+          <button class="block-btn" data-type="COLUMN" style="
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 6px; background: rgba(255,255,255,0.06);
+            color: #fff; cursor: pointer; font-size: 0.9rem;
+            transition: background 0.15s, border-color 0.15s;
+            pointer-events: auto;
+          ">
+            <span style="font-size: 1.2rem;">&#9608;</span>
+            <span>Column <small>(${BLOCK_TYPES.COLUMN.cost})</small></span>
+          </button>
+          <button class="block-btn" data-type="QUARTER_DOME" style="
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 6px; background: rgba(255,255,255,0.06);
+            color: #fff; cursor: pointer; font-size: 0.9rem;
+            transition: background 0.15s, border-color 0.15s;
+            pointer-events: auto;
+          ">
+            <span style="font-size: 1.2rem;">&#9685;</span>
+            <span>Dome <small>(${BLOCK_TYPES.QUARTER_DOME.cost})</small></span>
+          </button>
         </div>
         <button class="block-btn target-btn" id="builder-target-btn" style="
           display: flex; align-items: center; gap: 8px;
@@ -313,6 +335,13 @@ export class CastleBuilder {
             <option value="TOWER">Tower</option>
           </select>
         </div>
+        <button id="builder-clear-btn" style="
+          padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
+          border: none; border-radius: 8px; cursor: pointer;
+          background: rgba(192, 57, 43, 0.8); color: #fff;
+          transition: background 0.2s;
+          pointer-events: auto;
+        ">Clear All</button>
         <button id="builder-ready-btn" style="
           padding: 14px 40px; font-size: 1.15rem; font-weight: 700;
           border: none; border-radius: 8px; cursor: pointer;
@@ -372,6 +401,15 @@ export class CastleBuilder {
         this.loadPreset(e.target.value);
         e.target.value = '';
       }
+    });
+
+    document.getElementById('builder-clear-btn').addEventListener('click', () => {
+      this.layout = [];
+      this.budget = BUILD_BUDGET;
+      this.targetPos = { x: 4, y: 0, z: 4 };
+      this.updateBudgetDisplay();
+      this.updateTargetMesh();
+      this.rebuildMeshes();
     });
 
     document.getElementById('builder-ready-btn').addEventListener('click', () => {
@@ -521,6 +559,8 @@ export class CastleBuilder {
       HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
       WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
       RAMP: this.createRampGeometry(),
+      COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
+      QUARTER_DOME: this.createQuarterDomeGeometry(),
     };
 
     for (const block of this.layout) {
@@ -576,6 +616,8 @@ export class CastleBuilder {
       HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
       WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
       RAMP: this.createRampGeometry(),
+      COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
+      QUARTER_DOME: this.createQuarterDomeGeometry(),
     };
     this.ghostMesh.geometry = geos[this.selectedType] || geos.CUBE;
     this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
@@ -600,6 +642,42 @@ export class CastleBuilder {
        0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,   0.5, -0.5,  0.5,
     ]);
     geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  createQuarterDomeGeometry() {
+    const segments = 6;
+    const vertices = [];
+    const indices = [];
+    for (let i = 0; i <= segments; i++) {
+      const phi = (i / segments) * Math.PI / 2;
+      for (let j = 0; j <= segments; j++) {
+        const theta = (j / segments) * Math.PI / 2;
+        const x = 0.5 * Math.cos(phi) * Math.cos(theta) - 0.5;
+        const y = 0.5 * Math.sin(phi) - 0.5;
+        const z = 0.5 * Math.cos(phi) * Math.sin(theta) - 0.5;
+        vertices.push(x, y, z);
+      }
+    }
+    for (let i = 0; i < segments; i++) {
+      for (let j = 0; j < segments; j++) {
+        const a = i * (segments + 1) + j;
+        const b = a + segments + 1;
+        indices.push(a, b, a + 1);
+        indices.push(a + 1, b, b + 1);
+      }
+    }
+    for (let j = 0; j < segments; j++) {
+      indices.push(0, j + 1, j);
+    }
+    const stride = segments + 1;
+    for (let i = 0; i < segments; i++) {
+      indices.push(0, i * stride, (i + 1) * stride);
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setIndex(indices);
     geo.computeVertexNormals();
     return geo;
   }

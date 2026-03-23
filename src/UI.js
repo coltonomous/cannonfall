@@ -22,7 +22,13 @@ export class UI {
     this.powerValue = document.getElementById('power-value');
     this.statusText = document.getElementById('status-text');
     this.passTitle = document.getElementById('pass-title'); // "Pass to Player X"
-    this.quitBtn = document.getElementById('quit-btn');
+    this.hamburgerBtn = document.getElementById('hamburger-btn');
+    this.menuPanel = document.getElementById('menu-panel');
+    this.menuQuitBtn = document.getElementById('menu-quit-btn');
+    this.debugTrajectory = document.getElementById('debug-trajectory');
+    this.debugPhysics = document.getElementById('debug-physics');
+    this.debugPerfect = document.getElementById('debug-perfect');
+    this.debugLogs = document.getElementById('debug-logs');
     this.hpLeft = document.getElementById('hp-left');
     this.hpRight = document.getElementById('hp-right');
     this.minimapFrame = document.getElementById('minimap-frame');

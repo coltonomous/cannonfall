@@ -25,6 +25,9 @@ export class Projectile {
       material: physicsWorld.defaultMaterial,
     });
     this.body.linearDamping = 0.01;
+    // Enable CCD to prevent tunneling through blocks at high speed
+    this.body.ccdSpeedThreshold = 5;
+    this.body.ccdIterations = 10;
     physicsWorld.world.addBody(this.body);
     physicsWorld.addPair(this.mesh, this.body);
   }

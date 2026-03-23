@@ -200,24 +200,96 @@ body {
   z-index: 5;
 }
 
-#quit-btn {
+/* ── Hamburger Menu ────────────────────────────────── */
+#hamburger-menu {
   position: absolute;
-  top: 20px;
-  left: 20px;
-  padding: 8px 18px;
-  font-size: 0.85rem;
-  font-weight: 700;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
+  top: 16px;
+  left: 16px;
+  z-index: 20;
   pointer-events: auto;
-  background: rgba(192, 57, 43, 0.8);
+}
+
+#hamburger-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.6);
   color: #fff;
+  font-size: 1.4rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.2s;
 }
 
-#quit-btn:hover {
+#hamburger-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+#menu-panel {
+  position: absolute;
+  top: 48px;
+  left: 0;
+  width: 220px;
+  background: rgba(20, 20, 20, 0.95);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#menu-panel.hidden {
+  display: none;
+}
+
+#menu-panel h3 {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  opacity: 0.5;
+  margin: 4px 0 2px;
+}
+
+#menu-panel hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin: 4px 0;
+}
+
+.menu-action {
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(192, 57, 43, 0.8);
+  color: #fff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.menu-action:hover {
   background: rgba(192, 57, 43, 1);
+}
+
+.debug-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.debug-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #27ae60;
+  cursor: pointer;
 }
 
 /* Turn Indicator — top center */

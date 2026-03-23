@@ -24,8 +24,7 @@ export class SceneManager {
     this._targetPos = this.camera.position.clone();
     this._targetLookAt = new THREE.Vector3(0, 3, 0);
     this._currentLookAt = new THREE.Vector3(0, 3, 0);
-    this._lerpSpeed = 3; // units per second (higher = faster tracking)
-    this._snapNext = false; // skip lerp on next update (e.g. scene transitions)
+    this._lerpSpeed = 3;
 
     // Screen shake
     this._shakeIntensity = 0;
@@ -37,7 +36,7 @@ export class SceneManager {
     this.minimapCamera.position.set(0, 30, 0);
     this.minimapCamera.up.set(0, 0, -1);
     this.minimapCamera.lookAt(0, 0, 0);
-    this.minimapCamera.layers.enable(2); // minimap sees target markers
+    this.minimapCamera.layers.enable(2);
     this.minimapEnabled = false;
 
     this.setupLighting();
@@ -73,13 +72,11 @@ export class SceneManager {
     this.scene.add(ground);
   }
 
-  // Set the camera's target position and lookAt. Camera will lerp toward these.
   setCameraPosition(position, lookAt) {
     this._targetPos.copy(position);
     this._targetLookAt.copy(lookAt);
   }
 
-  // Snap camera immediately to the target (no lerp). Use for scene transitions.
   snapCamera(position, lookAt) {
     this._targetPos.copy(position);
     this._targetLookAt.copy(lookAt);
@@ -88,7 +85,6 @@ export class SceneManager {
     this.camera.lookAt(lookAt);
   }
 
-  // Trigger screen shake
   shake(intensity = 0.4, duration = 0.3) {
     this._shakeIntensity = intensity;
     this._shakeDuration = duration;
@@ -107,15 +103,12 @@ export class SceneManager {
     this.minimapEnabled = false;
   }
 
-  // Call once per frame before render()
   updateCamera(dt) {
-    // Lerp position and lookAt toward targets
-    const t = 1 - Math.exp(-this._lerpSpeed * dt); // frame-rate-independent lerp
+    const t = 1 - Math.exp(-this._lerpSpeed * dt);
     this.camera.position.lerp(this._targetPos, t);
     this._currentLookAt.lerp(this._targetLookAt, t);
     this.camera.lookAt(this._currentLookAt);
 
-    // Apply screen shake offset
     if (this._shakeTimer > 0) {
       this._shakeTimer -= dt;
       const decay = this._shakeTimer / this._shakeDuration;
@@ -133,7 +126,6 @@ export class SceneManager {
   }
 
   render() {
-    // Use CSS pixel values — Three.js setViewport/setScissor auto-scale by pixelRatio
     const width = window.innerWidth;
     const height = window.innerHeight;
 

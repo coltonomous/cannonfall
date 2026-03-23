@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Cannonade</title>
+  <title>Cannonfall</title>
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
@@ -12,7 +12,7 @@
   <div id="overlay">
     <!-- Main Menu -->
     <div id="menu-screen" class="screen">
-      <h1 class="title">Cannonade</h1>
+      <h1 class="title">Cannonfall</h1>
       <p class="subtitle">3D Turn-Based Artillery</p>
       <div class="menu-buttons">
         <button id="local-match-btn">Local Match</button>
@@ -49,7 +49,27 @@
 
   <!-- In-Game UI -->
   <div id="game-ui" class="hidden">
-    <button id="quit-btn">Quit</button>
+    <div id="hamburger-menu">
+      <button id="hamburger-btn">☰</button>
+      <div id="menu-panel" class="hidden">
+        <h3>Menu</h3>
+        <button id="menu-quit-btn" class="menu-action">Quit Game</button>
+        <hr>
+        <h3>Debug</h3>
+        <label class="debug-toggle">
+          <input type="checkbox" id="debug-trajectory" checked> Trajectory Line
+        </label>
+        <label class="debug-toggle">
+          <input type="checkbox" id="debug-physics"> Physics Wireframes
+        </label>
+        <label class="debug-toggle">
+          <input type="checkbox" id="debug-perfect"> Perfect Every Shot
+        </label>
+        <label class="debug-toggle">
+          <input type="checkbox" id="debug-logs"> Debug Logs
+        </label>
+      </div>
+    </div>
     <div id="hp-display">
       <div id="hp-left" class="hp-bar">
         <span class="hp-label">P1</span>

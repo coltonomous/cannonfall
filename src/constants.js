@@ -39,10 +39,12 @@ export const PHYSICS_STEP = 1 / 60;
 export const BUILD_BUDGET = 500;
 
 export const BLOCK_TYPES = {
-  CUBE:      { cost: 3, size: [1, 1, 1] },
-  HALF_SLAB: { cost: 1, size: [1, 0.5, 1] },
-  WALL:      { cost: 2, size: [1, 1, 0.5] },
-  RAMP:      { cost: 2, size: [1, 1, 1] },
+  CUBE:        { cost: 3, size: [1, 1, 1] },
+  HALF_SLAB:   { cost: 1, size: [1, 0.5, 1] },
+  WALL:        { cost: 2, size: [1, 1, 0.5] },
+  RAMP:        { cost: 2, size: [1, 1, 1] },
+  COLUMN:      { cost: 2, size: [0.5, 1, 0.5] },
+  QUARTER_DOME:{ cost: 3, size: [1, 1, 1] },
 };
 
 // ── HP ────────────────────────────────────────────────

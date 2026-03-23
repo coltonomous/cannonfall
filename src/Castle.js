@@ -29,6 +29,8 @@ export class Castle {
       HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
       WALL: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE * 0.5),
       RAMP: this.createRampGeometry(),
+      COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
+      QUARTER_DOME: this.createQuarterDomeGeometry(),
     };
 
     // Physics shapes
@@ -36,7 +38,8 @@ export class Castle {
       CUBE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
       HALF_SLAB: new CANNON.Box(new CANNON.Vec3(0.5, 0.25, 0.5)),
       WALL: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
-      // RAMP uses a ConvexPolyhedron (trimesh for collision)
+      COLUMN: new CANNON.Cylinder(0.25, 0.25, BLOCK_SIZE, 8),
+      // RAMP and QUARTER_DOME use ConvexPolyhedron
     };
 
     const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
@@ -98,6 +101,8 @@ export class Castle {
       let shape;
       if (block.type === 'RAMP') {
         shape = this.createRampShape();
+      } else if (block.type === 'QUARTER_DOME') {
+        shape = this.createQuarterDomeShape();
       } else {
         shape = shapes[block.type];
       }
@@ -186,6 +191,75 @@ export class Castle {
       [1, 4, 5, 3], // slope
     ];
     return new CANNON.ConvexPolyhedron({ vertices, faces });
+  }
+
+  createQuarterDomeGeometry() {
+    // Quarter sphere dome — sits in one corner of the block space
+    const segments = 6;
+    const vertices = [];
+    const indices = [];
+
+    // Generate quarter sphere vertices
+    for (let i = 0; i <= segments; i++) {
+      const phi = (i / segments) * Math.PI / 2; // 0 to PI/2
+      for (let j = 0; j <= segments; j++) {
+        const theta = (j / segments) * Math.PI / 2; // 0 to PI/2
+        const x = 0.5 * Math.cos(phi) * Math.cos(theta) - 0.5;
+        const y = 0.5 * Math.sin(phi) - 0.5;
+        const z = 0.5 * Math.cos(phi) * Math.sin(theta) - 0.5;
+        vertices.push(x, y, z);
+      }
+    }
+
+    // Generate faces
+    for (let i = 0; i < segments; i++) {
+      for (let j = 0; j < segments; j++) {
+        const a = i * (segments + 1) + j;
+        const b = a + segments + 1;
+        indices.push(a, b, a + 1);
+        indices.push(a + 1, b, b + 1);
+      }
+    }
+
+    // Add flat faces to close the shape
+    // Bottom face
+    for (let j = 0; j < segments; j++) {
+      indices.push(0, j + 1, j);
+    }
+    // Side face (phi=0 edge)
+    const stride = segments + 1;
+    for (let i = 0; i < segments; i++) {
+      indices.push(0, i * stride, (i + 1) * stride);
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+    geo.setIndex(indices);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  createQuarterDomeShape() {
+    // Approximate quarter dome as a convex hull for physics
+    const verts = [
+      new CANNON.Vec3(-0.5, -0.5, -0.5), // origin corner
+      new CANNON.Vec3( 0.0, -0.5, -0.5), // bottom edge X
+      new CANNON.Vec3(-0.5, -0.5,  0.0), // bottom edge Z
+      new CANNON.Vec3(-0.5,  0.0, -0.5), // side edge Y
+      new CANNON.Vec3( 0.0,  0.0, -0.5), // curve approx
+      new CANNON.Vec3(-0.5,  0.0,  0.0), // curve approx
+      new CANNON.Vec3( 0.0, -0.5,  0.0), // curve approx
+    ];
+    const faces = [
+      [0, 1, 4, 3], // back face (XY plane)
+      [0, 3, 5, 2], // left face (YZ plane)
+      [0, 2, 6, 1], // bottom face (XZ plane)
+      [1, 6, 4],     // front-right
+      [2, 5, 6],     // front-left
+      [3, 4, 5],     // top
+      [4, 6, 5],     // curved face approx
+    ];
+    return new CANNON.ConvexPolyhedron({ vertices: verts, faces });
   }
 
   createTarget(gridPos, halfW) {

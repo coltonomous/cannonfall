@@ -60,6 +60,9 @@ export class Game {
     // Trajectory preview (hidden by default, toggle with backtick)
     this.trajectoryLine = null;
     this.debugTrajectory = true;
+    this.debugPhysics = false;
+    this.debugPerfectShot = false;
+    this.debugLogsEnabled = false;
     this.createTrajectoryLine();
 
     // Input
@@ -91,11 +94,6 @@ export class Game {
     window.addEventListener('keydown', (e) => {
       this.keys[e.code] = true;
       if (e.code === 'Space') e.preventDefault();
-      // Backtick toggles trajectory debug line
-      if (e.code === 'Backquote') {
-        this.debugTrajectory = !this.debugTrajectory;
-        if (!this.debugTrajectory) this.trajectoryLine.visible = false;
-      }
     });
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false;
@@ -116,12 +114,38 @@ export class Game {
 
     this.ui.passReadyBtn.addEventListener('click', () => this.onPassDeviceReady());
 
-    this.ui.quitBtn.addEventListener('click', () => {
+    // Hamburger menu toggle
+    this.ui.hamburgerBtn.addEventListener('click', () => {
+      this.ui.menuPanel.classList.toggle('hidden');
+    });
+
+    // Quit from menu
+    this.ui.menuQuitBtn.addEventListener('click', () => {
+      this.ui.menuPanel.classList.add('hidden');
       if (this.state === State.MENU || this.state === State.BUILD ||
           this.state === State.PASS_DEVICE || this.state === State.GAME_OVER) return;
       this.cleanup();
       this.state = State.MENU;
       this.ui.showMenu();
+    });
+
+    // Debug toggles
+    this.ui.debugTrajectory.addEventListener('change', (e) => {
+      this.debugTrajectory = e.target.checked;
+      if (!this.debugTrajectory) this.trajectoryLine.visible = false;
+    });
+
+    this.ui.debugPhysics.addEventListener('change', (e) => {
+      this.debugPhysics = e.target.checked;
+      this.updatePhysicsDebug();
+    });
+
+    this.ui.debugPerfect.addEventListener('change', (e) => {
+      this.debugPerfectShot = e.target.checked;
+    });
+
+    this.ui.debugLogs.addEventListener('change', (e) => {
+      this.debugLogsEnabled = e.target.checked;
     });
   }
 
@@ -273,7 +297,7 @@ export class Game {
     this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1);
     this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1);
 
-    // Cannons on layer 1 only — visible to main camera, hidden from minimap
+    // Cannons on layer 1 — visible to main camera, hidden from minimap
     for (const c of this.cannons) {
       c.group.traverse(obj => { obj.layers.set(1); });
     }
@@ -307,6 +331,7 @@ export class Game {
   }
 
   onTurnStart() {
+    this.debugLog('Turn:', this.currentTurn, 'State:', this.state);
     if (this.mode === 'local') {
       // In local mode, the active player is whoever's turn it is
       this.playerIndex = this.currentTurn;
@@ -318,7 +343,7 @@ export class Game {
       this.ui.setTurn(isMyTurn);
     }
 
-    // Show active cannon, hide opponent's
+    // Show active player's cannon, hide the other
     this.cannons[this.currentTurn].group.visible = true;
     this.cannons[1 - this.currentTurn].group.visible = false;
 
@@ -348,42 +373,50 @@ export class Game {
 
     // Detect perfect shot (power in the sweet spot)
     const powerFrac = (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
-    this._perfectShot = powerFrac >= C.PERFECT_MIN && powerFrac <= C.PERFECT_MAX;
+    this._perfectShot = this.debugPerfectShot || (powerFrac >= C.PERFECT_MIN && powerFrac <= C.PERFECT_MAX);
+    this.debugLog('Fire:', { power: this.power.toFixed(1), perfect: this._perfectShot, powerFrac: powerFrac.toFixed(3) });
 
     const cannon = this.cannons[this.currentTurn];
     const pos = cannon.getFirePosition();
     const dir = cannon.getFireDirection();
-    const velocity = dir.multiplyScalar(this.power);
 
-    this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity);
-
-    // Perfect shot: heavier cannonball punches deeper
-    if (this._perfectShot) {
-      this.projectile.body.mass = C.CANNONBALL_MASS * 1.5;
-      this.projectile.body.updateMassProperties();
-    }
+    const power = this.power; // capture power before state changes
 
     this.state = State.FIRING;
     this.trajectoryLine.visible = false;
-    this.settleTimer = 0;
-    this.fireTime = performance.now();
-
-    // Muzzle flash — bigger and golden for perfect shots
     this._impactEmitted = false;
-    if (this._perfectShot) {
-      this.ui.setStatus('PERFECT!');
-      this.particles.emit(pos, { x: dir.x * 10, y: dir.y * 10, z: dir.z * 10 },
-        6, { r: 1, g: 0.85, b: 0.2 }, 50, 0.8);
-      this.sceneManager.shake(0.5, 0.3);
-    } else {
-      this.ui.setStatus('Firing...');
-      this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
-        5, { r: 1, g: 0.7, b: 0.2 }, 30, 0.6);
-      this.sceneManager.shake(0.3, 0.2);
-    }
+    this.settleTimer = 0;
+    this.fireTime = performance.now(); // start the auto-advance timer NOW
 
     if (this.mode === 'online') {
-      this.network.sendFire(cannon.yaw, cannon.pitch, this.power);
+      this.network.sendFire(cannon.yaw, cannon.pitch, power);
+    }
+
+    const launchProjectile = () => {
+      const velocity = dir.clone().multiplyScalar(power);
+      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity);
+
+      // Muzzle flash
+      if (this._perfectShot) {
+        this.particles.emit(pos, { x: dir.x * 12, y: dir.y * 12, z: dir.z * 12 },
+          7, { r: 1, g: 0.85, b: 0.1 }, 60, 1.0);
+        this.sceneManager.shake(0.7, 0.4);
+      } else {
+        this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
+          5, { r: 1, g: 0.7, b: 0.2 }, 30, 0.6);
+        this.sceneManager.shake(0.3, 0.2);
+      }
+    };
+
+    if (this._perfectShot) {
+      // Perfect shot buildup: brief pause, "PERFECT!" flash, then fire with impact
+      this.ui.setStatus('PERFECT!');
+      this.sceneManager.shake(0.2, 0.3); // anticipation rumble
+      this.particles.emit(pos, { x: 0, y: 3, z: 0 }, 3, { r: 1, g: 0.9, b: 0.3 }, 25, 0.5);
+      setTimeout(() => launchProjectile(), 350);
+    } else {
+      this.ui.setStatus('Firing...');
+      launchProjectile();
     }
   }
 
@@ -546,8 +579,10 @@ export class Game {
 
   onTargetHit() {
     const damagedPlayer = 1 - this.currentTurn;
-    this.hp[damagedPlayer]--;
+    const damage = this._perfectShot ? 2 : 1;
+    this.hp[damagedPlayer] = Math.max(0, this.hp[damagedPlayer] - damage);
     this.ui.updateHP(this.hp[0], this.hp[1]);
+    this.debugLog('Target hit!', { damage, perfect: this._perfectShot, hp: [...this.hp] });
 
     if (this.hp[damagedPlayer] <= 0) {
       // Game over
@@ -584,6 +619,10 @@ export class Game {
     this.ui.overlay.classList.add('hidden');
     this.ui.gameUI.classList.add('hidden');
     this.sceneManager.disableMinimap();
+
+    // Hide both cannons during repositioning
+    this.cannons[0].group.visible = false;
+    this.cannons[1].group.visible = false;
 
     this.repositioner.start(
       this.castles[damagedPlayerIndex],
@@ -786,7 +825,46 @@ export class Game {
     }
     this.hp = [C.MAX_HP, C.MAX_HP];
     this.sceneManager.disableMinimap();
+    const debugOverlay = document.getElementById('debug-log-overlay');
+    if (debugOverlay) debugOverlay.remove();
+    this.ui.menuPanel.classList.add('hidden');
 
     if (this.network.socket) this.network.disconnect();
+  }
+
+  updatePhysicsDebug() {
+    // Toggle wireframe on all castle block meshes
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (const { mesh } of castle.blocks) {
+        mesh.material.wireframe = this.debugPhysics;
+      }
+    }
+  }
+
+  debugLog(...args) {
+    if (this.debugLogsEnabled) {
+      console.log('[Cannonfall]', ...args);
+      this.addDebugOverlay(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
+    }
+  }
+
+  addDebugOverlay(msg) {
+    let container = document.getElementById('debug-log-overlay');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'debug-log-overlay';
+      container.style.cssText = 'position:fixed; bottom:80px; left:16px; width:350px; max-height:200px; overflow-y:auto; pointer-events:none; z-index:15; display:flex; flex-direction:column-reverse; gap:2px;';
+      document.body.appendChild(container);
+    }
+    const line = document.createElement('div');
+    line.style.cssText = 'background:rgba(0,0,0,0.7); color:#0f0; font-family:monospace; font-size:0.7rem; padding:2px 6px; border-radius:3px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;';
+    line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+    container.prepend(line);
+    // Keep only last 15 lines
+    while (container.children.length > 15) container.lastChild.remove();
+    // Fade out after 5 seconds
+    setTimeout(() => { line.style.opacity = '0'; line.style.transition = 'opacity 1s'; }, 5000);
+    setTimeout(() => line.remove(), 6000);
   }
 }

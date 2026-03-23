@@ -1,9 +1,11 @@
 import { getSpacePreset } from './SpacePresets.js';
+import {
+  fillRect, fillRowX, fillRowZ, fillPerimeter, fillPerimeterLayers,
+  fillTower, fillCrenellations, place, placeMany, fillHull,
+} from './PresetHelpers.js';
 
 export function getPreset(name, mode = 'castle') {
-  if (mode === 'space') {
-    return getSpacePreset(name);
-  }
+  if (mode === 'space') return getSpacePreset(name);
   switch (name) {
     case 'KEEP': return keepPreset();
     case 'BUNKER': return bunkerPreset();
@@ -12,222 +14,119 @@ export function getPreset(name, mode = 'castle') {
   }
 }
 
-// W = 9, D = 9 grid (coords 0-8)
-// cannonPos.x is relative to +X facing (Player 0's front side = high x).
-// Game.js mirrors it for Player 1.
+// 9×9 grid (0-8). cannonPos relative to +X facing.
 
 function keepPreset() {
-  // CLASSIC FORTRESS — tall single-thick walls with corner towers.
-  // Strategic identity: maximum height coverage. Hard to lob over.
-  // Arched gateways at front and back walls. Rounded battlements on towers.
-  const layout = [];
+  // Classic fortress: corner towers, perimeter walls, arched gateways, cross-wall.
+  const L = [];
 
-  // Corner towers: 2x2 pillars, 5 layers tall
-  const corners = [[0, 0], [0, 7], [7, 0], [7, 7]];
-  for (const [cx, cz] of corners) {
-    for (let y = 0; y < 5; y++) {
-      for (let dx = 0; dx <= 1; dx++) {
-        for (let dz = 0; dz <= 1; dz++) {
-          layout.push({ x: cx + dx, y, z: cz + dz, type: 'CUBE', rotation: 0 });
-        }
-      }
-    }
-  }
+  // Corner towers (2x2, 5 layers)
+  for (const [x, z] of [[0, 0], [0, 7], [7, 0], [7, 7]]) fillTower(L, x, z, 0, 4);
 
-  // HALF_BULLNOSE on top of corner towers for rounded battlements (y=5)
-  // Each tower is 2x2. Place bullnose on the outer-facing top edges.
-  // rotation 0 = rounded edge runs along Z, rotation 1 = along X
-  // Top-left tower (x=0-1, z=0-1): outer edges face -X and -Z
-  layout.push({ x: 0, y: 5, z: 0, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 1, y: 5, z: 0, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 0, y: 5, z: 1, type: 'HALF_BULLNOSE', rotation: 0 });
-  // Top-right tower (x=0-1, z=7-8): outer edges face -X and +Z
-  layout.push({ x: 0, y: 5, z: 7, type: 'HALF_BULLNOSE', rotation: 0 });
-  layout.push({ x: 0, y: 5, z: 8, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 1, y: 5, z: 8, type: 'HALF_BULLNOSE', rotation: 1 });
-  // Bottom-left tower (x=7-8, z=0-1): outer edges face +X and -Z
-  layout.push({ x: 8, y: 5, z: 0, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 7, y: 5, z: 0, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 8, y: 5, z: 1, type: 'HALF_BULLNOSE', rotation: 0 });
-  // Bottom-right tower (x=7-8, z=7-8): outer edges face +X and +Z
-  layout.push({ x: 8, y: 5, z: 8, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 7, y: 5, z: 8, type: 'HALF_BULLNOSE', rotation: 1 });
-  layout.push({ x: 8, y: 5, z: 7, type: 'HALF_BULLNOSE', rotation: 0 });
+  // Rounded battlements on tower tops (y=5)
+  placeMany(L, [
+    [0,5,0,'HALF_BULLNOSE',1], [1,5,0,'HALF_BULLNOSE',1], [0,5,1,'HALF_BULLNOSE',0],
+    [0,5,7,'HALF_BULLNOSE',0], [0,5,8,'HALF_BULLNOSE',1], [1,5,8,'HALF_BULLNOSE',1],
+    [8,5,0,'HALF_BULLNOSE',1], [7,5,0,'HALF_BULLNOSE',1], [8,5,1,'HALF_BULLNOSE',0],
+    [8,5,8,'HALF_BULLNOSE',1], [7,5,8,'HALF_BULLNOSE',1], [8,5,7,'HALF_BULLNOSE',0],
+  ]);
 
-  // Perimeter walls connecting towers, 4 layers tall
-  // Front wall (z=0): skip x=4 at y=0-2 for gateway opening
+  // Perimeter walls (4 layers) with gateway openings at x=4 on front/back
   for (let y = 0; y < 4; y++) {
     for (let x = 2; x <= 6; x++) {
-      if (x === 4 && y < 3) continue; // gateway opening
-      layout.push({ x, y, z: 0, type: 'CUBE', rotation: 0 });
+      if (x === 4 && y < 3) continue; // gateway
+      place(L, x, y, 0, 'CUBE');
+      place(L, x, y, 8, 'CUBE');
     }
-  }
-  // Back wall (z=8): skip x=4 at y=0-2 for gateway opening
-  for (let y = 0; y < 4; y++) {
-    for (let x = 2; x <= 6; x++) {
-      if (x === 4 && y < 3) continue; // gateway opening
-      layout.push({ x, y, z: 8, type: 'CUBE', rotation: 0 });
-    }
-  }
-  // Side walls (no gateway)
-  for (let y = 0; y < 4; y++) {
-    for (let z = 2; z <= 6; z++) {
-      layout.push({ x: 0, y, z, type: 'CUBE', rotation: 0 });
-      layout.push({ x: 8, y, z, type: 'CUBE', rotation: 0 });
-    }
+    fillRowZ(L, 0, 2, 6, y, 'CUBE');
+    fillRowZ(L, 8, 2, 6, y, 'CUBE');
   }
 
-  // HALF_ARCH gateway arches at z=0, x=4 (front gate)
-  // Two half-arches side by side form a full arch. rotation 0 and rotation 2.
-  layout.push({ x: 4, y: 3, z: 0, type: 'HALF_ARCH', rotation: 0 });
-  layout.push({ x: 4, y: 3, z: 0, type: 'HALF_ARCH', rotation: 2 });
+  // Arched gateways
+  placeMany(L, [
+    [4,3,0,'HALF_ARCH',0], [4,3,0,'HALF_ARCH',2],
+    [4,3,8,'HALF_ARCH',0], [4,3,8,'HALF_ARCH',2],
+  ]);
 
-  // HALF_ARCH gateway arches at z=8, x=4 (back gate)
-  layout.push({ x: 4, y: 3, z: 8, type: 'HALF_ARCH', rotation: 0 });
-  layout.push({ x: 4, y: 3, z: 8, type: 'HALF_ARCH', rotation: 2 });
+  // Crenellations (y=4)
+  fillCrenellations(L, 2, 6, 0, 0, 4); // front
+  fillCrenellations(L, 2, 6, 8, 8, 4); // back
+  fillCrenellations(L, 0, 0, 2, 6, 4); // left
+  fillCrenellations(L, 8, 8, 2, 6, 4); // right
 
-  // Crenellations on top (layer 4, every other block)
-  for (let x = 2; x <= 6; x += 2) {
-    layout.push({ x, y: 4, z: 0, type: 'CUBE', rotation: 0 });
-    layout.push({ x, y: 4, z: 8, type: 'CUBE', rotation: 0 });
-  }
-  for (let z = 2; z <= 6; z += 2) {
-    layout.push({ x: 0, y: 4, z, type: 'CUBE', rotation: 0 });
-    layout.push({ x: 8, y: 4, z, type: 'CUBE', rotation: 0 });
-  }
+  // Interior cross-wall (z=4, y=0-1)
+  for (let y = 0; y < 2; y++) fillRowX(L, 1, 7, 4, y, 'WALL', 1);
 
-  // Interior cross-wall for extra protection (single thickness at z=4)
-  for (let y = 0; y < 2; y++) {
-    for (let x = 1; x <= 7; x++) {
-      layout.push({ x, y, z: 4, type: 'WALL', rotation: 1 });
-    }
-  }
-
-  // Cannon on outermost front wall (x=8 is the +X edge, barrel clears into open air)
-  return { layout, target: { x: 4, y: 0, z: 4 }, cannonPos: { x: 8, z: 4 } };
+  return { layout: L, target: { x: 4, y: 0, z: 4 }, cannonPos: { x: 8, z: 4 } };
 }
 
 function bunkerPreset() {
-  // LOW BUNKER — full roof with ramp deflection armor and bullnose-topped walls.
-  // Strategic identity: roof blocks lob shots. Must shoot flat to breach walls.
-  // Bullnose perimeter gives a smooth rounded profile that deflects glancing hits.
-  const layout = [];
+  // Low bunker: bullnose walls, full roof, ramp deflectors, skylight.
+  const L = [];
 
-  // Perimeter walls (1 layer, single thickness)
-  // Z-facing walls (z=0 and z=8): use BULLNOSE rotation 1 (rounded edge along X)
-  for (let x = 0; x < 9; x++) {
-    layout.push({ x, y: 0, z: 0, type: 'BULLNOSE', rotation: 1 });
-    layout.push({ x, y: 0, z: 8, type: 'BULLNOSE', rotation: 1 });
-  }
-  // X-facing walls (x=0 and x=8): use BULLNOSE rotation 0 (rounded edge along Z)
-  for (let z = 1; z <= 7; z++) {
-    layout.push({ x: 0, y: 0, z, type: 'BULLNOSE', rotation: 0 });
-    layout.push({ x: 8, y: 0, z, type: 'BULLNOSE', rotation: 0 });
-  }
+  // Bullnose perimeter walls (y=0)
+  fillRowX(L, 0, 8, 0, 0, 'BULLNOSE', 1); // front
+  fillRowX(L, 0, 8, 8, 0, 'BULLNOSE', 1); // back
+  fillRowZ(L, 0, 1, 7, 0, 'BULLNOSE', 0); // left
+  fillRowZ(L, 8, 1, 7, 0, 'BULLNOSE', 0); // right
 
-  // Interior support columns
-  layout.push({ x: 2, y: 0, z: 2, type: 'CUBE', rotation: 0 });
-  layout.push({ x: 6, y: 0, z: 2, type: 'CUBE', rotation: 0 });
-  layout.push({ x: 2, y: 0, z: 6, type: 'CUBE', rotation: 0 });
-  layout.push({ x: 6, y: 0, z: 6, type: 'CUBE', rotation: 0 });
+  // Support columns
+  placeMany(L, [[2,0,2,'CUBE'], [6,0,2,'CUBE'], [2,0,6,'CUBE'], [6,0,6,'CUBE']]);
 
-  // Full cube roof at y=1, with a hole at center for target visibility + weak point
-  for (let x = 0; x < 9; x++) {
-    for (let z = 0; z < 9; z++) {
-      if (x === 4 && z === 4) continue; // skylight hole
-      layout.push({ x, y: 1, z, type: 'CUBE', rotation: 0 });
-    }
-  }
+  // Full roof (y=1) with skylight hole at center
+  for (let x = 0; x < 9; x++)
+    for (let z = 0; z < 9; z++)
+      if (!(x === 4 && z === 4)) place(L, x, 1, z, 'CUBE');
 
-  // Ramp deflection armor on roof edges (y=2) — slopes outward
-  // Front edge (z low) — slope outward
-  for (let x = 1; x < 8; x++) {
-    layout.push({ x, y: 2, z: 1, type: 'RAMP', rotation: 1 });
-  }
-  // Back edge (z high)
-  for (let x = 1; x < 8; x++) {
-    layout.push({ x, y: 2, z: 7, type: 'RAMP', rotation: 3 });
-  }
-  // Left edge (x low)
-  for (let z = 2; z < 7; z++) {
-    layout.push({ x: 1, y: 2, z, type: 'RAMP', rotation: 2 });
-  }
-  // Right edge (x high)
-  for (let z = 2; z < 7; z++) {
-    layout.push({ x: 7, y: 2, z, type: 'RAMP', rotation: 0 });
-  }
+  // Ramp deflectors (y=2)
+  fillRowX(L, 1, 7, 1, 2, 'RAMP', 1); // front
+  fillRowX(L, 1, 7, 7, 2, 'RAMP', 3); // back
+  fillRowZ(L, 1, 2, 6, 2, 'RAMP', 2); // left
+  fillRowZ(L, 7, 2, 6, 2, 'RAMP', 0); // right
 
-  // Cannon on outermost front edge (on roof)
-  return { layout, target: { x: 4, y: 0, z: 4 }, cannonPos: { x: 8, z: 4 } };
+  return { layout: L, target: { x: 4, y: 0, z: 4 }, cannonPos: { x: 8, z: 4 } };
 }
 
 function towerPreset() {
-  // TALL CITADEL — small footprint, very tall. Target elevated.
-  // Strategic identity: tiny profile, hard to hit at all. Target is high up,
-  // requiring a precise arc. Rounded parapet on tower, arched openings in outer wall.
-  const layout = [];
+  // Tall citadel: narrow tower, outer wall ring with arches, elevated target.
+  const L = [];
 
-  // Central tower: 3x3 (coords 3-5), 6 layers tall
-  for (let y = 0; y < 6; y++) {
-    for (let x = 3; x <= 5; x++) {
-      for (let z = 3; z <= 5; z++) {
-        if (x === 3 || x === 5 || z === 3 || z === 5) {
-          layout.push({ x, y, z, type: 'CUBE', rotation: 0 });
-        }
-      }
-    }
-  }
+  // Central tower (3x3 perimeter, 6 layers)
+  fillPerimeterLayers(L, 3, 5, 3, 5, 0, 5, 'CUBE');
 
-  // HALF_BULLNOSE on tower's top ring (y=6) for rounded parapet
-  // Z-facing edges: rotation 1 (rounded along X)
-  for (let x = 3; x <= 5; x++) {
-    layout.push({ x, y: 6, z: 3, type: 'HALF_BULLNOSE', rotation: 1 });
-    layout.push({ x, y: 6, z: 5, type: 'HALF_BULLNOSE', rotation: 1 });
-  }
-  // X-facing edges: rotation 0 (rounded along Z)
-  layout.push({ x: 3, y: 6, z: 4, type: 'HALF_BULLNOSE', rotation: 0 });
-  layout.push({ x: 5, y: 6, z: 4, type: 'HALF_BULLNOSE', rotation: 0 });
+  // Rounded parapet (y=6)
+  placeMany(L, [
+    [3,6,3,'HALF_BULLNOSE',1], [4,6,3,'HALF_BULLNOSE',1], [5,6,3,'HALF_BULLNOSE',1],
+    [3,6,5,'HALF_BULLNOSE',1], [4,6,5,'HALF_BULLNOSE',1], [5,6,5,'HALF_BULLNOSE',1],
+    [3,6,4,'HALF_BULLNOSE',0], [5,6,4,'HALF_BULLNOSE',0],
+  ]);
 
-  // Fill tower base for solidity
-  for (let y = 0; y < 2; y++) {
-    layout.push({ x: 4, y, z: 4, type: 'CUBE', rotation: 0 });
-  }
+  // Tower fill + catwalk
+  place(L, 4, 0, 4, 'CUBE');
+  place(L, 4, 1, 4, 'CUBE');
+  place(L, 4, 3, 4, 'HALF_SLAB');
 
-  // Interior catwalk at y=3 for target
-  layout.push({ x: 4, y: 3, z: 4, type: 'HALF_SLAB', rotation: 0 });
-
-  // Outer defensive ring: thin walls (3 layers) with arched openings
-  // Z-facing walls (z=1 and z=7)
+  // Outer wall ring (3 layers, with arched openings)
   for (let y = 0; y < 3; y++) {
     for (let x = 1; x <= 7; x++) {
-      // Create arched openings at x=4 on z=1 and z=7
-      if (x === 4 && y < 2) continue; // opening for arch
-      layout.push({ x, y, z: 1, type: 'WALL', rotation: 1 });
-      layout.push({ x, y, z: 7, type: 'WALL', rotation: 1 });
+      if (x === 4 && y < 2) continue;
+      place(L, x, y, 1, 'WALL', 1);
+      place(L, x, y, 7, 'WALL', 1);
     }
-  }
-  // X-facing walls (x=1 and x=7)
-  for (let y = 0; y < 3; y++) {
     for (let z = 2; z <= 6; z++) {
-      // Create arched openings at z=4 on x=1 and x=7
-      if (z === 4 && y < 2) continue; // opening for arch
-      layout.push({ x: 1, y, z, type: 'WALL', rotation: 0 });
-      layout.push({ x: 7, y, z, type: 'WALL', rotation: 0 });
+      if (z === 4 && y < 2) continue;
+      place(L, 1, y, z, 'WALL', 0);
+      place(L, 7, y, z, 'WALL', 0);
     }
   }
 
-  // HALF_ARCH pairs in the arched openings (y=2, the top of the opening)
-  // Z-wall arches at x=4, z=1 and z=7
-  layout.push({ x: 4, y: 2, z: 1, type: 'HALF_ARCH', rotation: 0 });
-  layout.push({ x: 4, y: 2, z: 1, type: 'HALF_ARCH', rotation: 2 });
-  layout.push({ x: 4, y: 2, z: 7, type: 'HALF_ARCH', rotation: 0 });
-  layout.push({ x: 4, y: 2, z: 7, type: 'HALF_ARCH', rotation: 2 });
-  // X-wall arches at z=4, x=1 and x=7
-  layout.push({ x: 1, y: 2, z: 4, type: 'HALF_ARCH', rotation: 1 });
-  layout.push({ x: 1, y: 2, z: 4, type: 'HALF_ARCH', rotation: 3 });
-  layout.push({ x: 7, y: 2, z: 4, type: 'HALF_ARCH', rotation: 1 });
-  layout.push({ x: 7, y: 2, z: 4, type: 'HALF_ARCH', rotation: 3 });
+  // Arches at openings (y=2)
+  placeMany(L, [
+    [4,2,1,'HALF_ARCH',0], [4,2,1,'HALF_ARCH',2],
+    [4,2,7,'HALF_ARCH',0], [4,2,7,'HALF_ARCH',2],
+    [1,2,4,'HALF_ARCH',1], [1,2,4,'HALF_ARCH',3],
+    [7,2,4,'HALF_ARCH',1], [7,2,4,'HALF_ARCH',3],
+  ]);
 
-  // Cannon on the tower's front face
-  return { layout, target: { x: 4, y: 3, z: 4 }, cannonPos: { x: 5, z: 4 } };
+  return { layout: L, target: { x: 4, y: 3, z: 4 }, cannonPos: { x: 5, z: 4 } };
 }

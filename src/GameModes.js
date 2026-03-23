@@ -61,7 +61,7 @@ export const GAME_MODES = {
 
     // Building
     budget: 500,
-    maxLayers: 5,
+    maxLayers: 8,
 
     // Explosion (only used when explosiveProjectile: true)
     blastRadius: 4,

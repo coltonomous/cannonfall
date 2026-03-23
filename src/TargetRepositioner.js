@@ -264,15 +264,19 @@ export class TargetRepositioner {
     this.orbit.updateMouse(e);
     this.orbit.raycaster.setFromCamera(this.orbit.mouse, this.orbit.camera);
 
-    // Raycast against castle blocks first — allows placing on top of rubble
+    // Raycast against castle blocks at or below current layer only.
+    // Blocks above the layer are transparent and shouldn't intercept clicks.
     if (this.castle) {
-      const blockMeshes = this.castle.blocks.map(b => b.mesh);
-      const blockHits = this.orbit.raycaster.intersectObjects(blockMeshes);
+      const layerWorldY = BLOCK_SIZE + this.currentLayer * BLOCK_SIZE + BLOCK_SIZE;
+      const visibleMeshes = this.castle.blocks
+        .filter(b => b.mesh.position.y <= layerWorldY)
+        .map(b => b.mesh);
+      const blockHits = this.orbit.raycaster.intersectObjects(visibleMeshes);
       if (blockHits.length > 0) {
         const hit = blockHits[0];
         const gridPos = this.getGridPos(hit.point);
         if (gridPos) {
-          gridPos.hitY = hit.point.y + 0.5; // on top of the hit block face
+          gridPos.hitY = hit.point.y + 0.5;
           return gridPos;
         }
       }

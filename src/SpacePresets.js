@@ -50,8 +50,8 @@ function corvettePreset() {
   // Wings
   for (let z = 3; z <= 8; z++) { place(L, 1, 1, z, 'WALL', 0); place(L, 5, 1, z, 'WALL', 0); }
   placeMany(L, [
-    [0,1,5,'SHIELD',0], [0,1,6,'SHIELD',0], [0,1,7,'SHIELD',0],
-    [6,1,5,'SHIELD',0], [6,1,6,'SHIELD',0], [6,1,7,'SHIELD',0],
+    [0,1,5,'SHIELD',1], [0,1,6,'SHIELD',1], [0,1,7,'SHIELD',1],
+    [6,1,5,'SHIELD',1], [6,1,6,'SHIELD',1], [6,1,7,'SHIELD',1],
   ]);
 
   // Tail fin
@@ -97,7 +97,7 @@ function frigatePreset() {
   placeMany(L, [
     [0,1,0,'THRUSTER',1], [2,1,0,'THRUSTER',1], [4,1,0,'THRUSTER',1], [6,1,0,'THRUSTER',1],
     [1,2,6,'COLUMN'], [5,2,6,'COLUMN'],
-    [2,1,11,'SHIELD',0], [4,1,11,'SHIELD',0], [2,1,12,'SHIELD',0], [4,1,12,'SHIELD',0],
+    [2,1,11,'SHIELD',1], [4,1,11,'SHIELD',1], [2,1,12,'SHIELD',1], [4,1,12,'SHIELD',1],
   ]);
 
   return { layout: L, target: { x: 3, y: 1, z: 5 }, cannonPos: { x: 6, z: 6 }, floor: [] };

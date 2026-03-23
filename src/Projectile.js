@@ -3,14 +3,15 @@ import * as CANNON from 'cannon-es';
 import { CANNONBALL_RADIUS, CANNONBALL_MASS } from './constants.js';
 
 export class Projectile {
-  constructor(sceneManager, physicsWorld, position, velocity) {
+  constructor(sceneManager, physicsWorld, position, velocity, perfect = false) {
     this.sceneManager = sceneManager;
     this.physicsWorld = physicsWorld;
     this.alive = true;
 
-    // Visual: dark metallic sphere
     const geo = new THREE.SphereGeometry(CANNONBALL_RADIUS, 12, 12);
-    const mat = new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 });
+    const mat = perfect
+      ? new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.3 })
+      : new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 });
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.castShadow = true;
     this.mesh.position.copy(position);

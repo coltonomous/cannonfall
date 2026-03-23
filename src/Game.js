@@ -394,7 +394,7 @@ export class Game {
 
     const launchProjectile = () => {
       const velocity = dir.clone().multiplyScalar(power);
-      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity);
+      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot);
 
       // Muzzle flash
       if (this._perfectShot) {

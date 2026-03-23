@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import { CANNON_BARREL_LENGTH, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET } from './constants.js';
 
 export class CannonTower {
-  constructor(scene, position, facingDirection) {
+  constructor(scene, position, facingDirection, colors) {
     // position: THREE.Vector3 — world position to place the cannon
     // facingDirection: 1 means facing +X (player 1), -1 means facing -X (player 2)
+    // colors: optional { baseColor, barrelColor }
     this.scene = scene;
     this.centerX = position.x;
     this.facingDirection = facingDirection;
@@ -17,7 +18,7 @@ export class CannonTower {
 
     // Base platform (dark metallic disc)
     const baseGeo = new THREE.CylinderGeometry(1, 1.2, 0.5, 16);
-    const baseMat = new THREE.MeshStandardMaterial({ color: 0x444444, metalness: 0.7, roughness: 0.3 });
+    const baseMat = new THREE.MeshStandardMaterial({ color: colors?.baseColor ?? 0x444444, metalness: 0.7, roughness: 0.3 });
     const base = new THREE.Mesh(baseGeo, baseMat);
     base.castShadow = true;
     this.group.add(base);
@@ -33,7 +34,7 @@ export class CannonTower {
 
     // Barrel (cylinder oriented along Z axis)
     const barrelGeo = new THREE.CylinderGeometry(0.25, 0.35, CANNON_BARREL_LENGTH, 12);
-    const barrelMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.8, roughness: 0.2 });
+    const barrelMat = new THREE.MeshStandardMaterial({ color: colors?.barrelColor ?? 0x333333, metalness: 0.8, roughness: 0.2 });
     this.barrel = new THREE.Mesh(barrelGeo, barrelMat);
     this.barrel.castShadow = true;
     // Rotate cylinder (default Y-up) to point along Z

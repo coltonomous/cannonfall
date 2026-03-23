@@ -7,6 +7,7 @@ import { Projectile } from './Projectile.js';
 import { Network } from './Network.js';
 import { UI } from './UI.js';
 import { getPreset } from './Presets.js';
+import { GAME_MODES } from './GameModes.js';
 import { ParticleManager } from './ParticleManager.js';
 import { CastleBuilder } from './CastleBuilder.js';
 import { TargetRepositioner } from './TargetRepositioner.js';
@@ -34,6 +35,7 @@ export class Game {
     this.ui = new UI();
 
     this.state = State.MENU;
+    this.gameMode = GAME_MODES.CASTLE;
     this.mode = null; // 'local' or 'online'
     this.playerIndex = 0; // 0 or 1 (which player we are / active player in local)
     this.currentTurn = 0; // whose turn (0 or 1)
@@ -103,6 +105,14 @@ export class Game {
   // ── UI Listeners ─────────────────────────────────────────
 
   setupUIListeners() {
+    document.querySelectorAll('.mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.gameMode = GAME_MODES[btn.dataset.mode];
+      });
+    });
+
     this.ui.localMatchBtn.addEventListener('click', () => this.startLocal());
     this.ui.onlineMatchBtn.addEventListener('click', () => this.startOnline());
 
@@ -183,11 +193,17 @@ export class Game {
     });
   }
 
+  applyGameMode() {
+    this.sceneManager.applyMode(this.gameMode);
+    this.physicsWorld = new PhysicsWorld(this.gameMode);
+  }
+
   // ═══════════════════════════════════════════════════════════
   // LOCAL MODE
   // ═══════════════════════════════════════════════════════════
 
   startLocal() {
+    this.applyGameMode();
     this.mode = 'local';
     this.playerIndex = 0; // Player 1 builds first
     this.startBuildPhase();
@@ -198,6 +214,7 @@ export class Game {
   // ═══════════════════════════════════════════════════════════
 
   async startOnline() {
+    this.applyGameMode();
     this.mode = 'online';
     this.ui.showMatchmaking();
     try {
@@ -223,7 +240,7 @@ export class Game {
 
     this.builder.start((castleData) => {
       this.onBuildComplete(castleData);
-    });
+    }, this.gameMode);
   }
 
   onBuildComplete(castleData) {
@@ -270,32 +287,37 @@ export class Game {
       this.sceneManager,
       this.physicsWorld,
       -C.CASTLE_OFFSET_X,
-      0x8b7355
+      this.gameMode.player0Color,
+      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth }
     );
-    this.castles[0].buildFromLayout(data0.layout, data0.target);
+    this.castles[0].buildFromLayout(data0.layout, data0.target, data0.floor);
 
     // Castle 1 (player 1) at x = +CASTLE_OFFSET_X
     this.castles[1] = new Castle(
       this.sceneManager,
       this.physicsWorld,
       C.CASTLE_OFFSET_X,
-      0x6b8e9b
+      this.gameMode.player1Color,
+      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth }
     );
-    this.castles[1].buildFromLayout(data1.layout, data1.target);
+    this.castles[1].buildFromLayout(data1.layout, data1.target, data1.floor);
 
     // Cannons: placed on top of the front wall, offset outward so barrel is clear.
     // cannonPos is defined relative to +X facing (P0's front).
     // P1's castle faces -X, so mirror the x coordinate.
-    const cp0 = data0.cannonPos || { x: C.CASTLE_WIDTH - 1, z: Math.floor(C.CASTLE_WIDTH / 2) };
-    const cp1Raw = data1.cannonPos || { x: C.CASTLE_WIDTH - 1, z: Math.floor(C.CASTLE_WIDTH / 2) };
-    const cp1 = { x: C.CASTLE_WIDTH - 1 - cp1Raw.x, z: cp1Raw.z };
+    const gw = this.gameMode.gridWidth || C.CASTLE_WIDTH;
+    const gd = this.gameMode.gridDepth || C.CASTLE_DEPTH;
+    const cp0 = data0.cannonPos || { x: gw - 1, z: Math.floor(gd / 2) };
+    const cp1Raw = data1.cannonPos || { x: gw - 1, z: Math.floor(gd / 2) };
+    const cp1 = { x: gw - 1 - cp1Raw.x, z: cp1Raw.z };
     const pos0 = this.castles[0].getCannonWorldPosition(cp0.x, cp0.z);
     const pos1 = this.castles[1].getCannonWorldPosition(cp1.x, cp1.z);
     // Push cannons well forward of the wall so camera has clear sightlines
     pos0.x += 4;
     pos1.x -= 4;
-    this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1);
-    this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1);
+    const cannonColors = { baseColor: this.gameMode.cannonBaseColor, barrelColor: this.gameMode.cannonBarrelColor };
+    this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1, cannonColors);
+    this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1, cannonColors);
 
     // Cannons on layer 1 — visible to main camera, hidden from minimap
     for (const c of this.cannons) {
@@ -394,16 +416,24 @@ export class Game {
 
     const launchProjectile = () => {
       const velocity = dir.clone().multiplyScalar(power);
-      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot);
+      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot, this.gameMode);
+
+      // Space mode: explosive impact, destroy on contact
+      if (!this.gameMode.hasGround) {
+        this.projectile.body.addEventListener('collide', () => {
+          if (!this.projectile || !this.projectile.alive) return;
+          this.handleSpaceImpact();
+        });
+      }
 
       // Muzzle flash
       if (this._perfectShot) {
         this.particles.emit(pos, { x: dir.x * 12, y: dir.y * 12, z: dir.z * 12 },
-          7, { r: 1, g: 0.85, b: 0.1 }, 60, 1.0);
+          7, this.gameMode.perfectMuzzleColor, 60, 1.0);
         this.sceneManager.shake(0.7, 0.4);
       } else {
         this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
-          5, { r: 1, g: 0.7, b: 0.2 }, 30, 0.6);
+          5, this.gameMode.muzzleColor, 30, 0.6);
         this.sceneManager.shake(0.3, 0.2);
       }
     };
@@ -433,7 +463,15 @@ export class Game {
     const dir = cannon.getFireDirection();
     const velocity = dir.multiplyScalar(data.power);
 
-    this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity);
+    this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, false, this.gameMode);
+
+    if (!this.gameMode.hasGround) {
+      this.projectile.body.addEventListener('collide', () => {
+        if (!this.projectile || !this.projectile.alive) return;
+        this.handleSpaceImpact();
+      });
+    }
+
     this.state = State.OPPONENT_FIRING;
     this.settleTimer = 0;
     this.fireTime = performance.now();
@@ -442,7 +480,7 @@ export class Game {
 
     // Muzzle flash
     this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
-      5, { r: 1, g: 0.7, b: 0.2 }, 30, 0.6);
+      5, this.gameMode.muzzleColor, 30, 0.6);
   }
 
   // ═══════════════════════════════════════════════════════════
@@ -505,7 +543,7 @@ export class Game {
     const vel = dir.clone().multiplyScalar(this.power);
 
     const points = [];
-    const g = 9.82;
+    const g = Math.abs(this.gameMode.gravity);
     const step = 0.05;
     let px = pos.x, py = pos.y, pz = pos.z;
     let vx = vel.x, vy = vel.y, vz = vel.z;
@@ -516,7 +554,7 @@ export class Game {
       py += vy * step;
       pz += vz * step;
       vy -= g * step;
-      if (py < 0) break;
+      if (py < this.gameMode.outOfBoundsY) break;
     }
 
     this.trajectoryLine.geometry.dispose();
@@ -560,7 +598,7 @@ export class Game {
     const speed = this.projectile.getSpeed();
     if (!this._impactEmitted && speed < this.power * 0.5 && pos.y < C.CANNON_HEIGHT) {
       this._impactEmitted = true;
-      this.particles.emit(pos, { x: 0, y: 4, z: 0 }, 8, { r: 0.6, g: 0.5, b: 0.35 }, 40, 1.0);
+      this.particles.emit(pos, { x: 0, y: 4, z: 0 }, 8, this.gameMode.impactColor, 40, 1.0);
       this.sceneManager.shake(0.5, 0.3);
     }
 
@@ -694,12 +732,70 @@ export class Game {
     this.sceneManager.setCameraPosition(camPos, lookAt);
   }
 
+  handleSpaceImpact() {
+    if (!this.projectile || !this.projectile.alive) return;
+
+    const impactPos = this.projectile.getPosition();
+    const blastRadius = this._perfectShot ? 6 : 4;
+    const blastForce = this._perfectShot ? 25 : 12;
+
+    // Apply outward explosive impulse to nearby blocks
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (const { body } of castle.blocks) {
+        if (body.mass === 0) continue; // skip static floor blocks
+        const dx = body.position.x - impactPos.x;
+        const dy = body.position.y - impactPos.y;
+        const dz = body.position.z - impactPos.z;
+        const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        if (dist < blastRadius && dist > 0.1) {
+          const strength = blastForce * (1 - dist / blastRadius);
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const nz = dz / dist;
+          body.applyImpulse(
+            new this.physicsWorld.world.gravity.constructor(nx * strength, ny * strength, nz * strength)
+          );
+          body.wakeUp();
+        }
+      }
+    }
+
+    // Check target hit before destroying projectile
+    const targetCastle = this.castles[1 - this.currentTurn];
+    const targetPos = targetCastle.getTargetPosition();
+    if (targetPos && impactPos.distanceTo(targetPos) < 2.0) {
+      // Explosion particles
+      this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 12,
+        this.gameMode.impactColor, 60, 1.2);
+      this.sceneManager.shake(0.8, 0.5);
+      this.projectile.destroy();
+      this.projectile = null;
+      // Delay so explosion is visible before HP/reposition UI
+      setTimeout(() => this.onTargetHit(), 2000);
+      return;
+    }
+
+    // Explosion particles
+    this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 10,
+      this.gameMode.impactColor, 40, 1.0);
+    this.sceneManager.shake(0.5, 0.3);
+
+    // Destroy projectile — no ricochet in space
+    this.projectile.destroy();
+    this.projectile = null;
+
+    // Delay turn transition so the explosion debris is visible
+    this.ui.setStatus('');
+    setTimeout(() => this.onShotComplete(false), 2500);
+  }
+
   cleanupFallenBlocks() {
     for (const castle of this.castles) {
       if (!castle) continue;
       for (let i = castle.blocks.length - 1; i >= 0; i--) {
         const { mesh, body } = castle.blocks[i];
-        if (body.position.y < -5 || Math.abs(body.position.x) > 60 || Math.abs(body.position.z) > 60) {
+        if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > 60 || Math.abs(body.position.z) > 60) {
           castle.sceneManager.scene.remove(mesh);
           castle.physicsWorld.world.removeBody(body);
           const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
@@ -720,7 +816,7 @@ export class Game {
     // Smoke trail
     if (speed > 2) {
       this.particles.emit(pos, { x: 0, y: 0.5, z: 0 }, 1.5,
-        { r: 0.5, g: 0.5, b: 0.5 }, 2, 0.8);
+        this.gameMode.trailColor, 2, 0.8);
     }
 
     // Direction from velocity (or last known if stopped)

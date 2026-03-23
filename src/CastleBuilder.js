@@ -50,15 +50,21 @@ export class CastleBuilder {
 
   // === LIFECYCLE ===
 
-  start(onReady) {
+  start(onReady, modeConfig) {
     this.onReady = onReady;
+    this.modeConfig = modeConfig || null;
+    this.maxBudget = modeConfig?.budget || BUILD_BUDGET;
+    this.maxLayers = modeConfig?.maxLayers || 5;
+    this.gridW = modeConfig?.gridWidth || CASTLE_WIDTH;
+    this.gridD = modeConfig?.gridDepth || CASTLE_DEPTH;
     this.layout = [];
-    this.targetPos = { x: 4, y: 0, z: 4 };
+    this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
     this.selectedType = 'CUBE';
     this.selectedRotation = 0;
     this.currentLayer = 0;
-    this.budget = BUILD_BUDGET;
+    this.budget = this.maxBudget;
     this.placingTarget = false;
+    this.customFloor = null;
 
     this.setupScene();
     this.setupEventListeners();
@@ -78,43 +84,64 @@ export class CastleBuilder {
   setupScene() {
     this.scene.add(this.gridGroup);
 
-    // Solid floor base — matches the auto-generated floor in Castle.buildFromLayout
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
-    const floorGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x8b7355 });
+    // Floor base — only for ground-based modes (castle). Space mode has no floor.
+    const halfW = Math.floor(this.gridW / 2);
+    const halfD = Math.floor(this.gridD / 2);
+    const showFloor = this.modeConfig?.hasGround !== false;
 
-    for (let x = 0; x < CASTLE_WIDTH; x++) {
-      for (let z = 0; z < CASTLE_DEPTH; z++) {
-        const mesh = new THREE.Mesh(floorGeo, floorMat.clone());
-        // Slight color variation per tile
-        mesh.material.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.06);
-        mesh.position.set(
-          (x - halfW) * BLOCK_SIZE,
-          -BLOCK_SIZE / 2, // below the build area
-          (z - halfW) * BLOCK_SIZE
-        );
-        mesh.castShadow = true;
+    if (showFloor) {
+      const floorGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+      const floorMat = new THREE.MeshStandardMaterial({ color: this.modeConfig?.floorColor ?? 0x8b7355 });
+
+      for (let x = 0; x < this.gridW; x++) {
+        for (let z = 0; z < this.gridD; z++) {
+          const mesh = new THREE.Mesh(floorGeo, floorMat.clone());
+          mesh.material.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.06);
+          mesh.position.set(
+            (x - halfW) * BLOCK_SIZE,
+            -BLOCK_SIZE / 2,
+            (z - halfD) * BLOCK_SIZE
+          );
+          mesh.castShadow = true;
         mesh.receiveShadow = true;
         this.gridGroup.add(mesh);
         this.floorMeshes.push(mesh);
       }
     }
+    } // end if (showFloor)
 
-    // Grid lines on top of floor
-    const gridHelper = new THREE.GridHelper(CASTLE_WIDTH, CASTLE_WIDTH, 0x888888, 0x555555);
-    gridHelper.position.y = 0;
-    this.gridGroup.add(gridHelper);
+    // Grid lines — rectangular support via EdgesGeometry on a flat box
+    const gridOutline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(this.gridW, 0.01, this.gridD)),
+      new THREE.LineBasicMaterial({ color: 0x555555 })
+    );
+    gridOutline.position.y = 0;
+    this.gridGroup.add(gridOutline);
 
-    // Layer indicator lines at current layer
-    this.layerGrid = new THREE.GridHelper(CASTLE_WIDTH, CASTLE_WIDTH, 0xffaa00, 0x664400);
+    // Internal grid lines
+    const gridLines = new THREE.BufferGeometry();
+    const pts = [];
+    for (let x = -halfW; x <= halfW; x++) {
+      pts.push(x, 0.01, -halfD, x, 0.01, halfD);
+    }
+    for (let z = -halfD; z <= halfD; z++) {
+      pts.push(-halfW, 0.01, z, halfW, 0.01, z);
+    }
+    gridLines.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+    const gridMesh = new THREE.LineSegments(gridLines, new THREE.LineBasicMaterial({ color: 0x444444 }));
+    this.gridGroup.add(gridMesh);
+
+    // Layer indicator
+    this.layerGrid = new THREE.LineSegments(
+      new THREE.EdgesGeometry(new THREE.BoxGeometry(this.gridW, 0.01, this.gridD)),
+      new THREE.LineBasicMaterial({ color: 0x664400, transparent: true, opacity: 0.3 })
+    );
     this.layerGrid.position.y = 0;
-    this.layerGrid.material.transparent = true;
-    this.layerGrid.material.opacity = 0.3;
     this.gridGroup.add(this.layerGrid);
 
     // Invisible plane for raycasting at current layer
     this.gridPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(CASTLE_WIDTH * 2, CASTLE_DEPTH * 2),
+      new THREE.PlaneGeometry(this.gridW * 2, this.gridD * 2),
       new THREE.MeshBasicMaterial({ visible: false })
     );
     this.gridPlane.rotation.x = -Math.PI / 2;
@@ -189,72 +216,31 @@ export class CastleBuilder {
       ">
         <h3 style="margin: 0 0 4px 0; font-size: 0.9rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px;">Blocks</h3>
         <div class="block-palette" style="display: flex; flex-direction: column; gap: 4px;">
-          <button class="block-btn selected" data-type="CUBE" style="
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.1);
-            color: #fff; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.15s, border-color 0.15s;
-            pointer-events: auto;
-          ">
-            <span style="font-size: 1.2rem;">&#9632;</span>
-            <span>Cube <small>(${BLOCK_TYPES.CUBE.cost})</small></span>
-          </button>
-          <button class="block-btn" data-type="HALF_SLAB" style="
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.15s, border-color 0.15s;
-            pointer-events: auto;
-          ">
-            <span style="font-size: 1.2rem;">&#9644;</span>
-            <span>Slab <small>(${BLOCK_TYPES.HALF_SLAB.cost})</small></span>
-          </button>
-          <button class="block-btn" data-type="WALL" style="
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.15s, border-color 0.15s;
-            pointer-events: auto;
-          ">
-            <span style="font-size: 1.2rem;">&#9646;</span>
-            <span>Wall <small>(${BLOCK_TYPES.WALL.cost})</small></span>
-          </button>
-          <button class="block-btn" data-type="RAMP" style="
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.15s, border-color 0.15s;
-            pointer-events: auto;
-          ">
-            <span style="font-size: 1.2rem;">&#9698;</span>
-            <span>Ramp <small>(${BLOCK_TYPES.RAMP.cost})</small></span>
-          </button>
-          <button class="block-btn" data-type="COLUMN" style="
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.15s, border-color 0.15s;
-            pointer-events: auto;
-          ">
-            <span style="font-size: 1.2rem;">&#9608;</span>
-            <span>Column <small>(${BLOCK_TYPES.COLUMN.cost})</small></span>
-          </button>
-          <button class="block-btn" data-type="QUARTER_DOME" style="
-            display: flex; align-items: center; gap: 8px;
-            padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.9rem;
-            transition: background 0.15s, border-color 0.15s;
-            pointer-events: auto;
-          ">
-            <span style="font-size: 1.2rem;">&#9685;</span>
-            <span>Dome <small>(${BLOCK_TYPES.QUARTER_DOME.cost})</small></span>
-          </button>
+          ${[
+            { type: 'CUBE', icon: '■', label: 'Cube' },
+            { type: 'HALF_SLAB', icon: '▬', label: 'Slab' },
+            { type: 'WALL', icon: '▮', label: 'Wall' },
+            { type: 'RAMP', icon: '◢', label: 'Ramp' },
+            { type: 'COLUMN', icon: '‖', label: 'Column' },
+            { type: 'QUARTER_DOME', icon: '◠', label: 'Dome' },
+            { type: 'HALF_ARCH', icon: '⌒', label: 'Arch' },
+            { type: 'BULLNOSE', icon: '⬬', label: 'Bullnose' },
+            { type: 'HALF_BULLNOSE', icon: '⬭', label: '½ Bull' },
+            { type: 'THRUSTER', icon: '⊳', label: 'Thruster' },
+            { type: 'SHIELD', icon: '◇', label: 'Shield' },
+          ].map((b, i) => `
+            <button class="block-btn${i === 0 ? ' selected' : ''}" data-type="${b.type}" style="
+              display: flex; align-items: center; gap: 6px;
+              padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 6px; background: rgba(255,255,255,${i === 0 ? '0.1' : '0.06'});
+              color: #fff; cursor: pointer; font-size: 0.8rem;
+              transition: background 0.15s, border-color 0.15s;
+              pointer-events: auto; min-width: 0;
+            ">
+              <span style="font-size: 1rem;">${b.icon}</span>
+              <span>${b.label} <small>(${BLOCK_TYPES[b.type].cost})</small></span>
+            </button>
+          `).join('')}
         </div>
         <button class="block-btn target-btn" id="builder-target-btn" style="
           display: flex; align-items: center; gap: 8px;
@@ -294,10 +280,10 @@ export class CastleBuilder {
         <div class="budget-display" style="font-size: 1rem; font-weight: 700;">
           <span>Budget: </span>
           <span id="builder-budget">${this.budget}</span>
-          <span> / ${BUILD_BUDGET}</span>
+          <span> / ${this.maxBudget}</span>
         </div>
         <div class="layer-display" style="display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700;">
-          Layer: <span id="builder-layer">${this.currentLayer + 1}</span> / 5
+          Layer: <span id="builder-layer">${this.currentLayer + 1}</span> / ${this.maxLayers}
           <button id="builder-layer-up" style="
             padding: 4px 10px; border: none; border-radius: 4px;
             background: rgba(255,255,255,0.15); color: #fff;
@@ -330,9 +316,9 @@ export class CastleBuilder {
             pointer-events: auto;
           ">
             <option value="">Load preset...</option>
-            <option value="KEEP">Keep</option>
-            <option value="BUNKER">Bunker</option>
-            <option value="TOWER">Tower</option>
+            ${(this.modeConfig?.presets || ['KEEP', 'BUNKER', 'TOWER']).map(
+              p => `<option value="${p}">${p.charAt(0) + p.slice(1).toLowerCase()}</option>`
+            ).join('')}
           </select>
         </div>
         <button id="builder-clear-btn" style="
@@ -390,7 +376,7 @@ export class CastleBuilder {
     });
 
     document.getElementById('builder-layer-up').addEventListener('click', () => {
-      this.setLayer(Math.min(4, this.currentLayer + 1));
+      this.setLayer(Math.min(this.maxLayers - 1, this.currentLayer + 1));
     });
     document.getElementById('builder-layer-down').addEventListener('click', () => {
       this.setLayer(Math.max(0, this.currentLayer - 1));
@@ -405,8 +391,9 @@ export class CastleBuilder {
 
     document.getElementById('builder-clear-btn').addEventListener('click', () => {
       this.layout = [];
-      this.budget = BUILD_BUDGET;
-      this.targetPos = { x: 4, y: 0, z: 4 };
+      this.budget = this.maxBudget;
+      this.customFloor = null;
+      this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
       this.updateBudgetDisplay();
       this.updateTargetMesh();
       this.rebuildMeshes();
@@ -417,7 +404,8 @@ export class CastleBuilder {
         this.onReady({
           layout: [...this.layout],
           target: { ...this.targetPos },
-          cannonPos: { x: CASTLE_WIDTH - 1, z: Math.floor(CASTLE_WIDTH / 2) },
+          cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
+          floor: this.customFloor || null,
         });
       }
     });
@@ -448,10 +436,11 @@ export class CastleBuilder {
   // === BLOCK PLACEMENT ===
 
   getGridPos(intersectPoint) {
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const halfW = Math.floor(this.gridW / 2);
+    const halfD = Math.floor(this.gridD / 2);
     const gx = Math.round(intersectPoint.x / BLOCK_SIZE + halfW);
-    const gz = Math.round(intersectPoint.z / BLOCK_SIZE + halfW);
-    if (gx < 0 || gx >= CASTLE_WIDTH || gz < 0 || gz >= CASTLE_DEPTH) return null;
+    const gz = Math.round(intersectPoint.z / BLOCK_SIZE + halfD);
+    if (gx < 0 || gx >= this.gridW || gz < 0 || gz >= this.gridD) return null;
     return { x: gx, z: gz };
   }
 
@@ -460,8 +449,8 @@ export class CastleBuilder {
   }
 
   canPlace(x, y, z) {
-    if (x < 0 || x >= CASTLE_WIDTH || z < 0 || z >= CASTLE_DEPTH) return false;
-    if (y < 0 || y > 4) return false;
+    if (x < 0 || x >= this.gridW || z < 0 || z >= this.gridD) return false;
+    if (y < 0 || y >= this.maxLayers) return false;
     if (this.hasBlockAt(x, y, z)) return false;
     // Can't place a block on the target — it must remain exposed
     if (x === this.targetPos.x && y === (this.targetPos.y || 0) && z === this.targetPos.z) return false;
@@ -524,18 +513,19 @@ export class CastleBuilder {
   // === PRESET LOADING ===
 
   loadPreset(name) {
-    const preset = getPreset(name);
+    const preset = getPreset(name, this.modeConfig?.id || 'castle');
 
     // Load ALL preset blocks — presets are pre-designed and load fully
     this.layout = preset.layout.map(b => ({ ...b }));
     this.targetPos = { ...preset.target };
+    this.customFloor = preset.floor || null;
 
     // Compute remaining budget (can be 0 if preset uses everything)
     let cost = 0;
     for (const block of this.layout) {
       cost += BLOCK_TYPES[block.type]?.cost || 0;
     }
-    this.budget = Math.max(0, BUILD_BUDGET - cost);
+    this.budget = Math.max(0, this.maxBudget - cost);
 
     this.updateBudgetDisplay();
     this.updateTargetMesh();
@@ -553,7 +543,8 @@ export class CastleBuilder {
     }
     this.blockMeshes = [];
 
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const halfW = Math.floor(this.gridW / 2);
+    const halfD = Math.floor(this.gridD / 2);
     const geometries = {
       CUBE: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
       HALF_SLAB: new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE * 0.5, BLOCK_SIZE),
@@ -561,6 +552,11 @@ export class CastleBuilder {
       RAMP: this.createRampGeometry(),
       COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
       QUARTER_DOME: this.createQuarterDomeGeometry(),
+      HALF_ARCH: this.createHalfArchGeometry(),
+      BULLNOSE: this.createBullnoseGeometry(true),
+      HALF_BULLNOSE: this.createBullnoseGeometry(false),
+      THRUSTER: new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8),
+      SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
     };
 
     for (const block of this.layout) {
@@ -569,13 +565,21 @@ export class CastleBuilder {
       const isAbove = block.y > this.currentLayer;
 
       // Blocks at/below current layer are solid; blocks above are transparent
-      // so you can see interiors when editing lower layers
-      const mat = new THREE.MeshStandardMaterial({
-        color: isOnCurrentLayer ? 0xbb9960 : 0x8b7355,
-        transparent: isAbove,
-        opacity: isAbove ? 0.25 : 1.0,
-      });
-      mat.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.05);
+      const baseColor = this.modeConfig?.floorColor || 0x8b7355;
+      let mat;
+      if (block.type === 'SHIELD') {
+        mat = new THREE.MeshStandardMaterial({
+          color: 0x4488ff, transparent: true, opacity: isAbove ? 0.1 : 0.35,
+          emissive: 0x2244aa, emissiveIntensity: 0.3,
+        });
+      } else {
+        const highlightColor = new THREE.Color(baseColor).offsetHSL(0, 0, 0.12).getHex();
+        mat = new THREE.MeshStandardMaterial({
+          color: isOnCurrentLayer ? highlightColor : baseColor,
+          transparent: isAbove, opacity: isAbove ? 0.25 : 1.0,
+        });
+        mat.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.05);
+      }
 
       const mesh = new THREE.Mesh(geo, mat);
 
@@ -584,7 +588,7 @@ export class CastleBuilder {
       mesh.position.set(
         (block.x - halfW) * BLOCK_SIZE,
         block.y * BLOCK_SIZE + yOffset,
-        (block.z - halfW) * BLOCK_SIZE
+        (block.z - halfD) * BLOCK_SIZE
       );
       mesh.rotation.y = (block.rotation || 0) * Math.PI / 2;
       mesh.castShadow = true;
@@ -596,15 +600,18 @@ export class CastleBuilder {
       this.gridGroup.add(mesh);
       this.blockMeshes.push({ mesh, block });
     }
+
+    // Custom floor rendering removed — hull bottom is now part of the layout
   }
 
   updateTargetMesh() {
     if (!this.targetMesh) return;
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const halfW = Math.floor(this.gridW / 2);
+    const halfD = Math.floor(this.gridD / 2);
     this.targetMesh.position.set(
       (this.targetPos.x - halfW) * BLOCK_SIZE,
       this.targetPos.y * BLOCK_SIZE + 0.4,
-      (this.targetPos.z - halfW) * BLOCK_SIZE
+      (this.targetPos.z - halfD) * BLOCK_SIZE
     );
   }
 
@@ -618,6 +625,11 @@ export class CastleBuilder {
       RAMP: this.createRampGeometry(),
       COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
       QUARTER_DOME: this.createQuarterDomeGeometry(),
+      HALF_ARCH: this.createHalfArchGeometry(),
+      BULLNOSE: this.createBullnoseGeometry(true),
+      HALF_BULLNOSE: this.createBullnoseGeometry(false),
+      THRUSTER: new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8),
+      SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
     };
     this.ghostMesh.geometry = geos[this.selectedType] || geos.CUBE;
     this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
@@ -642,6 +654,55 @@ export class CastleBuilder {
        0.5, -0.5, -0.5,  -0.5,  0.5,  0.5,   0.5, -0.5,  0.5,
     ]);
     geo.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  createHalfArchGeometry() {
+    // Half-arch: half-cube-width pillar with quarter-circle curve at top.
+    // Two side by side (one rotated 180°) form a full arch 1 cube wide.
+    const segs = 8;
+    const shape = new THREE.Shape();
+    shape.moveTo(0, -0.5);
+    shape.lineTo(0.5, -0.5);
+    shape.lineTo(0.5, 0.5);
+    for (let i = 1; i <= segs; i++) {
+      const a = (Math.PI / 2) * (i / segs);
+      shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
+    }
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
+    geo.translate(-0.25, 0, -0.5);
+    geo.computeVertexNormals();
+    return geo;
+  }
+
+  createBullnoseGeometry(full) {
+    const segs = 6;
+    const shape = new THREE.Shape();
+    if (full) {
+      shape.moveTo(-0.5, -0.5);
+      shape.lineTo(0.5, -0.5);
+      shape.lineTo(0.5, 0);
+      for (let i = 1; i <= segs; i++) {
+        const a = (Math.PI / 2) * (i / segs);
+        shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
+      }
+      for (let i = 1; i <= segs; i++) {
+        const a = (Math.PI / 2) + (Math.PI / 2) * (i / segs);
+        shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
+      }
+    } else {
+      shape.moveTo(-0.5, -0.5);
+      shape.lineTo(0.5, -0.5);
+      shape.lineTo(0.5, 0.5);
+      shape.lineTo(0, 0.5);
+      for (let i = 1; i <= segs; i++) {
+        const a = (Math.PI / 2) * (i / segs);
+        shape.lineTo(-0.5 * Math.sin(a), 0.5 * Math.cos(a));
+      }
+    }
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
+    geo.translate(0, 0, -0.5);
     geo.computeVertexNormals();
     return geo;
   }
@@ -785,14 +846,15 @@ export class CastleBuilder {
       return;
     }
 
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const halfW = Math.floor(this.gridW / 2);
+    const halfD = Math.floor(this.gridD / 2);
     const typeInfo = BLOCK_TYPES[this.selectedType];
     const yOffset = this.selectedType === 'HALF_SLAB' ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
 
     this.ghostMesh.position.set(
       (gridPos.x - halfW) * BLOCK_SIZE,
       this.currentLayer * BLOCK_SIZE + yOffset,
-      (gridPos.z - halfW) * BLOCK_SIZE
+      (gridPos.z - halfD) * BLOCK_SIZE
     );
     this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
 
@@ -853,7 +915,7 @@ export class CastleBuilder {
     if (e.code === 'Digit4') this.setLayer(3);
     if (e.code === 'Digit5') this.setLayer(4);
     // Bracket keys for layer up/down
-    if (e.code === 'BracketRight') this.setLayer(Math.min(4, this.currentLayer + 1));
+    if (e.code === 'BracketRight') this.setLayer(Math.min(this.maxLayers - 1, this.currentLayer + 1));
     if (e.code === 'BracketLeft') this.setLayer(Math.max(0, this.currentLayer - 1));
   }
 }

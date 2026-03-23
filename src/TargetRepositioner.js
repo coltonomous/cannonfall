@@ -46,7 +46,9 @@ export class TargetRepositioner {
     this.onConfirm = onConfirm;
     this.castle = castle;
     this.centerX = castle.centerX;
-    this.targetPos = { x: 4, y: 0, z: 4 };
+    this.castleGridW = castle.gridWidth || CASTLE_WIDTH;
+    this.castleGridD = castle.gridDepth || CASTLE_DEPTH;
+    this.targetPos = { x: Math.floor(this.castleGridW / 2), y: 0, z: Math.floor(this.castleGridD / 2) };
 
     this.orbitCenter.set(this.centerX, 2, 0);
     this.orbitAngle = damagedPlayerIndex === 0 ? Math.PI / 4 : -Math.PI * 3 / 4;
@@ -58,7 +60,7 @@ export class TargetRepositioner {
 
     // Raycast plane at floor level — semi-transparent so the player can see the grid
     this.gridPlane = new THREE.Mesh(
-      new THREE.PlaneGeometry(CASTLE_WIDTH * 3, CASTLE_DEPTH * 3),
+      new THREE.PlaneGeometry(this.castleGridW * 3, this.castleGridD * 3),
       new THREE.MeshBasicMaterial({
         color: 0x44ff44,
         transparent: true,
@@ -85,7 +87,7 @@ export class TargetRepositioner {
 
     // Grid outline for valid placement area
     const gridGeo = new THREE.EdgesGeometry(
-      new THREE.BoxGeometry(CASTLE_WIDTH, 0.05, CASTLE_DEPTH)
+      new THREE.BoxGeometry(this.castleGridW, 0.05, this.castleGridD)
     );
     const gridLine = new THREE.LineSegments(
       gridGeo,
@@ -242,10 +244,11 @@ export class TargetRepositioner {
   // === GRID ===
 
   getGridPos(point) {
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const halfW = Math.floor(this.castleGridW / 2);
+    const halfD = Math.floor(this.castleGridD / 2);
     const gx = Math.round((point.x - this.centerX) / BLOCK_SIZE + halfW);
-    const gz = Math.round(point.z / BLOCK_SIZE + halfW);
-    if (gx < 0 || gx >= CASTLE_WIDTH || gz < 0 || gz >= CASTLE_DEPTH) return null;
+    const gz = Math.round(point.z / BLOCK_SIZE + halfD);
+    if (gx < 0 || gx >= this.castleGridW || gz < 0 || gz >= this.castleGridD) return null;
     return { x: gx, z: gz };
   }
 
@@ -350,12 +353,13 @@ export class TargetRepositioner {
       return;
     }
 
-    const halfW = Math.floor(CASTLE_WIDTH / 2);
+    const halfW = Math.floor(this.castleGridW / 2);
+    const halfD = Math.floor(this.castleGridD / 2);
     const hitY = gridPos.hitY || (BLOCK_SIZE + 0.5);
     this.ghostTarget.position.set(
       this.centerX + (gridPos.x - halfW) * BLOCK_SIZE,
       hitY,
-      (gridPos.z - halfW) * BLOCK_SIZE
+      (gridPos.z - halfD) * BLOCK_SIZE
     );
     this.ghostTarget.visible = true;
   }
@@ -383,11 +387,12 @@ export class TargetRepositioner {
 
     // Also show the ghost at the new position
     if (this.ghostTarget) {
-      const halfW = Math.floor(CASTLE_WIDTH / 2);
+      const halfW = Math.floor(this.castleGridW / 2);
+      const halfD = Math.floor(this.castleGridD / 2);
       this.ghostTarget.position.set(
         this.centerX + (gridPos.x - halfW) * BLOCK_SIZE,
         hitY,
-        (gridPos.z - halfW) * BLOCK_SIZE
+        (gridPos.z - halfD) * BLOCK_SIZE
       );
       this.ghostTarget.visible = true;
     }

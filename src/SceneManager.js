@@ -46,30 +46,100 @@ export class SceneManager {
   }
 
   setupLighting() {
-    const ambient = new THREE.AmbientLight(0xffffff, 0.4);
-    this.scene.add(ambient);
+    this.ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+    this.scene.add(this.ambientLight);
 
-    const dir = new THREE.DirectionalLight(0xffffff, 0.8);
-    dir.position.set(10, 20, 10);
-    dir.castShadow = true;
-    dir.shadow.mapSize.width = 2048;
-    dir.shadow.mapSize.height = 2048;
-    dir.shadow.camera.near = 0.5;
-    dir.shadow.camera.far = 100;
-    dir.shadow.camera.left = -40;
-    dir.shadow.camera.right = 40;
-    dir.shadow.camera.top = 40;
-    dir.shadow.camera.bottom = -40;
-    this.scene.add(dir);
+    this.dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    this.dirLight.position.set(10, 20, 10);
+    this.dirLight.castShadow = true;
+    this.dirLight.shadow.mapSize.width = 2048;
+    this.dirLight.shadow.mapSize.height = 2048;
+    this.dirLight.shadow.camera.near = 0.5;
+    this.dirLight.shadow.camera.far = 100;
+    this.dirLight.shadow.camera.left = -40;
+    this.dirLight.shadow.camera.right = 40;
+    this.dirLight.shadow.camera.top = 40;
+    this.dirLight.shadow.camera.bottom = -40;
+    this.scene.add(this.dirLight);
   }
 
   setupGround() {
     const geo = new THREE.PlaneGeometry(120, 120);
     const mat = new THREE.MeshStandardMaterial({ color: 0x4a7c3f });
-    const ground = new THREE.Mesh(geo, mat);
-    ground.rotation.x = -Math.PI / 2;
-    ground.receiveShadow = true;
-    this.scene.add(ground);
+    this.ground = new THREE.Mesh(geo, mat);
+    this.ground.rotation.x = -Math.PI / 2;
+    this.ground.receiveShadow = true;
+    this.scene.add(this.ground);
+  }
+
+  applyMode(config) {
+    // Background
+    this.scene.background = new THREE.Color(config.backgroundColor);
+
+    // Fog
+    if (config.fogNear) {
+      this.scene.fog = new THREE.Fog(config.backgroundColor, config.fogNear, config.fogFar);
+    } else {
+      this.scene.fog = null;
+    }
+
+    // Remove existing ground
+    if (this.ground) {
+      this.scene.remove(this.ground);
+      this.ground.geometry.dispose();
+      this.ground.material.dispose();
+      this.ground = null;
+    }
+
+    // Remove existing starfield
+    if (this.starfield) {
+      this.scene.remove(this.starfield);
+      this.starfield.geometry.dispose();
+      this.starfield.material.dispose();
+      this.starfield = null;
+    }
+
+    if (config.hasGround) {
+      // Create ground plane
+      const geo = new THREE.PlaneGeometry(120, 120);
+      const mat = new THREE.MeshStandardMaterial({ color: config.groundColor });
+      this.ground = new THREE.Mesh(geo, mat);
+      this.ground.rotation.x = -Math.PI / 2;
+      this.ground.receiveShadow = true;
+      this.scene.add(this.ground);
+    } else {
+      // Create starfield
+      const starCount = 2000;
+      const positions = new Float32Array(starCount * 3);
+      const colors = new Float32Array(starCount * 3);
+      const sizes = new Float32Array(starCount);
+      for (let i = 0; i < starCount; i++) {
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        const r = 150;
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+        // Varying brightness: most stars dim, a few bright
+        const brightness = Math.pow(Math.random(), 2.5); // skew toward dim
+        colors[i * 3] = 0.6 + brightness * 0.4;
+        colors[i * 3 + 1] = 0.6 + brightness * 0.4;
+        colors[i * 3 + 2] = 0.7 + brightness * 0.3; // slight blue tint
+        sizes[i] = 0.15 + brightness * 0.6;
+      }
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      const mat = new THREE.PointsMaterial({ vertexColors: true, size: 0.4, sizeAttenuation: true });
+      this.starfield = new THREE.Points(geo, mat);
+      this.scene.add(this.starfield);
+    }
+
+    // Update lighting
+    this.ambientLight.intensity = config.ambientIntensity;
+    this.dirLight.intensity = config.dirIntensity;
+    this.dirLight.position.set(...config.dirPosition);
   }
 
   setCameraPosition(position, lookAt) {

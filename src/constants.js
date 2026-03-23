@@ -45,6 +45,11 @@ export const BLOCK_TYPES = {
   RAMP:        { cost: 2, size: [1, 1, 1] },
   COLUMN:      { cost: 2, size: [0.5, 1, 0.5] },
   QUARTER_DOME:{ cost: 3, size: [1, 1, 1] },
+  HALF_ARCH:   { cost: 1, size: [0.5, 1, 1] },
+  BULLNOSE:    { cost: 3, size: [1, 1, 1] },
+  HALF_BULLNOSE:{ cost: 2, size: [1, 1, 1] },
+  THRUSTER:    { cost: 2, size: [1, 0.5, 0.5] },
+  SHIELD:      { cost: 1, size: [1, 1, 0.5] },
 };
 
 // ── HP ────────────────────────────────────────────────

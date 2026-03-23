@@ -2,33 +2,39 @@ import * as CANNON from 'cannon-es';
 import { PHYSICS_STEP } from './constants.js';
 
 export class PhysicsWorld {
-  constructor() {
-    // World with gravity (0, -9.82, 0)
+  constructor(config) {
+    const gravity = config?.gravity ?? -9.82;
     this.world = new CANNON.World({
-      gravity: new CANNON.Vec3(0, -9.82, 0),
+      gravity: new CANNON.Vec3(0, gravity, 0),
     });
     this.world.solver.iterations = 10;
     this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.allowSleep = true;
 
-    // Default contact material: friction 0.5, restitution 0.3
+    // Contact material — space mode uses high friction + low bounce for sticky blocks
+    const isSpace = config?.hasGround === false;
+    const friction = isSpace ? 0.9 : 0.5;
+    const restitution = isSpace ? 0.05 : 0.3;
     this.defaultMaterial = new CANNON.Material('default');
     this.world.addContactMaterial(new CANNON.ContactMaterial(
       this.defaultMaterial,
       this.defaultMaterial,
-      { friction: 0.5, restitution: 0.3 }
+      { friction, restitution }
     ));
-    this.world.defaultContactMaterial.friction = 0.5;
-    this.world.defaultContactMaterial.restitution = 0.3;
+    this.world.defaultContactMaterial.friction = friction;
+    this.world.defaultContactMaterial.restitution = restitution;
 
-    // Static ground plane at y=0
-    const groundBody = new CANNON.Body({
-      type: CANNON.Body.STATIC,
-      shape: new CANNON.Plane(),
-      material: this.defaultMaterial,
-    });
-    groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
-    this.world.addBody(groundBody);
+    // Static ground plane at y=0 (only if mode has ground)
+    this.groundBody = null;
+    if (config?.hasGround !== false) {
+      this.groundBody = new CANNON.Body({
+        type: CANNON.Body.STATIC,
+        shape: new CANNON.Plane(),
+        material: this.defaultMaterial,
+      });
+      this.groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
+      this.world.addBody(this.groundBody);
+    }
 
     // Mesh-body pairs for syncing
     this.pairs = [];

@@ -3,19 +3,43 @@ import * as CANNON from 'cannon-es';
 import { CANNONBALL_RADIUS, CANNONBALL_MASS } from './constants.js';
 
 export class Projectile {
-  constructor(sceneManager, physicsWorld, position, velocity, perfect = false) {
+  constructor(sceneManager, physicsWorld, position, velocity, perfect = false, modeConfig) {
     this.sceneManager = sceneManager;
     this.physicsWorld = physicsWorld;
     this.alive = true;
 
     const geo = new THREE.SphereGeometry(CANNONBALL_RADIUS, 12, 12);
-    const mat = perfect
-      ? new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.95, roughness: 0.05, emissive: 0xaa8800, emissiveIntensity: 0.3 })
-      : new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.9, roughness: 0.1 });
+    let mat;
+    if (perfect) {
+      mat = new THREE.MeshStandardMaterial({
+        color: modeConfig?.perfectColor ?? 0xffd700,
+        metalness: modeConfig?.projectileMetalness ?? 0.95,
+        roughness: modeConfig?.projectileRoughness ?? 0.05,
+        emissive: modeConfig?.perfectEmissive ?? 0xaa8800,
+        emissiveIntensity: modeConfig?.perfectEmissiveIntensity ?? 0.3,
+      });
+    } else {
+      mat = new THREE.MeshStandardMaterial({
+        color: modeConfig?.projectileColor ?? 0x222222,
+        metalness: modeConfig?.projectileMetalness ?? 0.9,
+        roughness: modeConfig?.projectileRoughness ?? 0.1,
+      });
+      if (modeConfig?.projectileEmissive) {
+        mat.emissive = new THREE.Color(modeConfig.projectileEmissive);
+        mat.emissiveIntensity = modeConfig.projectileEmissiveIntensity || 0;
+      }
+    }
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.castShadow = true;
     this.mesh.position.copy(position);
     sceneManager.scene.add(this.mesh);
+
+    // Glow light for emissive projectiles
+    if (perfect || modeConfig?.projectileGlow) {
+      const glowColor = perfect ? (modeConfig?.perfectEmissive ?? 0xaa8800) : (modeConfig?.projectileEmissive ?? 0xffffff);
+      const light = new THREE.PointLight(glowColor, 2, 6);
+      this.mesh.add(light);
+    }
 
     // Physics body
     this.body = new CANNON.Body({
@@ -31,6 +55,8 @@ export class Projectile {
     this.body.ccdIterations = 10;
     physicsWorld.world.addBody(this.body);
     physicsWorld.addPair(this.mesh, this.body);
+
+    this._outOfBoundsY = modeConfig?.outOfBoundsY ?? -5;
   }
 
   getPosition() {
@@ -44,7 +70,7 @@ export class Projectile {
 
   isOutOfBounds() {
     const p = this.body.position;
-    return p.y < -5 || Math.abs(p.x) > 60 || Math.abs(p.z) > 60;
+    return p.y < this._outOfBoundsY || Math.abs(p.x) > 60 || Math.abs(p.z) > 60;
   }
 
   destroy() {

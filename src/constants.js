@@ -45,8 +45,10 @@ export const BLOCK_TYPES = {
   HALF_ARCH:   { cost: 1, size: [0.5, 1, 1] },
   BULLNOSE:    { cost: 3, size: [1, 1, 1] },
   HALF_BULLNOSE:{ cost: 2, size: [1, 1, 1] },
-  THRUSTER:    { cost: 2, size: [1, 0.5, 0.5] },
-  SHIELD:      { cost: 1, size: [1, 1, 0.5] },
+  THRUSTER:    { cost: 2, size: [1, 0.5, 0.5], rotZ: Math.PI / 2 },
+  SHIELD:      { cost: 1, size: [1, 1, 0.5], mass: 0.3,
+    material: { color: 0x4488ff, transparent: true, opacity: 0.35,
+      emissive: 0x2244aa, emissiveIntensity: 0.3 }},
 };
 
 // ── HP ────────────────────────────────────────────────

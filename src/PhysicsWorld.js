@@ -11,10 +11,8 @@ export class PhysicsWorld {
     this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.allowSleep = true;
 
-    // Contact material — space mode uses high friction + low bounce for sticky blocks
-    const isSpace = config?.hasGround === false;
-    const friction = isSpace ? 0.9 : 0.5;
-    const restitution = isSpace ? 0.05 : 0.3;
+    const friction = config?.friction ?? 0.5;
+    const restitution = config?.restitution ?? 0.3;
     this.defaultMaterial = new CANNON.Material('default');
     this.world.addContactMaterial(new CANNON.ContactMaterial(
       this.defaultMaterial,

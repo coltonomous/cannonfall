@@ -18,6 +18,9 @@ export const GAME_MODES = {
 
     // Physics
     gravity: -9.82,
+    friction: 0.5,
+    restitution: 0.3,
+    explosiveProjectile: false, // projectile bounces off blocks
 
     // Colors
     player0Color: 0x8b7355,
@@ -45,8 +48,9 @@ export const GAME_MODES = {
     impactColor: { r: 0.6, g: 0.5, b: 0.35 },
     trailColor: { r: 0.5, g: 0.5, b: 0.5 },
 
-    // Presets
+    // Presets & blocks
     presets: ['KEEP', 'BUNKER', 'TOWER'],
+    excludeBlocks: ['THRUSTER', 'SHIELD'], // blocks not available in this mode
 
     // Bounds
     outOfBoundsY: -5,
@@ -58,6 +62,13 @@ export const GAME_MODES = {
     // Building
     budget: 500,
     maxLayers: 5,
+
+    // Explosion (only used when explosiveProjectile: true)
+    blastRadius: 4,
+    blastForce: 12,
+    perfectBlastRadius: 6,
+    perfectBlastForce: 25,
+    explosionDelay: 2500,
   },
 
   SPACE: {
@@ -76,6 +87,9 @@ export const GAME_MODES = {
     dirPosition: [15, 10, 5],
 
     gravity: -0.5,
+    friction: 0.9,
+    restitution: 0.05,
+    explosiveProjectile: true, // projectile explodes on impact
 
     player0Color: 0x2266aa,
     player1Color: 0xaa3344,
@@ -100,15 +114,20 @@ export const GAME_MODES = {
     trailColor: { r: 0.2, g: 0.6, b: 0.9 },
 
     presets: ['CORVETTE', 'FRIGATE', 'CRUISER'],
+    excludeBlocks: [], // all blocks available
 
     outOfBoundsY: -60,
 
-    // Grid — width is along X (faces opponent), depth along Z (ship length)
     gridWidth: 7,
     gridDepth: 13,
 
-    // Building
     budget: 500,
     maxLayers: 5,
+
+    blastRadius: 4,
+    blastForce: 12,
+    perfectBlastRadius: 6,
+    perfectBlastForce: 25,
+    explosionDelay: 2500,
   },
 };

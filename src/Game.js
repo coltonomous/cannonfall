@@ -418,8 +418,8 @@ export class Game {
       const velocity = dir.clone().multiplyScalar(power);
       this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot, this.gameMode);
 
-      // Space mode: explosive impact, destroy on contact
-      if (!this.gameMode.hasGround) {
+      // Explosive projectile: destroy on contact with outward blast
+      if (this.gameMode.explosiveProjectile) {
         this.projectile.body.addEventListener('collide', () => {
           if (!this.projectile || !this.projectile.alive) return;
           this.handleSpaceImpact();
@@ -734,8 +734,9 @@ export class Game {
     if (!this.projectile || !this.projectile.alive) return;
 
     const impactPos = this.projectile.getPosition();
-    const blastRadius = this._perfectShot ? 6 : 4;
-    const blastForce = this._perfectShot ? 25 : 12;
+    const gm = this.gameMode;
+    const blastRadius = this._perfectShot ? (gm.perfectBlastRadius || 6) : (gm.blastRadius || 4);
+    const blastForce = this._perfectShot ? (gm.perfectBlastForce || 25) : (gm.blastForce || 12);
 
     // Apply outward explosive impulse to nearby blocks
     for (const castle of this.castles) {
@@ -770,7 +771,7 @@ export class Game {
       this.projectile.destroy();
       this.projectile = null;
       // Delay so explosion is visible before HP/reposition UI
-      setTimeout(() => this.onTargetHit(), 2000);
+      setTimeout(() => this.onTargetHit(), this.gameMode.explosionDelay || 2500);
       return;
     }
 
@@ -785,7 +786,7 @@ export class Game {
 
     // Delay turn transition so the explosion debris is visible
     this.ui.setStatus('');
-    setTimeout(() => this.onShotComplete(false), 2500);
+    setTimeout(() => this.onShotComplete(false), this.gameMode.explosionDelay || 2500);
   }
 
   cleanupFallenBlocks() {

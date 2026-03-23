@@ -229,7 +229,8 @@ export class CastleBuilder {
             { type: 'HALF_BULLNOSE', icon: '⬭', label: '½ Bull' },
             { type: 'THRUSTER', icon: '⊳', label: 'Thruster' },
             { type: 'SHIELD', icon: '◇', label: 'Shield' },
-          ].map((b, i) => `
+          ].filter(b => !(this.modeConfig?.excludeBlocks || []).includes(b.type))
+          .map((b, i) => `
             <button class="block-btn${i === 0 ? ' selected' : ''}" data-type="${b.type}" style="
               display: flex; align-items: center; gap: 6px;
               padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
@@ -555,11 +556,12 @@ export class CastleBuilder {
 
       // Blocks at/below current layer are solid; blocks above are transparent
       const baseColor = this.modeConfig?.floorColor || 0x8b7355;
+      const typeInfo = BLOCK_TYPES[block.type];
       let mat;
-      if (block.type === 'SHIELD') {
+      if (typeInfo?.material) {
         mat = new THREE.MeshStandardMaterial({
-          color: 0x4488ff, transparent: true, opacity: isAbove ? 0.1 : 0.35,
-          emissive: 0x2244aa, emissiveIntensity: 0.3,
+          ...typeInfo.material,
+          opacity: isAbove ? 0.1 : (typeInfo.material.opacity ?? 1),
         });
       } else {
         const highlightColor = new THREE.Color(baseColor).offsetHSL(0, 0, 0.12).getHex();
@@ -571,8 +573,6 @@ export class CastleBuilder {
       }
 
       const mesh = new THREE.Mesh(geo, mat);
-
-      const typeInfo = BLOCK_TYPES[block.type];
       const yOffset = block.type === 'HALF_SLAB' ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
       mesh.position.set(
         (block.x - halfW) * BLOCK_SIZE,

@@ -41,7 +41,8 @@ export class Castle {
       THRUSTER: new CANNON.Cylinder(0.25, 0.3, 0.8, 8),
       SHIELD: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
       HALF_BULLNOSE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-      // RAMP and QUARTER_DOME use ConvexPolyhedron
+      RAMP: this.createRampShape(),
+      QUARTER_DOME: this.createQuarterDomeShape(),
     };
 
     const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
@@ -69,10 +70,7 @@ export class Castle {
         mesh.receiveShadow = true;
         this.sceneManager.scene.add(mesh);
 
-        let shape;
-        if (fb.type === 'RAMP') shape = this.createRampShape();
-        else if (fb.type === 'QUARTER_DOME') shape = this.createQuarterDomeShape();
-        else shape = shapes[fb.type] || shapes.CUBE;
+        const shape = shapes[fb.type] || shapes.CUBE;
 
         const body = new CANNON.Body({
           mass: 0,
@@ -130,15 +128,10 @@ export class Castle {
       const worldY = block.y * BLOCK_SIZE + yOffset + BLOCK_SIZE; // +BLOCK_SIZE for floor layer
       const worldZ = (block.z - halfD) * BLOCK_SIZE;
 
+      // Material: use block type override if defined, otherwise base castle color
       let mat;
-      if (block.type === 'SHIELD') {
-        mat = new THREE.MeshStandardMaterial({
-          color: 0x4488ff,
-          transparent: true,
-          opacity: 0.35,
-          emissive: 0x2244aa,
-          emissiveIntensity: 0.3,
-        });
+      if (typeInfo.material) {
+        mat = new THREE.MeshStandardMaterial(typeInfo.material);
       } else {
         mat = baseMat.clone();
         mat.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
@@ -149,28 +142,15 @@ export class Castle {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
 
-      // Apply rotation (around Y axis, 90-degree increments)
-      const rotY = (block.rotation || 0) * Math.PI / 2;
-      mesh.rotation.y = rotY;
-
-      // Thruster is a horizontal cylinder — tilt 90° around Z
-      if (block.type === 'THRUSTER') {
-        mesh.rotation.z = Math.PI / 2;
-      }
+      // Rotation: Y-axis grid rotation + any extra Z rotation from block type
+      mesh.rotation.y = (block.rotation || 0) * Math.PI / 2;
+      if (typeInfo.rotZ) mesh.rotation.z = typeInfo.rotZ;
 
       this.sceneManager.scene.add(mesh);
 
-      // Physics body
-      let shape;
-      if (block.type === 'RAMP') {
-        shape = this.createRampShape();
-      } else if (block.type === 'QUARTER_DOME') {
-        shape = this.createQuarterDomeShape();
-      } else {
-        shape = shapes[block.type];
-      }
-
-      const blockMass = block.type === 'SHIELD' ? 0.3 : BLOCK_MASS;
+      // Physics body: use ConvexPolyhedron for complex shapes, box/cylinder for simple
+      const shape = shapes[block.type] || shapes.CUBE;
+      const blockMass = typeInfo.mass ?? BLOCK_MASS;
       const body = new CANNON.Body({
         mass: blockMass,
         shape: shape,

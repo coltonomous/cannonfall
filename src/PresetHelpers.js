@@ -70,30 +70,88 @@ export function placeMany(out, blocks) {
 /**
  * Build a shaped hull from row definitions.
  * Rows: [{ z, xMin, xMax }] or [{ x, zMin, zMax }] depending on orientation.
- * Options: { axis: 'z' (rows keyed by z) or 'x' (rows keyed by x) }
- * Edge blocks use edgeType, interior uses fillType.
+ * Edge blocks use inverted ramps sloping outward; interior uses fillType.
+ * Set edgeType to override edge block type (e.g. 'CUBE' for flat edges).
  */
-export function fillHull(out, rows, y, fillType = 'CUBE', edgeType = 'HALF_SLAB', axis = 'x') {
+export function fillHull(out, rows, y, fillType = 'CUBE', edgeType = 'RAMP', axis = 'x') {
   const maxKey = Math.max(...rows.map(r => axis === 'x' ? r.x : r.z));
   const minKey = Math.min(...rows.map(r => axis === 'x' ? r.x : r.z));
+
+  // Build a lookup of row spans for neighbor checking
+  const rowMap = new Map();
+  for (const row of rows) {
+    const key = axis === 'x' ? row.x : row.z;
+    const min = axis === 'x' ? row.zMin : row.xMin;
+    const max = axis === 'x' ? row.zMax : row.xMax;
+    rowMap.set(key, { min, max });
+  }
 
   for (const row of rows) {
     const key = axis === 'x' ? row.x : row.z;
     const min = axis === 'x' ? row.zMin : row.xMin;
     const max = axis === 'x' ? row.zMax : row.xMax;
-    const isEnd = key === maxKey || key === minKey;
     const span = max - min;
 
-    for (let v = min; v <= max; v++) {
-      const isEdge = v === min || v === max || isEnd;
-      const center = (min + max) / 2;
-      const dist = span > 0 ? Math.abs(v - center) / (span / 2) : 1;
-      const keyDist = (maxKey - minKey) > 0 ? Math.abs(key - (minKey + maxKey) / 2) / ((maxKey - minKey) / 2) : 1;
-      const edgeness = Math.max(dist, keyDist);
+    // Check if this row is narrower than its neighbors (meaning it's a tapering end)
+    const prevRow = rowMap.get(key - 1);
+    const nextRow = rowMap.get(key + 1);
+    const isStartEnd = !prevRow || (prevRow && prevRow.min > min) || (prevRow && prevRow.max < max);
+    const isEndEnd = !nextRow || (nextRow && nextRow.min > min) || (nextRow && nextRow.max < max);
 
-      const type = (isEdge || edgeness > 0.6) ? edgeType : fillType;
-      if (axis === 'x') out.push({ x: key, y, z: v, type, rotation: 0 });
-      else out.push({ x: v, y, z: key, type, rotation: 0 });
+    for (let v = min; v <= max; v++) {
+      const atMinV = v === min;
+      const atMaxV = v === max;
+      const atMinKey = key === minKey;
+      const atMaxKey = key === maxKey;
+
+      const isEdge = atMinV || atMaxV || atMinKey || atMaxKey;
+
+      if (!isEdge) {
+        // Interior block
+        const center = (min + max) / 2;
+        const dist = span > 0 ? Math.abs(v - center) / (span / 2) : 1;
+        const keyDist = (maxKey - minKey) > 0 ? Math.abs(key - (minKey + maxKey) / 2) / ((maxKey - minKey) / 2) : 1;
+        const edgeness = Math.max(dist, keyDist);
+        const type = edgeness > 0.6 ? edgeType : fillType;
+        if (type === 'RAMP' && edgeness > 0.6) {
+          // Near-edge interior: use cube (ramp only makes sense at actual edges)
+          if (axis === 'x') out.push({ x: key, y, z: v, type: fillType, rotation: 0 });
+          else out.push({ x: v, y, z: key, type: fillType, rotation: 0 });
+        } else {
+          if (axis === 'x') out.push({ x: key, y, z: v, type, rotation: 0 });
+          else out.push({ x: v, y, z: key, type, rotation: 0 });
+        }
+        continue;
+      }
+
+      if (edgeType !== 'RAMP') {
+        // Non-ramp edge type (e.g. CUBE): just place it flat
+        if (axis === 'x') out.push({ x: key, y, z: v, type: edgeType, rotation: 0 });
+        else out.push({ x: v, y, z: key, type: edgeType, rotation: 0 });
+        continue;
+      }
+
+      // Ramp edge: orient the inverted ramp to slope outward
+      // Ramp default: full height at -X, slopes down toward +X
+      // rotX=2 flips it upside down (inverted)
+      // rotation (Y-axis) controls which direction it slopes toward
+      let rotation = 0;
+      if (axis === 'z') {
+        // v = X position, key = Z position
+        if (atMinV && !atMinKey && !atMaxKey) rotation = 0;       // port side: slope toward -X
+        else if (atMaxV && !atMinKey && !atMaxKey) rotation = 2;  // starboard: slope toward +X
+        else if (atMinKey) rotation = 3;                           // stern: slope toward -Z
+        else if (atMaxKey) rotation = 1;                           // bow: slope toward +Z
+      } else {
+        // v = Z position, key = X position
+        if (atMinV && !atMinKey && !atMaxKey) rotation = 3;
+        else if (atMaxV && !atMinKey && !atMaxKey) rotation = 1;
+        else if (atMinKey) rotation = 0;
+        else if (atMaxKey) rotation = 2;
+      }
+
+      if (axis === 'x') out.push({ x: key, y, z: v, type: 'RAMP', rotation, rotX: 2 });
+      else out.push({ x: v, y, z: key, type: 'RAMP', rotation, rotX: 2 });
     }
   }
 }

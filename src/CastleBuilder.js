@@ -15,7 +15,9 @@ export class CastleBuilder {
     this.layout = []; // [{ x, y, z, type, rotation }]
     this.targetPos = { x: 4, y: 0, z: 4 }; // grid coords
     this.selectedType = 'CUBE';
-    this.selectedRotation = 0;
+    this.selectedRotation = 0;  // Y-axis (0-3, 90° steps)
+    this.selectedRotX = 0;      // X-axis
+    this.selectedRotZ = 0;      // Z-axis
     this.currentLayer = 0; // layer above floor (0-4)
     this.budget = BUILD_BUDGET;
     this.placingTarget = false; // true when in target placement mode
@@ -51,6 +53,8 @@ export class CastleBuilder {
     this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
     this.selectedType = 'CUBE';
     this.selectedRotation = 0;
+    this.selectedRotX = 0;
+    this.selectedRotZ = 0;
     this.currentLayer = 0;
     this.budget = this.maxBudget;
     this.placingTarget = false;
@@ -205,38 +209,54 @@ export class CastleBuilder {
         pointer-events: auto;
       ">
         <h3 style="margin: 0 0 4px 0; font-size: 0.9rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px;">Blocks</h3>
-        <div class="block-palette" style="display: flex; flex-direction: column; gap: 4px;">
+        <div class="block-palette" style="display: flex; flex-direction: column; gap: 2px;">
           ${[
+            { type: '_label', label: 'Basic' },
             { type: 'CUBE', icon: '■', label: 'Cube' },
             { type: 'HALF_SLAB', icon: '▬', label: 'Slab' },
             { type: 'WALL', icon: '▮', label: 'Wall' },
+            { type: 'PLANK', icon: '═', label: 'Plank' },
+            { type: '_label', label: 'Shapes' },
             { type: 'RAMP', icon: '◢', label: 'Ramp' },
-            { type: 'COLUMN', icon: '‖', label: 'Column' },
-            { type: 'QUARTER_DOME', icon: '◠', label: 'Dome' },
-            { type: 'HALF_ARCH', icon: '⌒', label: 'Arch' },
+            { type: 'COLUMN', icon: '╽', label: 'Column' },
+            { type: 'CYLINDER', icon: '◯', label: 'Cylinder' },
+            { type: 'BARREL', icon: '•', label: 'Barrel' },
+            { type: '_label', label: 'Decorative' },
+            { type: 'QUARTER_DOME', icon: '◠', label: 'Qtr Dome' },
             { type: 'BULLNOSE', icon: '⬬', label: 'Bullnose' },
             { type: 'HALF_BULLNOSE', icon: '⬭', label: '½ Bull' },
-            { type: 'PLANK', icon: '═', label: 'Plank' },
-            { type: 'CYLINDER', icon: '○', label: 'Cylinder' },
-            { type: 'WEDGE', icon: '◣', label: 'Wedge' },
             { type: 'LATTICE', icon: '▦', label: 'Lattice' },
-            { type: 'BARREL', icon: '◎', label: 'Barrel' },
+            { type: '_label', label: 'Special' },
             { type: 'THRUSTER', icon: '⊳', label: 'Thruster' },
             { type: 'SHIELD', icon: '◇', label: 'Shield' },
-          ].filter(b => !(this.modeConfig?.excludeBlocks || []).includes(b.type))
-          .map((b, i) => `
-            <button class="block-btn${i === 0 ? ' selected' : ''}" data-type="${b.type}" style="
+          ].filter((b, i, arr) => {
+            if (b.type === '_label') {
+              // Hide label if all following blocks (until next label) are excluded
+              const excluded = this.modeConfig?.excludeBlocks || [];
+              for (let j = i + 1; j < arr.length && arr[j].type !== '_label'; j++) {
+                if (!excluded.includes(arr[j].type)) return true;
+              }
+              return false;
+            }
+            return !(this.modeConfig?.excludeBlocks || []).includes(b.type);
+          })
+          .map((b, i) => {
+            if (b.type === '_label') {
+              return `<div style="font-size:0.65rem; opacity:0.4; text-transform:uppercase; letter-spacing:1px; margin:4px 0 1px 2px;">${b.label}</div>`;
+            }
+            const isFirst = i === 1; // first actual block (after first label)
+            return `<button class="block-btn${isFirst ? ' selected' : ''}" data-type="${b.type}" style="
               display: flex; align-items: center; gap: 6px;
               padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 6px; background: rgba(255,255,255,${i === 0 ? '0.1' : '0.06'});
+              border-radius: 6px; background: rgba(255,255,255,${isFirst ? '0.1' : '0.06'});
               color: #fff; cursor: pointer; font-size: 0.8rem;
               transition: background 0.15s, border-color 0.15s;
               pointer-events: auto; min-width: 0;
             ">
               <span style="font-size: 1rem;">${b.icon}</span>
-              <span>${b.label} <small>(${BLOCK_TYPES[b.type].cost})</small></span>
-            </button>
-          `).join('')}
+              <span>${b.label} <small>(${BLOCK_TYPES[b.type]?.cost ?? ''})</small></span>
+            </button>`;
+          }).join('')}
         </div>
         <button class="block-btn target-btn" id="builder-target-btn" style="
           display: flex; align-items: center; gap: 8px;
@@ -253,10 +273,10 @@ export class CastleBuilder {
         <div class="builder-info" style="
           margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
         ">
-          <p>R: Rotate</p>
+          <p>R/T/F: Rotate Y/X/Z</p>
           <p>Click: Place</p>
           <p>Right-click: Remove</p>
-          <p>Shift+click: Pick block</p>
+          <p>Shift+click: Grab block</p>
           <p>Mouse drag: Orbit</p>
           <p>Scroll: Zoom</p>
         </div>
@@ -487,6 +507,8 @@ export class CastleBuilder {
       x, y, z,
       type: this.selectedType,
       rotation: this.selectedRotation,
+      rotX: this.selectedRotX || 0,
+      rotZ: this.selectedRotZ || 0,
     });
     this.budget -= cost;
     this.updateBudgetDisplay();
@@ -596,7 +618,11 @@ export class CastleBuilder {
         block.y * BLOCK_SIZE + yOffset,
         (block.z - halfD) * BLOCK_SIZE
       );
-      mesh.rotation.y = (block.rotation || 0) * Math.PI / 2;
+      mesh.rotation.set(
+        (block.rotX || 0) * Math.PI / 2,
+        (block.rotation || 0) * Math.PI / 2,
+        (block.rotZ || 0) * Math.PI / 2
+      );
       mesh.castShadow = true;
       mesh.receiveShadow = true;
 
@@ -619,12 +645,20 @@ export class CastleBuilder {
     );
   }
 
+  _applySelectedRotation(obj) {
+    obj.rotation.set(
+      this.selectedRotX * Math.PI / 2,
+      this.selectedRotation * Math.PI / 2,
+      this.selectedRotZ * Math.PI / 2
+    );
+  }
+
   updateGhostGeometry() {
     if (!this.ghostMesh) return;
     this.ghostMesh.geometry.dispose();
     const geos = createAllBlockGeometries();
     this.ghostMesh.geometry = geos[this.selectedType] || geos.CUBE;
-    this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
+    this._applySelectedRotation(this.ghostMesh);
   }
 
   // === CAMERA (delegated to OrbitController) ===
@@ -681,7 +715,7 @@ export class CastleBuilder {
       this.currentLayer * BLOCK_SIZE + yOffset,
       (gridPos.z - halfD) * BLOCK_SIZE
     );
-    this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
+    this._applySelectedRotation(this.ghostMesh);
 
     const canPlace = this.canPlace(gridPos.x, this.currentLayer, gridPos.z);
     this.ghostMesh.material.color.set(canPlace ? 0x44aaff : 0xff4444);
@@ -696,10 +730,10 @@ export class CastleBuilder {
     const gridPos = this._getHoveredGridPos(e);
     if (!gridPos) return;
 
-    // Middle-click or shift+click: pick block type from existing block
+    // Shift+click or middle-click: grab an existing block
     if (e.button === 1 || e.shiftKey) {
       e.preventDefault();
-      this._pickBlock(gridPos.x, this.currentLayer, gridPos.z);
+      this._grabBlock(gridPos.x, this.currentLayer, gridPos.z);
       return;
     }
 
@@ -711,11 +745,10 @@ export class CastleBuilder {
     this.placeBlock(gridPos.x, this.currentLayer, gridPos.z);
   }
 
-  _pickBlock(x, y, z) {
-    // Find the topmost block at this x,z — check current layer first, then search downward
+  _grabBlock(x, y, z) {
+    // Find block at this position — current layer first, then topmost
     let block = this.layout.find(b => b.x === x && b.y === y && b.z === z);
     if (!block) {
-      // Search all layers, pick highest
       const candidates = this.layout.filter(b => b.x === x && b.z === z);
       if (candidates.length > 0) {
         block = candidates.reduce((a, b) => a.y > b.y ? a : b);
@@ -723,11 +756,22 @@ export class CastleBuilder {
     }
     if (!block) return;
 
+    // Remove it from layout (refund cost) — only remove this block, not cascade
+    const idx = this.layout.indexOf(block);
+    if (idx >= 0) {
+      this.layout.splice(idx, 1);
+      this.budget += BLOCK_TYPES[block.type]?.cost || 0;
+      this.updateBudgetDisplay();
+    }
+
+    // Set as current selection
     this.selectedType = block.type;
     this.selectedRotation = block.rotation || 0;
+    this.selectedRotX = block.rotX || 0;
+    this.selectedRotZ = block.rotZ || 0;
     this.placingTarget = false;
 
-    // Update UI selection
+    // Update palette highlight
     const allBtns = document.querySelectorAll('#castle-builder-ui .block-btn[data-type]');
     const targetBtn = document.getElementById('builder-target-btn');
     allBtns.forEach(b => {
@@ -745,6 +789,7 @@ export class CastleBuilder {
     }
 
     this.updateGhostGeometry();
+    this.rebuildMeshes();
   }
 
   _handleContextMenu(e) {
@@ -757,9 +802,15 @@ export class CastleBuilder {
   _handleKeyDown(e) {
     if (e.code === 'KeyR') {
       this.selectedRotation = (this.selectedRotation + 1) % 4;
-      if (this.ghostMesh) {
-        this.ghostMesh.rotation.y = this.selectedRotation * Math.PI / 2;
-      }
+      if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);
+    }
+    if (e.code === 'KeyT') {
+      this.selectedRotX = (this.selectedRotX + 1) % 4;
+      if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);
+    }
+    if (e.code === 'KeyF') {
+      this.selectedRotZ = (this.selectedRotZ + 1) % 4;
+      if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);
     }
     // Layer shortcuts
     if (e.code === 'Digit1') this.setLayer(0);

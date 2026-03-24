@@ -30,22 +30,6 @@ export function createRampGeometry() {
   return geo;
 }
 
-export function createHalfArchGeometry() {
-  const segs = 8;
-  const shape = new THREE.Shape();
-  shape.moveTo(0, -0.5);
-  shape.lineTo(0.5, -0.5);
-  shape.lineTo(0.5, 0.5);
-  for (let i = 1; i <= segs; i++) {
-    const a = (Math.PI / 2) * (i / segs);
-    shape.lineTo(0.5 * Math.cos(a), 0.5 * Math.sin(a));
-  }
-  const geo = new THREE.ExtrudeGeometry(shape, { depth: 1, bevelEnabled: false });
-  geo.translate(-0.25, 0, -0.5);
-  geo.computeVertexNormals();
-  return geo;
-}
-
 export function createBullnoseGeometry(full) {
   const segs = 6;
   const shape = new THREE.Shape();
@@ -117,30 +101,6 @@ export function createThrusterGeometry() {
   return new THREE.CylinderGeometry(0.2, 0.3, 0.8, 8);
 }
 
-export function createWedgeGeometry() {
-  // Triangular prism: flat vertical back face, slopes to a point at the front.
-  // Like a ramp but the sloped face meets the bottom at z=+0.5 (front).
-  const geo = new THREE.BufferGeometry();
-  const v = new Float32Array([
-    // Back face (quad, full height at z=-0.5)
-    -0.5, -0.5, -0.5,   0.5, -0.5, -0.5,   0.5,  0.5, -0.5,
-    -0.5, -0.5, -0.5,   0.5,  0.5, -0.5,  -0.5,  0.5, -0.5,
-    // Bottom face (quad)
-    -0.5, -0.5, -0.5,  -0.5, -0.5,  0.5,   0.5, -0.5,  0.5,
-    -0.5, -0.5, -0.5,   0.5, -0.5,  0.5,   0.5, -0.5, -0.5,
-    // Left slope (triangle)
-    -0.5, -0.5, -0.5,  -0.5,  0.5, -0.5,  -0.5, -0.5,  0.5,
-    // Right slope (triangle)
-     0.5, -0.5, -0.5,   0.5, -0.5,  0.5,   0.5,  0.5, -0.5,
-    // Top slope (quad from top-back edge down to bottom-front edge)
-    -0.5,  0.5, -0.5,   0.5,  0.5, -0.5,   0.5, -0.5,  0.5,
-    -0.5,  0.5, -0.5,   0.5, -0.5,  0.5,  -0.5, -0.5,  0.5,
-  ]);
-  geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
-  geo.computeVertexNormals();
-  return geo;
-}
-
 export function createLatticeGeometry() {
   // Flat grate — thin plane with slight thickness
   return new THREE.BoxGeometry(BLOCK_SIZE, 0.1, BLOCK_SIZE);
@@ -158,14 +118,12 @@ export function createAllBlockGeometries() {
     RAMP: createRampGeometry(),
     COLUMN: new THREE.CylinderGeometry(0.25, 0.25, BLOCK_SIZE, 8),
     QUARTER_DOME: createQuarterDomeGeometry(),
-    HALF_ARCH: createHalfArchGeometry(),
     BULLNOSE: createBullnoseGeometry(true),
     HALF_BULLNOSE: createBullnoseGeometry(false),
     THRUSTER: createThrusterGeometry(),
     SHIELD: new THREE.BoxGeometry(BLOCK_SIZE * 1.05, BLOCK_SIZE * 1.05, BLOCK_SIZE * 0.5),
     PLANK: new THREE.BoxGeometry(BLOCK_SIZE * 2, BLOCK_SIZE * 0.25, BLOCK_SIZE * 0.5),
     CYLINDER: new THREE.CylinderGeometry(0.5, 0.5, BLOCK_SIZE, 12),
-    WEDGE: createWedgeGeometry(),
     LATTICE: createLatticeGeometry(),
     BARREL: new THREE.CylinderGeometry(0.25, 0.25, 0.5, 8),
   };
@@ -188,26 +146,6 @@ export function createRampPhysicsShape() {
     [0, 4, 1],    // back triangle
     [2, 3, 5],    // front triangle (corrected winding)
     [1, 4, 5, 3], // slope
-  ];
-  return new CANNON.ConvexPolyhedron({ vertices, faces });
-}
-
-export function createWedgePhysicsShape() {
-  // Triangular prism: full-height back face, slopes to bottom-front edge
-  const vertices = [
-    new CANNON.Vec3(-0.5, -0.5, -0.5), // 0: back-bottom-left
-    new CANNON.Vec3( 0.5, -0.5, -0.5), // 1: back-bottom-right
-    new CANNON.Vec3(-0.5,  0.5, -0.5), // 2: back-top-left
-    new CANNON.Vec3( 0.5,  0.5, -0.5), // 3: back-top-right
-    new CANNON.Vec3(-0.5, -0.5,  0.5), // 4: front-bottom-left
-    new CANNON.Vec3( 0.5, -0.5,  0.5), // 5: front-bottom-right
-  ];
-  const faces = [
-    [0, 1, 3, 2], // back (CCW from outside = looking at -Z face)
-    [1, 0, 4, 5], // bottom
-    [0, 2, 4],     // left triangle
-    [3, 1, 5],     // right triangle
-    [2, 3, 5, 4],  // slope
   ];
   return new CANNON.ConvexPolyhedron({ vertices, faces });
 }

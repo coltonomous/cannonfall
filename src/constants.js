@@ -36,25 +36,23 @@ export const PHYSICS_STEP = 1 / 60;
 export const BUILD_BUDGET = 500;
 
 export const BLOCK_TYPES = {
-  CUBE:        { cost: 3, size: [1, 1, 1] },
-  HALF_SLAB:   { cost: 1, size: [1, 0.5, 1] },
-  WALL:        { cost: 2, size: [1, 1, 0.5] },
-  RAMP:        { cost: 2, size: [1, 1, 1] },
-  COLUMN:      { cost: 2, size: [0.5, 1, 0.5] },
-  QUARTER_DOME:{ cost: 3, size: [1, 1, 1] },
-  HALF_ARCH:   { cost: 1, size: [0.5, 1, 1] },
-  BULLNOSE:    { cost: 3, size: [1, 1, 1] },
-  HALF_BULLNOSE:{ cost: 2, size: [1, 1, 1] },
-  THRUSTER:    { cost: 2, size: [1, 0.5, 0.5], rotZ: Math.PI / 2 },
-  SHIELD:      { cost: 1, size: [1, 1, 0.5], mass: 0.3,
+  CUBE:        { cost: 3, size: [1, 1, 1] },         // vol 1.0
+  HALF_SLAB:   { cost: 2, size: [1, 0.5, 1] },       // vol 0.5
+  WALL:        { cost: 2, size: [1, 1, 0.5] },        // vol 0.5
+  RAMP:        { cost: 2, size: [1, 1, 1] },          // vol 0.5
+  COLUMN:      { cost: 1, size: [0.5, 1, 0.5] },     // vol 0.25
+  QUARTER_DOME:{ cost: 1, size: [1, 1, 1] },          // vol ~0.13
+  BULLNOSE:    { cost: 3, size: [1, 1, 1] },          // vol ~0.85
+  HALF_BULLNOSE:{ cost: 2, size: [1, 1, 1] },         // vol ~0.75
+  THRUSTER:    { cost: 1, size: [1, 0.5, 0.5], rotZ: Math.PI / 2 }, // vol ~0.15
+  SHIELD:      { cost: 1, size: [1, 1, 0.5], mass: 0.3,             // vol 0.5, fragile
     material: { color: 0x4488ff, transparent: true, opacity: 0.35,
       emissive: 0x2244aa, emissiveIntensity: 0.3 }},
-  PLANK:       { cost: 1, size: [2, 0.25, 0.5] },
-  CYLINDER:    { cost: 3, size: [1, 1, 1] },
-  WEDGE:       { cost: 2, size: [1, 1, 1] },
-  LATTICE:     { cost: 1, size: [1, 0.1, 1], mass: 0.2,
+  PLANK:       { cost: 1, size: [2, 0.25, 0.5] },     // vol 0.25
+  CYLINDER:    { cost: 2, size: [1, 1, 1] },           // vol ~0.79
+  LATTICE:     { cost: 1, size: [1, 0.1, 1], mass: 0.2,             // vol 0.1, fragile
     material: { color: 0x887766, transparent: true, opacity: 0.5 }},
-  BARREL:      { cost: 1, size: [0.5, 0.5, 0.5] },
+  BARREL:      { cost: 1, size: [0.5, 0.5, 0.5] },    // vol ~0.05
 };
 
 // ── HP ────────────────────────────────────────────────

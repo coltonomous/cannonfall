@@ -59,9 +59,10 @@ export const GAME_MODES = {
     excludeBlocks: ['THRUSTER', 'SHIELD'],
 
     outOfBoundsY: -5,
+    castleOffsetX: 20,
     gridWidth: 9,
     gridDepth: 9,
-    budget: 500,
+    budget: 600,
     maxLayers: 8,
 
     ...EXPLOSION,
@@ -111,9 +112,10 @@ export const GAME_MODES = {
     excludeBlocks: ['THRUSTER', 'SHIELD'],
 
     outOfBoundsY: -5,
+    castleOffsetX: 16,
     gridWidth: 7,
     gridDepth: 11,
-    budget: 450,
+    budget: 500,
     maxLayers: 6,
 
     ...EXPLOSION,
@@ -138,6 +140,7 @@ export const GAME_MODES = {
     friction: 0.9,
     restitution: 0.05,
     explosiveProjectile: true,
+    debrisField: true,
 
     player0Color: 0x2266aa,
     player1Color: 0xaa3344,
@@ -162,9 +165,10 @@ export const GAME_MODES = {
     excludeBlocks: [],
 
     outOfBoundsY: -60,
+    castleOffsetX: 28,
     gridWidth: 7,
     gridDepth: 13,
-    budget: 500,
+    budget: 600,
     maxLayers: 5,
 
     ...EXPLOSION,

@@ -271,7 +271,7 @@ export class Game {
     this.castles[0] = new Castle(
       this.sceneManager,
       this.physicsWorld,
-      -C.CASTLE_OFFSET_X,
+      -(this.gameMode.castleOffsetX || (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X)),
       this.gameMode.player0Color,
       { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth }
     );
@@ -280,7 +280,7 @@ export class Game {
     this.castles[1] = new Castle(
       this.sceneManager,
       this.physicsWorld,
-      C.CASTLE_OFFSET_X,
+      (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
       this.gameMode.player1Color,
       { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth }
     );
@@ -364,7 +364,7 @@ export class Game {
     this.ui.updatePower(C.MIN_POWER, C.MIN_POWER, C.MAX_POWER);
     this.ui.setStatus('');
 
-    const myCastleX = this.currentTurn === 0 ? -C.CASTLE_OFFSET_X : C.CASTLE_OFFSET_X;
+    const myCastleX = this.currentTurn === 0 ? -(this.gameMode.castleOffsetX || (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X)) : (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X);
     this.sceneManager.setupMinimap(myCastleX);
 
     if (this.state === State.MY_TURN) {

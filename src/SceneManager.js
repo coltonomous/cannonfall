@@ -216,12 +216,14 @@ export class SceneManager {
       const base = this._waterBaseY;
       // PlaneGeometry with rotation -π/2 means Y attribute is world Z, Z attribute is world -Y
       // We animate the Z attribute (which is vertical after rotation)
+      const swell = 1.0 + 0.4 * Math.sin(this._waterTime * 0.2);
       for (let i = 0; i < pos.count; i++) {
         const x = base[i * 3];
         const y = base[i * 3 + 1];
         pos.array[i * 3 + 2] = base[i * 3 + 2] +
-          Math.sin(x * 0.15 + this._waterTime * 0.8) * 0.25 +
-          Math.cos(y * 0.12 + this._waterTime * 0.6) * 0.15;
+          Math.sin(x * 0.15 + this._waterTime * 0.8) * 0.4 * swell +
+          Math.cos(y * 0.12 + this._waterTime * 0.6) * 0.25 * swell +
+          Math.sin(x * 0.08 + y * 0.06 + this._waterTime * 0.4) * 0.15;
       }
       pos.needsUpdate = true;
     }

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES } from './constants.js';
-import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape, createWedgePhysicsShape } from './BlockGeometry.js';
+import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape } from './BlockGeometry.js';
 
 export class Castle {
   constructor(sceneManager, physicsWorld, centerX, color, gridConfig) {
@@ -36,7 +36,6 @@ export class Castle {
       HALF_SLAB: new CANNON.Box(new CANNON.Vec3(0.5, 0.25, 0.5)),
       WALL: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
       COLUMN: new CANNON.Cylinder(0.25, 0.25, BLOCK_SIZE, 8),
-      HALF_ARCH: new CANNON.Box(new CANNON.Vec3(0.25, 0.5, 0.5)),
       BULLNOSE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
       THRUSTER: new CANNON.Cylinder(0.25, 0.3, 0.8, 8),
       SHIELD: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
@@ -45,7 +44,6 @@ export class Castle {
       QUARTER_DOME: createQuarterDomePhysicsShape(),
       PLANK: new CANNON.Box(new CANNON.Vec3(1.0, 0.125, 0.25)),
       CYLINDER: new CANNON.Cylinder(0.5, 0.5, BLOCK_SIZE, 12),
-      WEDGE: createWedgePhysicsShape(),
       LATTICE: new CANNON.Box(new CANNON.Vec3(0.5, 0.05, 0.5)),
       BARREL: new CANNON.Cylinder(0.25, 0.25, 0.5, 8),
     };
@@ -153,13 +151,15 @@ export class Castle {
       mesh.castShadow = true;
       mesh.receiveShadow = true;
 
-      // Rotation: Y-axis grid rotation + any extra Z rotation from block type
-      mesh.rotation.y = (block.rotation || 0) * Math.PI / 2;
-      if (typeInfo.rotZ) mesh.rotation.z = typeInfo.rotZ;
+      // Rotation: per-block axes + any extra Z rotation from block type definition
+      const rotX = (block.rotX || 0) * Math.PI / 2;
+      const rotY = (block.rotation || 0) * Math.PI / 2;
+      const rotZ = (block.rotZ || 0) * Math.PI / 2 + (typeInfo.rotZ || 0);
+      mesh.rotation.set(rotX, rotY, rotZ);
 
       this.sceneManager.scene.add(mesh);
 
-      // Physics body: use ConvexPolyhedron for complex shapes, box/cylinder for simple
+      // Physics body
       const shape = shapes[block.type] || shapes.CUBE;
       const blockMass = typeInfo.mass ?? BLOCK_MASS;
       const body = new CANNON.Body({
@@ -169,9 +169,7 @@ export class Castle {
         material: this.physicsWorld.defaultMaterial,
       });
 
-      // Apply same rotation to physics body
-      const rotY = (block.rotation || 0) * Math.PI / 2;
-      body.quaternion.setFromEuler(0, rotY, 0);
+      body.quaternion.setFromEuler(rotX, rotY, rotZ);
 
       // Enable sleep for performance
       body.allowSleep = true;

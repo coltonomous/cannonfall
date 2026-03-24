@@ -27,10 +27,12 @@ function keepPreset() {
 
   // Rounded battlements on tower tops (y=5)
   placeMany(L, [
-    [0,5,0,'HALF_BULLNOSE',1], [1,5,0,'HALF_BULLNOSE',1], [0,5,1,'HALF_BULLNOSE',0],
-    [0,5,7,'HALF_BULLNOSE',0], [0,5,8,'HALF_BULLNOSE',1], [1,5,8,'HALF_BULLNOSE',1],
-    [8,5,0,'HALF_BULLNOSE',1], [7,5,0,'HALF_BULLNOSE',1], [8,5,1,'HALF_BULLNOSE',0],
-    [8,5,8,'HALF_BULLNOSE',1], [7,5,8,'HALF_BULLNOSE',1], [8,5,7,'HALF_BULLNOSE',0],
+    [0,5,1,'HALF_BULLNOSE',0], [0,5,7,'HALF_BULLNOSE',0],
+    [0,5,8,'HALF_BULLNOSE',1], [1,5,8,'HALF_BULLNOSE',1],
+    [8,5,8,'HALF_BULLNOSE',1], [7,5,8,'HALF_BULLNOSE',1],
+    [8,5,1,'HALF_BULLNOSE',2], [8,5,7,'HALF_BULLNOSE',2],
+    [8,5,0,'HALF_BULLNOSE',3], [7,5,0,'HALF_BULLNOSE',3],
+    [0,5,0,'HALF_BULLNOSE',3], [1,5,0,'HALF_BULLNOSE',3],
   ]);
 
   // Perimeter walls (4 layers) with gateway openings at x=4 on front/back
@@ -44,17 +46,15 @@ function keepPreset() {
     fillRowZ(L, 8, 2, 6, y, 'CUBE');
   }
 
-  // Arched gateways
-  placeMany(L, [
-    [4,3,0,'HALF_ARCH',0], [4,3,0,'HALF_ARCH',2],
-    [4,3,8,'HALF_ARCH',0], [4,3,8,'HALF_ARCH',2],
-  ]);
+  // Gateway tops
+  place(L, 4, 3, 0, 'CUBE');
+  place(L, 4, 3, 8, 'CUBE');
 
   // Crenellations (y=4)
-  fillCrenellations(L, 2, 6, 0, 0, 4); // front
-  fillCrenellations(L, 2, 6, 8, 8, 4); // back
-  fillCrenellations(L, 0, 0, 2, 6, 4); // left
-  fillCrenellations(L, 8, 8, 2, 6, 4); // right
+  fillCrenellations(L, 2, 6, 0, 0, 4);
+  fillCrenellations(L, 2, 6, 8, 8, 4);
+  fillCrenellations(L, 0, 0, 2, 6, 4);
+  fillCrenellations(L, 8, 8, 2, 6, 4);
 
   // Interior cross-wall (z=4, y=0-1)
   for (let y = 0; y < 2; y++) fillRowX(L, 1, 7, 4, y, 'WALL', 1);
@@ -98,9 +98,9 @@ function towerPreset() {
 
   // Rounded parapet (y=6)
   placeMany(L, [
-    [3,6,3,'HALF_BULLNOSE',1], [4,6,3,'HALF_BULLNOSE',1], [5,6,3,'HALF_BULLNOSE',1],
     [3,6,5,'HALF_BULLNOSE',1], [4,6,5,'HALF_BULLNOSE',1], [5,6,5,'HALF_BULLNOSE',1],
-    [3,6,4,'HALF_BULLNOSE',0], [5,6,4,'HALF_BULLNOSE',0],
+    [3,6,4,'HALF_BULLNOSE',0], [5,6,4,'HALF_BULLNOSE',2],
+    [5,6,3,'HALF_BULLNOSE',3], [4,6,3,'HALF_BULLNOSE',3], [3,6,3,'HALF_BULLNOSE',3],
   ]);
 
   // Tower fill + catwalk
@@ -109,8 +109,6 @@ function towerPreset() {
   place(L, 4, 3, 4, 'HALF_SLAB');
 
   // Outer wall ring (3 layers, with arched openings)
-  // Walls at constant z run along X: thin in Z → rot=0
-  // Walls at constant x run along Z: thin in X → rot=1
   for (let y = 0; y < 3; y++) {
     for (let x = 1; x <= 7; x++) {
       if (x === 4 && y < 2) continue;
@@ -124,13 +122,11 @@ function towerPreset() {
     }
   }
 
-  // Arches at openings (y=2)
+  // Gateway tops (y=2)
   placeMany(L, [
-    [4,2,1,'HALF_ARCH',0], [4,2,1,'HALF_ARCH',2],
-    [4,2,7,'HALF_ARCH',0], [4,2,7,'HALF_ARCH',2],
-    [1,2,4,'HALF_ARCH',1], [1,2,4,'HALF_ARCH',3],
-    [7,2,4,'HALF_ARCH',1], [7,2,4,'HALF_ARCH',3],
+    [4,2,1,'CUBE',0], [4,2,7,'CUBE',0],
+    [1,2,4,'CUBE',0], [7,2,4,'CUBE',0],
   ]);
 
-  return { layout: L, target: { x: 4, y: 3, z: 4 }, cannonPos: { x: 5, z: 4 } };
+  return { layout: L, target: { x: 4, y: 3, z: 4 }, cannonPos: { x: 8, z: 4 } };
 }

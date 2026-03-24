@@ -14,18 +14,13 @@ export function getPiratePreset(name) {
 
 // 7×11 grid (x=0-6, z=0-10). Broadside combat.
 // x = beam (faces opponent), z = keel (ship length). z=0 stern, z=10 bow.
-//
-// Rotation convention (Y-axis, 90-degree increments):
-//   0 = default  1 = 90° CCW  2 = 180°  3 = 270° CCW
-// WALL (1x1x0.5): rot=0 thin in Z, rot=1 thin in X
-// WEDGE: rot=0 slope toward +Z, rot=2 slope toward -Z
 
 function buildKeel(floor, hullRows, depth) {
   for (const row of hullRows) {
     const { z, xMin, xMax } = row;
     const span = xMax - xMin;
     if (span < 1) {
-      floor.push({ x: xMin, z, type: 'WEDGE', yOffset: -depth, flip: true, rotation: 0 });
+      floor.push({ x: xMin, z, type: 'RAMP', yOffset: -depth, flip: true, rotation: 1 });
       continue;
     }
     const center = (xMin + xMax) / 2;
@@ -51,6 +46,7 @@ function buildMast(L, x, z, height) {
 }
 
 function galleonPreset() {
+  // Three-masted warship: deep hull, raised stern castle, gun deck, tall masts.
   const L = [];
   const F = [];
 
@@ -68,63 +64,78 @@ function galleonPreset() {
     { z: 10, xMin: 3, xMax: 3 },
   ];
 
-  fillHull(L, hullRows, 0, 'CUBE', 'HALF_SLAB', 'z');
+  fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
   buildKeel(F, hullRows, 2);
 
-  // Port/starboard gunwales (thin in X → rot=1)
+  // Port/starboard gunwales (y=1-2)
   for (let z = 2; z <= 7; z++) {
     place(L, 0, 1, z, 'WALL', 1);
     place(L, 6, 1, z, 'WALL', 1);
+    place(L, 0, 2, z, 'WALL', 1);
+    place(L, 6, 2, z, 'WALL', 1);
   }
 
-  // Bow — wedge prow (slope toward +Z → rot=0) + bow rail (thin in Z → rot=0)
+  // Bow
   placeMany(L, [
-    [2,1,9,'WEDGE',0], [4,1,9,'WEDGE',0],
-    [3,1,10,'WEDGE',0],
+    [2,1,9,'RAMP',1], [4,1,9,'RAMP',1],
+    [3,1,10,'RAMP',1],
     [1,1,8,'WALL',0], [5,1,8,'WALL',0],
+    [1,2,8,'WALL',0], [5,2,8,'WALL',0],
+    [2,1,9,'WALL',0], [4,1,9,'WALL',0],
   ]);
 
-  // Stern castle (y=1-2, z=0-2) — leave gap at target position
+  // Stern castle (y=1-3, z=0-2)
   for (let x = 1; x <= 5; x++) {
     for (let z = 0; z <= 2; z++) {
       place(L, x, 1, z, 'CUBE');
-      if (!(x === 3 && z === 1)) place(L, x, 2, z, 'CUBE'); // gap for target
+      if (!(x === 3 && z === 1)) place(L, x, 2, z, 'CUBE');
     }
   }
   fillRowX(L, 1, 5, 0, 3, 'HALF_SLAB');
-  // Stern castle railing (thin in X → rot=1)
   placeMany(L, [
     [1,3,1,'WALL',1], [5,3,1,'WALL',1],
     [1,3,2,'WALL',1], [5,3,2,'WALL',1],
   ]);
 
-  // Captain's quarters windows
-  placeMany(L, [[3,1,0,'HALF_ARCH',0], [3,1,0,'HALF_ARCH',2]]);
+  // Captain's quarters stern wall
+  place(L, 3, 1, 0, 'WALL', 0);
 
   // Three masts with yard arms
   buildMast(L, 3, 3, 5);
   place(L, 3, 4, 3, 'PLANK', 1);
-  buildMast(L, 3, 5, 5);
+  place(L, 3, 3, 3, 'PLANK', 1);
+  buildMast(L, 3, 5, 6);
+  place(L, 3, 5, 5, 'PLANK', 1);
   place(L, 3, 4, 5, 'PLANK', 1);
   buildMast(L, 3, 7, 4);
   place(L, 3, 3, 7, 'PLANK', 1);
 
-  // Forecastle (y=1)
+  // Forecastle raised deck (y=1, z=7-8)
   fillRowX(L, 1, 5, 7, 1, 'HALF_SLAB');
+  fillRowX(L, 2, 4, 8, 1, 'HALF_SLAB');
 
-  // Deck barrels
+  // Gun deck interior supports
+  place(L, 2, 1, 4, 'COLUMN');
+  place(L, 4, 1, 4, 'COLUMN');
+  place(L, 2, 1, 6, 'COLUMN');
+  place(L, 4, 1, 6, 'COLUMN');
+
+  // Deck barrels and cargo
   placeMany(L, [
     [1,1,4,'BARREL'], [5,1,4,'BARREL'],
     [1,1,6,'BARREL'], [5,1,6,'BARREL'],
+    [1,1,5,'BARREL'], [5,1,5,'BARREL'],
   ]);
 
-  // Lattice grating over hold
+  // Lattice gratings
   place(L, 3, 1, 4, 'LATTICE');
+  place(L, 3, 1, 6, 'LATTICE');
 
   return { layout: L, target: { x: 3, y: 2, z: 1 }, cannonPos: { x: 6, z: 5 }, floor: F };
 }
 
 function sloopPreset() {
+  // Fast two-masted: narrow hull, ramp deflectors, cabin, rigging.
   const L = [];
   const F = [];
 
@@ -142,47 +153,57 @@ function sloopPreset() {
     { z: 10, xMin: 3, xMax: 3 },
   ];
 
-  fillHull(L, hullRows, 0, 'CUBE', 'HALF_SLAB', 'z');
+  fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
   buildKeel(F, hullRows, 2);
 
-  // Ramp deflectors port/starboard (facing outward)
+  // Ramp deflectors port/starboard (y=1)
   for (let z = 3; z <= 6; z++) {
     place(L, 1, 1, z, 'RAMP', 2);
     place(L, 5, 1, z, 'RAMP', 0);
   }
 
-  // Low gunwale
+  // Low gunwale at transitions
   for (const z of [2, 7]) {
     place(L, 1, 1, z, 'HALF_SLAB');
     place(L, 5, 1, z, 'HALF_SLAB');
   }
 
-  // Helm cabin (z=0-1, y=1-2)
+  // Helm cabin (z=0-1, y=1-3) — taller cabin with lookout
   fillRect(L, 2, 4, 0, 1, 1, 'CUBE');
-  fillRowX(L, 2, 4, 0, 2, 'HALF_SLAB');
-  // Cabin side walls (thin in X → rot=1)
-  place(L, 2, 2, 1, 'WALL', 1);
-  place(L, 4, 2, 1, 'WALL', 1);
+  fillRect(L, 2, 4, 0, 1, 2, 'CUBE');
+  fillRowX(L, 2, 4, 0, 3, 'HALF_SLAB');
+  place(L, 2, 3, 1, 'WALL', 1);
+  place(L, 4, 3, 1, 'WALL', 1);
 
-  // Tall mast with yard arms (span X → rot=1)
-  buildMast(L, 3, 5, 5);
-  place(L, 3, 3, 5, 'PLANK', 1);
-  place(L, 3, 5, 5, 'PLANK', 1);
+  // Two masts with yard arms
+  buildMast(L, 3, 4, 5);
+  place(L, 3, 3, 4, 'PLANK', 1);
+  place(L, 3, 5, 4, 'PLANK', 1);
+  buildMast(L, 3, 7, 4);
+  place(L, 3, 3, 7, 'PLANK', 1);
 
-  // Bowsprit — wedge prow (slope toward +Z → rot=0)
-  place(L, 3, 1, 9, 'WEDGE', 0);
-  place(L, 3, 1, 10, 'WEDGE', 0);
+  // Bowsprit
+  place(L, 3, 1, 9, 'RAMP', 1);
+  place(L, 3, 1, 10, 'RAMP', 1);
 
-  // Deck details
+  // Deck structures
   placeMany(L, [
-    [2,1,4,'BARREL'], [4,1,4,'BARREL'],
+    [2,1,3,'BARREL'], [4,1,3,'BARREL'],
+    [2,1,5,'BARREL'], [4,1,5,'BARREL'],
+    [2,1,6,'BARREL'], [4,1,6,'BARREL'],
     [3,1,3,'LATTICE'],
+    [3,1,6,'LATTICE'],
   ]);
 
-  return { layout: L, target: { x: 3, y: 1, z: 4 }, cannonPos: { x: 5, z: 5 }, floor: F };
+  // Railing along cabin top
+  place(L, 2, 3, 0, 'WALL', 0);
+  place(L, 4, 3, 0, 'WALL', 0);
+
+  return { layout: L, target: { x: 3, y: 1, z: 5 }, cannonPos: { x: 5, z: 5 }, floor: F };
 }
 
 function fortressPreset() {
+  // Floating gun platform: wide barge, thick walls, watchtower, corner turrets.
   const L = [];
   const F = [];
 
@@ -200,17 +221,15 @@ function fortressPreset() {
     { z: 10, xMin: 2, xMax: 4 },
   ];
 
-  fillHull(L, hullRows, 0, 'CUBE', 'HALF_SLAB', 'z');
+  fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
   buildKeel(F, hullRows, 1);
 
   // Heavy perimeter walls (y=1-2)
-  // Port/starboard (thin in X → rot=1)
   for (let y = 1; y <= 2; y++) {
     for (let z = 1; z <= 8; z++) {
       place(L, 0, y, z, 'CUBE');
       place(L, 6, y, z, 'CUBE');
     }
-    // Bow/stern walls (thin in Z → rot=0)
     fillRowX(L, 1, 5, 0, y, 'CUBE');
     fillRowX(L, 1, 5, 9, y, 'CUBE');
   }
@@ -223,21 +242,37 @@ function fortressPreset() {
     if (x % 2 === 0) { place(L, x, 3, 0, 'HALF_SLAB'); place(L, x, 3, 9, 'HALF_SLAB'); }
   }
 
-  // Watchtower with mast
+  // Corner turrets (y=1-3)
+  for (const [x, z] of [[0, 1], [0, 8], [6, 1], [6, 8]]) {
+    place(L, x, 3, z, 'CUBE');
+    place(L, x, 4, z, 'HALF_SLAB');
+  }
+
+  // Central watchtower with mast
   place(L, 3, 1, 5, 'CYLINDER');
   place(L, 3, 2, 5, 'CYLINDER');
   place(L, 3, 3, 5, 'LATTICE');
   buildMast(L, 3, 5, 5);
-  place(L, 3, 4, 5, 'PLANK', 1); // yard arm spans X
+  place(L, 3, 4, 5, 'PLANK', 1);
 
-  // Bow wedge reinforcement (slope toward +Z → rot=0)
+  // Bow reinforcement
   placeMany(L, [
-    [2,1,10,'WEDGE',0], [3,1,10,'WEDGE',0], [4,1,10,'WEDGE',0],
+    [2,1,10,'RAMP',1], [3,1,10,'RAMP',1], [4,1,10,'RAMP',1],
   ]);
+
+  // Interior structures — ammunition stores and cross-bracing
+  place(L, 2, 1, 3, 'CUBE');
+  place(L, 4, 1, 3, 'CUBE');
+  place(L, 2, 1, 7, 'CUBE');
+  place(L, 4, 1, 7, 'CUBE');
+  place(L, 3, 1, 3, 'LATTICE');
+  place(L, 3, 1, 7, 'LATTICE');
 
   // Ammunition barrels
   placeMany(L, [
     [1,1,2,'BARREL'], [5,1,2,'BARREL'],
+    [1,1,4,'BARREL'], [5,1,4,'BARREL'],
+    [1,1,6,'BARREL'], [5,1,6,'BARREL'],
     [1,1,7,'BARREL'], [5,1,7,'BARREL'],
   ]);
 

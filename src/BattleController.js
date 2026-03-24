@@ -356,11 +356,21 @@ export class BattleController {
   // ── Fallen Blocks ─────────────────────────────────────────
 
   cleanupFallenBlocks() {
+    const debrisField = this.gameMode.debrisField;
+    const boundsX = debrisField ? 100 : 60;
+    const boundsZ = debrisField ? 100 : 60;
+
     for (const castle of this.castles) {
       if (!castle) continue;
       for (let i = castle.blocks.length - 1; i >= 0; i--) {
         const { mesh, body } = castle.blocks[i];
-        if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > 60 || Math.abs(body.position.z) > 60) {
+
+        // In debris field mode, keep drifting blocks awake so they float visibly
+        if (debrisField && body.mass > 0) {
+          body.allowSleep = false;
+        }
+
+        if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > boundsX || Math.abs(body.position.z) > boundsZ) {
           castle.sceneManager.scene.remove(mesh);
           castle.physicsWorld.world.removeBody(body);
           const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);

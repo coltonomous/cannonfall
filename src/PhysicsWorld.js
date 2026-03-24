@@ -72,19 +72,37 @@ export class PhysicsWorld {
     });
   }
 
+  // Sample the wave height at a world position — same formula as SceneManager water
+  // The swell parameter slowly modulates amplitude over time
+  _waveHeight(x, z, t, swell) {
+    return Math.sin(x * 0.15 + t * 0.8) * 0.4 * swell
+         + Math.cos(z * 0.12 + t * 0.6) * 0.25 * swell
+         + Math.sin(x * 0.08 + z * 0.06 + t * 0.4) * 0.15;
+  }
+
   _applyWaterForces(dt) {
     this._waterTime += dt;
     const t = this._waterTime;
 
-    // Rock kinematic floor bodies (ship hull rocking on waves)
+    // Swell: slowly varies wave intensity — calm periods and rough periods
+    // Oscillates between 0.6 and 1.4 over ~30 seconds
+    const swell = 1.0 + 0.4 * Math.sin(t * 0.2);
+
     for (const entry of this.kinematicFloors) {
       const { body, basePos, castleCenterX } = entry;
-      // Gentle roll (rotation around Z-axis, perpendicular to facing direction)
-      const roll = Math.sin(t * 0.7 + castleCenterX * 0.1) * 0.015;
-      // Gentle pitch (rotation around X-axis)
-      const pitch = Math.sin(t * 0.5 + castleCenterX * 0.3) * 0.01;
-      // Heave (vertical bob)
-      const heave = Math.sin(t * 0.6 + castleCenterX * 0.2) * 0.08;
+
+      // Sample wave heights at bow/stern and port/starboard
+      const sampleDist = 4;
+      const hCenter = this._waveHeight(basePos.x, basePos.z, t, swell);
+      const hBow    = this._waveHeight(basePos.x, basePos.z + sampleDist, t, swell);
+      const hStern  = this._waveHeight(basePos.x, basePos.z - sampleDist, t, swell);
+      const hPort   = this._waveHeight(basePos.x - sampleDist, basePos.z, t, swell);
+      const hStbd   = this._waveHeight(basePos.x + sampleDist, basePos.z, t, swell);
+
+      // Derive tilt from wave slope
+      const roll  = Math.atan2(hStbd - hPort, sampleDist * 2) * 0.6;
+      const pitch = Math.atan2(hBow - hStern, sampleDist * 2) * 0.6;
+      const heave = hCenter * 0.3;
 
       body.position.set(basePos.x, basePos.y + heave, basePos.z);
       body.quaternion.setFromEuler(pitch, 0, roll);

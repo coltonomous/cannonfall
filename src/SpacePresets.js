@@ -31,7 +31,7 @@ function corvettePreset() {
     { z: 12, xMin: 3, xMax: 3 },
   ];
   const L = [];
-  fillHull(L, hullRows, 0, 'CUBE', 'HALF_SLAB', 'z');
+  fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
 
   // y=1: Engine section
   fillRowX(L, 1, 5, 1, 1, 'HALF_SLAB');
@@ -69,7 +69,7 @@ function frigatePreset() {
     { z: 12, xMin: 3, xMax: 3 },
   ];
   const L = [];
-  fillHull(L, hullRows, 0, 'CUBE', 'HALF_SLAB', 'z');
+  fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
 
   // y=1: Main deck with ramp edges
   fillTaperedDeck(L, hullRows, 1, 'z');
@@ -113,7 +113,7 @@ function cruiserPreset() {
     { z: 12, xMin: 2, xMax: 4 },
   ];
   const L = [];
-  fillHull(L, hullRows, 0, 'CUBE', 'HALF_SLAB', 'z');
+  fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
 
   // y=1: Main deck
   fillTaperedDeck(L, hullRows, 1, 'z');

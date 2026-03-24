@@ -56,12 +56,12 @@ export class Castle {
 
     // Build floor layer (static) — skip for water/space modes with no custom floor
     const hasCustomFloor = customFloor && customFloor.length > 0;
-    const needsDefaultFloor = !this.physicsWorld.waterSurface && !hasCustomFloor;
-    this._floorOffset = needsDefaultFloor ? BLOCK_SIZE : 0;
+    const needsDefaultFloor = this.physicsWorld.hasGround && !hasCustomFloor;
+    this._floorOffset = needsDefaultFloor ? BLOCK_SIZE / 2 : 0;
 
     if (hasCustomFloor) {
       // Custom shaped floor — physics-only for water modes, visible for others
-      const hideFloor = this.physicsWorld.waterSurface;
+      const hideFloor = !needsDefaultFloor;
       for (const fb of customFloor) {
         const fbz = mirrorZ ? (this.gridDepth - 1 - fb.z) : fb.z;
         const worldX = this.centerX + (fb.x - halfW) * BLOCK_SIZE;
@@ -108,11 +108,11 @@ export class Castle {
         }
       }
     } else if (needsDefaultFloor) {
-      // Default flat floor (castle mode only)
+      // Default flat floor (castle mode only) — sunk into ground so top is flush at y=0.5
       for (let gx = 0; gx < this.gridWidth; gx++) {
         for (let gz = 0; gz < this.gridDepth; gz++) {
           const worldX = this.centerX + (gx - halfW) * BLOCK_SIZE;
-          const worldY = BLOCK_SIZE / 2;
+          const worldY = 0;
           const worldZ = (gz - halfD) * BLOCK_SIZE;
 
           const mat = baseMat.clone();
@@ -193,15 +193,19 @@ export class Castle {
       });
 
       body.quaternion.setFromEuler(rotX, rotY, rotZ);
+      if (block.type === 'SHIELD') body.isShield = true;
 
-      // Per-mode damping: high damping makes blocks resist movement (punch-through vs topple)
       body.linearDamping = this.blockDamping;
       body.angularDamping = this.blockDamping;
 
-      // Enable sleep for performance
       body.allowSleep = true;
-      body.sleepSpeedLimit = 0.1;
-      body.sleepTimeLimit = 0.5;
+      if (this.blockDamping > 0.1) {
+        body.sleepSpeedLimit = 1.2;
+        body.sleepTimeLimit = 0.05;
+      } else {
+        body.sleepSpeedLimit = 0.1;
+        body.sleepTimeLimit = 0.5;
+      }
       body.sleep();
 
       this.physicsWorld.world.addBody(body);

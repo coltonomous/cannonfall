@@ -298,8 +298,9 @@ export class Game {
     pos0.x += 4;
     pos1.x -= 4;
     const cannonColors = { baseColor: this.gameMode.cannonBaseColor, barrelColor: this.gameMode.cannonBarrelColor };
-    this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1, cannonColors);
-    this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1, cannonColors);
+    const cannonStyle = this.gameMode.cannonStyle;
+    this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1, cannonColors, cannonStyle);
+    this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1, cannonColors, cannonStyle);
 
     // Cannons on layer 1 — visible to main camera, hidden from minimap
     for (const c of this.cannons) {
@@ -429,7 +430,8 @@ export class Game {
     this.repositioner.start(
       this.castles[damagedPlayerIndex],
       damagedPlayerIndex,
-      (newTargetPos) => this.onRepositionComplete(damagedPlayerIndex, newTargetPos)
+      (newTargetPos) => this.onRepositionComplete(damagedPlayerIndex, newTargetPos),
+      this.gameMode.maxLayers
     );
   }
 
@@ -549,6 +551,7 @@ export class Game {
     for (const castle of this.castles) {
       if (!castle) continue;
       for (const { mesh } of castle.blocks) {
+        if (!mesh) continue;
         mesh.material.wireframe = this.debugPhysics;
       }
     }

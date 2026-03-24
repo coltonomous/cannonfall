@@ -34,13 +34,14 @@ export class TargetRepositioner {
     this._onKeyDown = this._handleKeyDown.bind(this);
   }
 
-  start(castle, damagedPlayerIndex, onConfirm) {
+  start(castle, damagedPlayerIndex, onConfirm, maxLayers) {
     this.onConfirm = onConfirm;
     this.castle = castle;
     this.centerX = castle.centerX;
     this.castleGridW = castle.gridWidth || 9;
     this.castleGridD = castle.gridDepth || 9;
     this._floorOffset = castle._floorOffset || 0;
+    this._maxLayer = (maxLayers || 8) - 1;
     this.targetPos = { x: Math.floor(this.castleGridW / 2), y: 0, z: Math.floor(this.castleGridD / 2) };
 
     this.orbit.orbitCenter.set(this.centerX, 2, 0);
@@ -164,7 +165,7 @@ export class TargetRepositioner {
     });
 
     document.getElementById('repo-layer-up').addEventListener('click', () => {
-      this.setLayer(Math.min(4, this.currentLayer + 1));
+      this.setLayer(Math.min(this._maxLayer, this.currentLayer + 1));
     });
     document.getElementById('repo-layer-down').addEventListener('click', () => {
       this.setLayer(Math.max(0, this.currentLayer - 1));
@@ -194,6 +195,7 @@ export class TargetRepositioner {
     // Blocks above the current layer go transparent so you can see inside
     const layerWorldY = this._floorOffset + this.currentLayer * BLOCK_SIZE;
     for (const { mesh } of this.castle.blocks) {
+      if (!mesh) continue;
       const blockBottom = mesh.position.y - 0.5;
       if (blockBottom > layerWorldY + 0.5) {
         // Above current layer — make transparent
@@ -218,6 +220,7 @@ export class TargetRepositioner {
   restoreBlockMaterials() {
     if (!this.castle) return;
     for (const { mesh } of this.castle.blocks) {
+      if (!mesh) continue;
       if (mesh.userData._origOpacity !== undefined) {
         mesh.material.opacity = mesh.userData._origOpacity;
         mesh.material.transparent = mesh.userData._origTransparent;
@@ -270,7 +273,7 @@ export class TargetRepositioner {
     if (this.castle) {
       const layerWorldY = this._floorOffset + this.currentLayer * BLOCK_SIZE + BLOCK_SIZE;
       const visibleMeshes = this.castle.blocks
-        .filter(b => b.mesh.position.y <= layerWorldY)
+        .filter(b => b.mesh && b.mesh.position.y <= layerWorldY)
         .map(b => b.mesh);
       const blockHits = this.orbit.raycaster.intersectObjects(visibleMeshes);
       if (blockHits.length > 0) {
@@ -345,8 +348,11 @@ export class TargetRepositioner {
     if (e.code === 'Digit2') this.setLayer(1);
     if (e.code === 'Digit3') this.setLayer(2);
     if (e.code === 'Digit4') this.setLayer(3);
-    if (e.code === 'Digit5') this.setLayer(4);
-    if (e.code === 'BracketRight') this.setLayer(Math.min(4, this.currentLayer + 1));
+    if (e.code === 'Digit5') this.setLayer(Math.min(4, this._maxLayer));
+    if (e.code === 'Digit6') this.setLayer(Math.min(5, this._maxLayer));
+    if (e.code === 'Digit7') this.setLayer(Math.min(6, this._maxLayer));
+    if (e.code === 'Digit8') this.setLayer(Math.min(7, this._maxLayer));
+    if (e.code === 'BracketRight') this.setLayer(Math.min(this._maxLayer, this.currentLayer + 1));
     if (e.code === 'BracketLeft') this.setLayer(Math.max(0, this.currentLayer - 1));
   }
 }

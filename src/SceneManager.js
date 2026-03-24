@@ -115,7 +115,7 @@ export class SceneManager {
         });
         this.ground = new THREE.Mesh(geo, mat);
         this.ground.rotation.x = -Math.PI / 2;
-        this.ground.position.y = -0.15; // water sits just below deck surface
+        this.ground.position.y = 0.25; // water sits at deck level
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
         this._waterGeo = geo;

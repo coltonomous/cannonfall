@@ -29,7 +29,8 @@ export class PhysicsWorld {
 
     // Static ground plane at y=0 (only for non-water ground modes)
     this.groundBody = null;
-    if (config?.hasGround !== false && !this.waterSurface) {
+    this.hasGround = config?.hasGround !== false && !this.waterSurface;
+    if (this.hasGround) {
       this.groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
@@ -38,6 +39,12 @@ export class PhysicsWorld {
       this.groundBody.quaternion.setFromEuler(-Math.PI / 2, 0, 0);
       this.world.addBody(this.groundBody);
     }
+
+    // Per-mode block speed cap (0 = no cap)
+    this._maxBlockSpeed = config?.maxBlockSpeed || 0;
+
+    // Exposed for camera rocking
+    this.currentShipRoll = 0;
 
     // Mesh-body pairs for syncing
     this.pairs = [];
@@ -61,6 +68,19 @@ export class PhysicsWorld {
   step(dt) {
     if (this.waterSurface) this._applyWaterForces(dt);
     this.world.step(PHYSICS_STEP, dt, 3);
+
+    // Post-step velocity clamping for high-damping modes
+    if (this._maxBlockSpeed > 0) {
+      for (const { body } of this.pairs) {
+        if (body.mass === 0 || body.sleepState === 2 || body.isProjectile) continue;
+        const speed = body.velocity.length();
+        if (speed > this._maxBlockSpeed) {
+          const scale = this._maxBlockSpeed / speed;
+          body.velocity.scale(scale, body.velocity);
+          body.angularVelocity.scale(scale, body.angularVelocity);
+        }
+      }
+    }
   }
 
   registerFloorBody(body, castleCenterX) {
@@ -88,24 +108,37 @@ export class PhysicsWorld {
     // Oscillates between 0.6 and 1.4 over ~30 seconds
     const swell = 1.0 + 0.4 * Math.sin(t * 0.2);
 
+    // Sample wave at each ship's center (not per-block) so the whole ship moves as one.
+    // Use castleCenterX to compute per-ship wave response, with a time offset
+    // so the two ships bob out of phase.
+    if (!this._shipWaveCache) this._shipWaveCache = new Map();
+    this._shipWaveCache.clear();
+
     for (const entry of this.kinematicFloors) {
       const { body, basePos, castleCenterX } = entry;
 
-      // Sample wave heights at bow/stern and port/starboard
-      const sampleDist = 4;
-      const hCenter = this._waveHeight(basePos.x, basePos.z, t, swell);
-      const hBow    = this._waveHeight(basePos.x, basePos.z + sampleDist, t, swell);
-      const hStern  = this._waveHeight(basePos.x, basePos.z - sampleDist, t, swell);
-      const hPort   = this._waveHeight(basePos.x - sampleDist, basePos.z, t, swell);
-      const hStbd   = this._waveHeight(basePos.x + sampleDist, basePos.z, t, swell);
+      if (!this._shipWaveCache.has(castleCenterX)) {
+        // Sample at the ship center, with a time phase offset per ship
+        const shipPhase = castleCenterX > 0 ? 0 : 3.5; // offset so ships bob differently
+        const st = t + shipPhase;
+        const sampleDist = 5;
+        const cx = castleCenterX;
+        const hCenter = this._waveHeight(cx, 0, st, swell);
+        const hBow    = this._waveHeight(cx, sampleDist, st, swell);
+        const hStern  = this._waveHeight(cx, -sampleDist, st, swell);
+        const hPort   = this._waveHeight(cx - sampleDist, 0, st, swell);
+        const hStbd   = this._waveHeight(cx + sampleDist, 0, st, swell);
 
-      // Derive tilt from wave slope
-      const roll  = Math.atan2(hStbd - hPort, sampleDist * 2) * 0.6;
-      const pitch = Math.atan2(hBow - hStern, sampleDist * 2) * 0.6;
-      const heave = hCenter * 0.3;
+        const roll  = Math.atan2(hStbd - hPort, sampleDist * 2) * 3.5;
+        const pitch = Math.atan2(hBow - hStern, sampleDist * 2) * 2.5;
+        const heave = hCenter * 1.0;
 
-      body.position.set(basePos.x, basePos.y + heave, basePos.z);
-      body.quaternion.setFromEuler(pitch, 0, roll);
+        this._shipWaveCache.set(castleCenterX, { roll, pitch, heave });
+      }
+
+      const wave = this._shipWaveCache.get(castleCenterX);
+      body.position.set(basePos.x, basePos.y + wave.heave, basePos.z);
+      body.quaternion.setFromEuler(wave.pitch, 0, wave.roll);
     }
 
     // Buoyancy + wave forces on dynamic bodies

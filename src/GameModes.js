@@ -88,9 +88,10 @@ export const GAME_MODES = {
     friction: 0.8,
     restitution: 0.1,
     explosiveProjectile: false,
-    blockMassMultiplier: 5,
-    blockDamping: 0.5,
+    blockMassMultiplier: 4,
+    blockDamping: 0.3,
     cannonballMass: 2,
+    maxBlockSpeed: 1.7,
 
     player0Color: 0x8b6340,
     player1Color: 0x6b4226,
@@ -140,7 +141,7 @@ export const GAME_MODES = {
     dirIntensity: 0.5,
     dirPosition: [15, 10, 5],
 
-    gravity: -0.5,
+    gravity: 0,
     friction: 0.9,
     restitution: 0.05,
     explosiveProjectile: true,
@@ -153,6 +154,7 @@ export const GAME_MODES = {
 
     cannonBaseColor: 0x224466,
     cannonBarrelColor: 0x1a3a5a,
+    cannonStyle: 'scifi',
 
     projectileColor: 0x44ffff,
     projectileMetalness: 0.1,

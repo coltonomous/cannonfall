@@ -69,34 +69,79 @@ export class BattleController {
     this.trajectoryLine = new THREE.Line(geo, mat);
     this.trajectoryLine.visible = false;
     this.sceneManager.scene.add(this.trajectoryLine);
+
+    // Reticle for zero-G modes (crosshair at aim point)
+    const reticleGroup = new THREE.Group();
+    const rMat = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.8 });
+    const size = 0.6;
+    // Horizontal line
+    const hGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(-size, 0, 0), new THREE.Vector3(size, 0, 0),
+    ]);
+    reticleGroup.add(new THREE.Line(hGeo, rMat));
+    // Vertical line
+    const vGeo = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, -size, 0), new THREE.Vector3(0, size, 0),
+    ]);
+    reticleGroup.add(new THREE.Line(vGeo, rMat));
+    // Circle
+    const circlePoints = [];
+    for (let i = 0; i <= 32; i++) {
+      const a = (i / 32) * Math.PI * 2;
+      circlePoints.push(new THREE.Vector3(Math.cos(a) * size * 0.7, Math.sin(a) * size * 0.7, 0));
+    }
+    const cGeo = new THREE.BufferGeometry().setFromPoints(circlePoints);
+    reticleGroup.add(new THREE.Line(cGeo, rMat));
+
+    reticleGroup.visible = false;
+    this.reticle = reticleGroup;
+    this.sceneManager.scene.add(this.reticle);
   }
 
   updateTrajectory() {
-    this.trajectoryLine.visible = true;
-
     const cannon = this.cannons[this.currentTurn];
     const pos = cannon.getFirePosition();
     const dir = cannon.getFireDirection();
-    const vel = dir.clone().multiplyScalar(this.power);
-
-    const points = [];
     const g = Math.abs(this.gameMode.gravity);
-    const step = 0.05;
-    let px = pos.x, py = pos.y, pz = pos.z;
-    let vx = vel.x, vy = vel.y, vz = vel.z;
 
-    for (let i = 0; i < 120; i++) {
-      points.push(new THREE.Vector3(px, py, pz));
-      px += vx * step;
-      py += vy * step;
-      pz += vz * step;
-      vy -= g * step;
-      if (py < this.gameMode.outOfBoundsY) break;
+    if (g === 0) {
+      // Zero-G: show reticle while aiming (hides on fire via fire())
+      this.trajectoryLine.visible = false;
+      this.reticle.visible = true;
+
+      // Lerp reticle to aim point for smooth feel
+      const reticleDist = 40;
+      const target = pos.clone().add(dir.clone().multiplyScalar(reticleDist));
+      this.reticle.position.lerp(target, 0.15);
+      this.reticle.lookAt(this.sceneManager.camera.position);
+
+      // Gentle pulse
+      const pulse = 1.0 + 0.15 * Math.sin(performance.now() * 0.004);
+      this.reticle.scale.setScalar(pulse);
+    } else {
+      // Normal gravity: show trajectory arc
+      this.reticle.visible = false;
+      this.trajectoryLine.visible = true;
+
+      const vel = dir.clone().multiplyScalar(this.power);
+      const points = [];
+      const step = 0.05;
+      let px = pos.x, py = pos.y, pz = pos.z;
+      let vx = vel.x, vy = vel.y, vz = vel.z;
+
+      for (let i = 0; i < 120; i++) {
+        points.push(new THREE.Vector3(px, py, pz));
+        px += vx * step;
+        py += vy * step;
+        pz += vz * step;
+        vy -= g * step;
+        if (py < this.gameMode.outOfBoundsY) break;
+      }
+
+      this.trajectoryLine.geometry.dispose();
+      this.trajectoryLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+      this.trajectoryLine.computeLineDistances();
     }
-
-    this.trajectoryLine.geometry.dispose();
-    this.trajectoryLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
-    this.trajectoryLine.computeLineDistances();
   }
 
   // ── Firing ────────────────────────────────────────────────
@@ -112,6 +157,7 @@ export class BattleController {
     const power = this.power;
 
     this.trajectoryLine.visible = false;
+    this.reticle.visible = false;
     this._impactEmitted = false;
     this.settleTimer = 0;
     this.fireTime = performance.now();
@@ -125,9 +171,9 @@ export class BattleController {
       this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot, this.gameMode);
 
       if (this.gameMode.explosiveProjectile) {
-        this.projectile.body.addEventListener('collide', () => {
+        this.projectile.body.addEventListener('collide', (e) => {
           if (!this.projectile || !this.projectile.alive) return;
-          this._handleSpaceImpact();
+          this._handleSpaceImpact(e.body);
         });
       }
 
@@ -169,9 +215,9 @@ export class BattleController {
     this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, false, this.gameMode);
 
     if (!this.gameMode.hasGround) {
-      this.projectile.body.addEventListener('collide', () => {
+      this.projectile.body.addEventListener('collide', (e) => {
         if (!this.projectile || !this.projectile.alive) return;
-        this._handleSpaceImpact();
+        this._handleSpaceImpact(e.body);
       });
     }
 
@@ -271,13 +317,21 @@ export class BattleController {
 
   // ── Space Explosion ───────────────────────────────────────
 
-  _handleSpaceImpact() {
+  _handleSpaceImpact(hitBody) {
     if (!this.projectile || !this.projectile.alive) return;
 
     const impactPos = this.projectile.getPosition();
     const gm = this.gameMode;
-    const blastRadius = this._perfectShot ? (gm.perfectBlastRadius || 6) : (gm.blastRadius || 4);
-    const blastForce = this._perfectShot ? (gm.perfectBlastForce || 25) : (gm.blastForce || 12);
+
+    // Scale explosion by charge power (0.3 at min power, 1.0 at max)
+    const powerFrac = Math.max(0.3, (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER));
+
+    // Shields absorb most of the blast energy
+    const shieldDampen = hitBody?.isShield ? 0.2 : 1.0;
+    const baseRadius = this._perfectShot ? (gm.perfectBlastRadius || 6) : (gm.blastRadius || 4);
+    const baseForce = this._perfectShot ? (gm.perfectBlastForce || 25) : (gm.blastForce || 12);
+    const blastRadius = baseRadius * powerFrac * shieldDampen;
+    const blastForce = baseForce * powerFrac * shieldDampen;
 
     // Explosive impulse to nearby blocks
     for (const castle of this.castles) {
@@ -369,6 +423,15 @@ export class BattleController {
     const lookAt = camPos.clone().add(halfPitchDir.multiplyScalar(60));
 
     this.sceneManager.setCameraPosition(camPos, lookAt);
+
+    // Rock camera with the ship in water mode
+    if (this.physicsWorld.waterSurface && this.physicsWorld._shipWaveCache) {
+      const myCastleX = this.castles[this.currentTurn]?.centerX;
+      const wave = this.physicsWorld._shipWaveCache.get(myCastleX);
+      if (wave) {
+        this.sceneManager.camera.rotation.z = wave.roll * 0.5;
+      }
+    }
   }
 
   // ── Fallen Blocks ─────────────────────────────────────────
@@ -389,7 +452,7 @@ export class BattleController {
         }
 
         if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > boundsX || Math.abs(body.position.z) > boundsZ) {
-          castle.sceneManager.scene.remove(mesh);
+          if (mesh) castle.sceneManager.scene.remove(mesh);
           castle.physicsWorld.world.removeBody(body);
           const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
           if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
@@ -437,6 +500,7 @@ export class BattleController {
   reset() {
     this.destroyProjectile();
     this.trajectoryLine.visible = false;
+    this.reticle.visible = false;
     this.power = C.DEFAULT_POWER;
     this.charging = false;
     this.chargeTime = 0;

@@ -89,6 +89,9 @@ export class SceneManager {
       this.ground.geometry.dispose();
       this.ground.material.dispose();
       this.ground = null;
+      this._waterGeo = null;
+      this._waterBaseY = null;
+      this._waterTime = 0;
     }
 
     // Remove existing starfield
@@ -100,13 +103,31 @@ export class SceneManager {
     }
 
     if (config.hasGround) {
-      // Create ground plane
-      const geo = new THREE.PlaneGeometry(120, 120);
-      const mat = new THREE.MeshStandardMaterial({ color: config.groundColor });
-      this.ground = new THREE.Mesh(geo, mat);
-      this.ground.rotation.x = -Math.PI / 2;
-      this.ground.receiveShadow = true;
-      this.scene.add(this.ground);
+      if (config.waterSurface) {
+        // Animated water surface — semi-transparent blue with subtle vertex displacement
+        const geo = new THREE.PlaneGeometry(120, 120, 60, 60);
+        const mat = new THREE.MeshStandardMaterial({
+          color: config.groundColor,
+          transparent: true,
+          opacity: 0.55,
+          metalness: 0.3,
+          roughness: 0.3,
+        });
+        this.ground = new THREE.Mesh(geo, mat);
+        this.ground.rotation.x = -Math.PI / 2;
+        this.ground.position.y = -0.8; // water sits below deck, hull visible above
+        this.ground.receiveShadow = true;
+        this.scene.add(this.ground);
+        this._waterGeo = geo;
+        this._waterBaseY = geo.attributes.position.array.slice(); // store original positions
+      } else {
+        const geo = new THREE.PlaneGeometry(120, 120);
+        const mat = new THREE.MeshStandardMaterial({ color: config.groundColor });
+        this.ground = new THREE.Mesh(geo, mat);
+        this.ground.rotation.x = -Math.PI / 2;
+        this.ground.receiveShadow = true;
+        this.scene.add(this.ground);
+      }
     } else {
       // Create starfield
       const starCount = 2000;
@@ -186,6 +207,23 @@ export class SceneManager {
       this.camera.position.x += (Math.random() - 0.5) * intensity;
       this.camera.position.y += (Math.random() - 0.5) * intensity;
       this.camera.position.z += (Math.random() - 0.5) * intensity;
+    }
+
+    // Water surface animation
+    if (this._waterGeo && this._waterBaseY) {
+      this._waterTime = (this._waterTime || 0) + dt;
+      const pos = this._waterGeo.attributes.position;
+      const base = this._waterBaseY;
+      // PlaneGeometry with rotation -π/2 means Y attribute is world Z, Z attribute is world -Y
+      // We animate the Z attribute (which is vertical after rotation)
+      for (let i = 0; i < pos.count; i++) {
+        const x = base[i * 3];
+        const y = base[i * 3 + 1];
+        pos.array[i * 3 + 2] = base[i * 3 + 2] +
+          Math.sin(x * 0.15 + this._waterTime * 0.8) * 0.25 +
+          Math.cos(y * 0.12 + this._waterTime * 0.6) * 0.15;
+      }
+      pos.needsUpdate = true;
     }
   }
 

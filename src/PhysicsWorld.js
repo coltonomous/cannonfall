@@ -22,9 +22,14 @@ export class PhysicsWorld {
     this.world.defaultContactMaterial.friction = friction;
     this.world.defaultContactMaterial.restitution = restitution;
 
-    // Static ground plane at y=0 (only if mode has ground)
+    // Water mode: no solid ground, buoyancy + wave forces instead
+    this.waterSurface = !!config?.waterSurface;
+    this.waterLevel = 0;
+    this._waterTime = 0;
+
+    // Static ground plane at y=0 (only for non-water ground modes)
     this.groundBody = null;
-    if (config?.hasGround !== false) {
+    if (config?.hasGround !== false && !this.waterSurface) {
       this.groundBody = new CANNON.Body({
         type: CANNON.Body.STATIC,
         shape: new CANNON.Plane(),
@@ -36,6 +41,9 @@ export class PhysicsWorld {
 
     // Mesh-body pairs for syncing
     this.pairs = [];
+
+    // Kinematic floor bodies (for ship rocking in water mode)
+    this.kinematicFloors = []; // [{ body, basePos, castleCenterX }]
   }
 
   addPair(mesh, body) {
@@ -51,7 +59,57 @@ export class PhysicsWorld {
   }
 
   step(dt) {
+    if (this.waterSurface) this._applyWaterForces(dt);
     this.world.step(PHYSICS_STEP, dt, 3);
+  }
+
+  registerFloorBody(body, castleCenterX) {
+    body.type = CANNON.Body.KINEMATIC;
+    this.kinematicFloors.push({
+      body,
+      basePos: body.position.clone(),
+      castleCenterX,
+    });
+  }
+
+  _applyWaterForces(dt) {
+    this._waterTime += dt;
+    const t = this._waterTime;
+
+    // Rock kinematic floor bodies (ship hull rocking on waves)
+    for (const entry of this.kinematicFloors) {
+      const { body, basePos, castleCenterX } = entry;
+      // Gentle roll (rotation around Z-axis, perpendicular to facing direction)
+      const roll = Math.sin(t * 0.7 + castleCenterX * 0.1) * 0.015;
+      // Gentle pitch (rotation around X-axis)
+      const pitch = Math.sin(t * 0.5 + castleCenterX * 0.3) * 0.01;
+      // Heave (vertical bob)
+      const heave = Math.sin(t * 0.6 + castleCenterX * 0.2) * 0.08;
+
+      body.position.set(basePos.x, basePos.y + heave, basePos.z);
+      body.quaternion.setFromEuler(pitch, 0, roll);
+    }
+
+    // Buoyancy + wave forces on dynamic bodies
+    for (const { body } of this.pairs) {
+      if (body.mass === 0) continue;
+
+      const y = body.position.y;
+      if (y < this.waterLevel + 1) {
+        // Buoyancy: stronger the deeper the body is submerged
+        const submersion = Math.max(0, this.waterLevel + 1 - y);
+        const buoyancy = submersion * 12;
+        body.applyForce(new CANNON.Vec3(0, buoyancy, 0));
+
+        // Water drag: slow horizontal + vertical movement
+        body.velocity.x *= 0.98;
+        body.velocity.z *= 0.98;
+        body.velocity.y *= 0.95;
+
+        // Wake the body so it doesn't freeze mid-water
+        body.wakeUp();
+      }
+    }
   }
 
   sync() {
@@ -62,10 +120,11 @@ export class PhysicsWorld {
   }
 
   clear() {
-    // Remove all pairs and their bodies
     for (const { body } of this.pairs) {
       this.world.removeBody(body);
     }
     this.pairs = [];
+    this.kinematicFloors = [];
+    this._waterTime = 0;
   }
 }

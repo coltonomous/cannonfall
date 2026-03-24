@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES } from './constants.js';
-import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape } from './BlockGeometry.js';
+import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape, createWedgePhysicsShape } from './BlockGeometry.js';
 
 export class Castle {
   constructor(sceneManager, physicsWorld, centerX, color, gridConfig) {
@@ -43,6 +43,11 @@ export class Castle {
       HALF_BULLNOSE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
       RAMP: createRampPhysicsShape(),
       QUARTER_DOME: createQuarterDomePhysicsShape(),
+      PLANK: new CANNON.Box(new CANNON.Vec3(1.0, 0.125, 0.25)),
+      CYLINDER: new CANNON.Cylinder(0.5, 0.5, BLOCK_SIZE, 12),
+      WEDGE: createWedgePhysicsShape(),
+      LATTICE: new CANNON.Box(new CANNON.Vec3(0.5, 0.05, 0.5)),
+      BARREL: new CANNON.Cylinder(0.25, 0.25, 0.5, 8),
     };
 
     const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
@@ -86,6 +91,9 @@ export class Castle {
         this.physicsWorld.world.addBody(body);
         this.physicsWorld.addPair(mesh, body);
         this.blocks.push({ mesh, body });
+        if (this.physicsWorld.waterSurface) {
+          this.physicsWorld.registerFloorBody(body, this.centerX);
+        }
       }
     } else {
       // Default flat floor
@@ -113,6 +121,9 @@ export class Castle {
           this.physicsWorld.world.addBody(body);
           this.physicsWorld.addPair(mesh, body);
           this.blocks.push({ mesh, body });
+          if (this.physicsWorld.waterSurface) {
+            this.physicsWorld.registerFloorBody(body, this.centerX);
+          }
         }
       }
     }
@@ -124,7 +135,7 @@ export class Castle {
 
       const geo = geometries[block.type];
       const worldX = this.centerX + (block.x - halfW) * BLOCK_SIZE;
-      const yOffset = block.type === 'HALF_SLAB' ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
+      const yOffset = typeInfo.size[1] < BLOCK_SIZE ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
       const worldY = block.y * BLOCK_SIZE + yOffset + BLOCK_SIZE; // +BLOCK_SIZE for floor layer
       const worldZ = (block.z - halfD) * BLOCK_SIZE;
 
@@ -159,6 +170,7 @@ export class Castle {
       });
 
       // Apply same rotation to physics body
+      const rotY = (block.rotation || 0) * Math.PI / 2;
       body.quaternion.setFromEuler(0, rotY, 0);
 
       // Enable sleep for performance

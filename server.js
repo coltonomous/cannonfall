@@ -362,5 +362,5 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
-  console.log(`Cannonade server listening on port ${PORT}`);
+  console.log(`Cannonfall server listening on port ${PORT}`);
 });

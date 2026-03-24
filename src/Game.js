@@ -483,15 +483,17 @@ export class Game {
       this.battle.cleanupFallenBlocks();
     }
 
-    // Projectile tracking
+    // Projectile tracking (before firing block so state changes take effect)
     if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING) {
       this.battle.checkProjectile(dt);
+    }
 
+    // Follow projectile + skip/auto-advance (only if still in firing state)
+    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING) {
       if (this.battle.projectile?.alive) {
         this.battle.followProjectile();
       }
 
-      // Skip / auto-advance
       const elapsed = (performance.now() - this.battle.fireTime) / 1000;
       if (elapsed > 2 && this.state === State.FIRING) {
         this.ui.setStatus('Press Space to skip');
@@ -501,7 +503,7 @@ export class Game {
           this.onShotMiss();
         }
       }
-      if (elapsed > 6) {
+      if (elapsed > 6 && (this.state === State.FIRING || this.state === State.OPPONENT_FIRING)) {
         this.battle.destroyProjectile();
         this.onShotMiss();
       }
@@ -552,7 +554,7 @@ export class Game {
 
   debugLog(...args) {
     if (this.debugLogsEnabled) {
-      console.log('[Cannonade]', ...args);
+      console.log('[Cannonfall]', ...args);
       this.addDebugOverlay(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
     }
   }

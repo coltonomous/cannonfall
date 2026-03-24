@@ -1,4 +1,5 @@
 import { getSpacePreset } from './SpacePresets.js';
+import { getPiratePreset } from './PiratePresets.js';
 import {
   fillRect, fillRowX, fillRowZ, fillPerimeter, fillPerimeterLayers,
   fillTower, fillCrenellations, place, placeMany, fillHull,
@@ -6,6 +7,7 @@ import {
 
 export function getPreset(name, mode = 'castle') {
   if (mode === 'space') return getSpacePreset(name);
+  if (mode === 'pirate') return getPiratePreset(name);
   switch (name) {
     case 'KEEP': return keepPreset();
     case 'BUNKER': return bunkerPreset();
@@ -107,16 +109,18 @@ function towerPreset() {
   place(L, 4, 3, 4, 'HALF_SLAB');
 
   // Outer wall ring (3 layers, with arched openings)
+  // Walls at constant z run along X: thin in Z → rot=0
+  // Walls at constant x run along Z: thin in X → rot=1
   for (let y = 0; y < 3; y++) {
     for (let x = 1; x <= 7; x++) {
       if (x === 4 && y < 2) continue;
-      place(L, x, y, 1, 'WALL', 1);
-      place(L, x, y, 7, 'WALL', 1);
+      place(L, x, y, 1, 'WALL', 0);
+      place(L, x, y, 7, 'WALL', 0);
     }
     for (let z = 2; z <= 6; z++) {
       if (z === 4 && y < 2) continue;
-      place(L, 1, y, z, 'WALL', 0);
-      place(L, 7, y, z, 'WALL', 0);
+      place(L, 1, y, z, 'WALL', 1);
+      place(L, 7, y, z, 'WALL', 1);
     }
   }
 

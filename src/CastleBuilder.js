@@ -77,7 +77,7 @@ export class CastleBuilder {
     // Floor base — only for ground-based modes (castle). Space mode has no floor.
     const halfW = Math.floor(this.gridW / 2);
     const halfD = Math.floor(this.gridD / 2);
-    const showFloor = this.modeConfig?.hasGround !== false;
+    const showFloor = this.modeConfig?.hasGround !== false && !this.modeConfig?.waterSurface;
 
     if (showFloor) {
       const floorGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
@@ -216,6 +216,11 @@ export class CastleBuilder {
             { type: 'HALF_ARCH', icon: '⌒', label: 'Arch' },
             { type: 'BULLNOSE', icon: '⬬', label: 'Bullnose' },
             { type: 'HALF_BULLNOSE', icon: '⬭', label: '½ Bull' },
+            { type: 'PLANK', icon: '═', label: 'Plank' },
+            { type: 'CYLINDER', icon: '○', label: 'Cylinder' },
+            { type: 'WEDGE', icon: '◣', label: 'Wedge' },
+            { type: 'LATTICE', icon: '▦', label: 'Lattice' },
+            { type: 'BARREL', icon: '◎', label: 'Barrel' },
             { type: 'THRUSTER', icon: '⊳', label: 'Thruster' },
             { type: 'SHIELD', icon: '◇', label: 'Shield' },
           ].filter(b => !(this.modeConfig?.excludeBlocks || []).includes(b.type))
@@ -251,6 +256,7 @@ export class CastleBuilder {
           <p>R: Rotate</p>
           <p>Click: Place</p>
           <p>Right-click: Remove</p>
+          <p>Shift+click: Pick block</p>
           <p>Mouse drag: Orbit</p>
           <p>Scroll: Zoom</p>
         </div>
@@ -312,6 +318,13 @@ export class CastleBuilder {
             ).join('')}
           </select>
         </div>
+        <button id="builder-export-btn" style="
+          padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
+          border: none; border-radius: 8px; cursor: pointer;
+          background: rgba(52, 152, 219, 0.8); color: #fff;
+          transition: background 0.2s;
+          pointer-events: auto;
+        ">Export</button>
         <button id="builder-clear-btn" style="
           padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
           border: none; border-radius: 8px; cursor: pointer;
@@ -378,6 +391,21 @@ export class CastleBuilder {
         this.loadPreset(e.target.value);
         e.target.value = '';
       }
+    });
+
+    document.getElementById('builder-export-btn').addEventListener('click', () => {
+      const data = {
+        layout: this.layout,
+        target: this.targetPos,
+        cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
+        floor: this.customFloor || [],
+      };
+      const json = JSON.stringify(data, null, 2);
+      console.log('=== BUILD EXPORT ===\n' + json);
+      navigator.clipboard.writeText(json).then(
+        () => { document.getElementById('builder-export-btn').textContent = 'Copied!'; setTimeout(() => { document.getElementById('builder-export-btn').textContent = 'Export'; }, 1500); },
+        () => { /* clipboard failed, console output is enough */ }
+      );
     });
 
     document.getElementById('builder-clear-btn').addEventListener('click', () => {
@@ -562,7 +590,7 @@ export class CastleBuilder {
       }
 
       const mesh = new THREE.Mesh(geo, mat);
-      const yOffset = block.type === 'HALF_SLAB' ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
+      const yOffset = typeInfo.size[1] < BLOCK_SIZE ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
       mesh.position.set(
         (block.x - halfW) * BLOCK_SIZE,
         block.y * BLOCK_SIZE + yOffset,
@@ -607,6 +635,7 @@ export class CastleBuilder {
     const canvas = this.renderer.domElement;
     this.orbit.setupListeners(canvas);
     canvas.addEventListener('click', this._onClick);
+    canvas.addEventListener('auxclick', this._onClick); // middle-click
     canvas.addEventListener('contextmenu', this._onContextMenu);
     window.addEventListener('keydown', this._onKeyDown);
   }
@@ -615,6 +644,7 @@ export class CastleBuilder {
     const canvas = this.renderer.domElement;
     this.orbit.removeListeners(canvas);
     canvas.removeEventListener('click', this._onClick);
+    canvas.removeEventListener('auxclick', this._onClick);
     canvas.removeEventListener('contextmenu', this._onContextMenu);
     window.removeEventListener('keydown', this._onKeyDown);
   }
@@ -644,7 +674,7 @@ export class CastleBuilder {
     const halfW = Math.floor(this.gridW / 2);
     const halfD = Math.floor(this.gridD / 2);
     const typeInfo = BLOCK_TYPES[this.selectedType];
-    const yOffset = this.selectedType === 'HALF_SLAB' ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
+    const yOffset = typeInfo.size[1] < BLOCK_SIZE ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
 
     this.ghostMesh.position.set(
       (gridPos.x - halfW) * BLOCK_SIZE,
@@ -660,13 +690,18 @@ export class CastleBuilder {
   }
 
   _handleClick(e) {
-    if (e.button !== 0) return;
-
-    // Check if this was a drag (not a click)
+    if (e.button !== 0 && e.button !== 1) return;
     if (this.orbit.wasDrag(e)) return;
 
     const gridPos = this._getHoveredGridPos(e);
     if (!gridPos) return;
+
+    // Middle-click or shift+click: pick block type from existing block
+    if (e.button === 1 || e.shiftKey) {
+      e.preventDefault();
+      this._pickBlock(gridPos.x, this.currentLayer, gridPos.z);
+      return;
+    }
 
     if (this.placingTarget) {
       this.placeTarget(gridPos.x, gridPos.z);
@@ -674,6 +709,42 @@ export class CastleBuilder {
     }
 
     this.placeBlock(gridPos.x, this.currentLayer, gridPos.z);
+  }
+
+  _pickBlock(x, y, z) {
+    // Find the topmost block at this x,z — check current layer first, then search downward
+    let block = this.layout.find(b => b.x === x && b.y === y && b.z === z);
+    if (!block) {
+      // Search all layers, pick highest
+      const candidates = this.layout.filter(b => b.x === x && b.z === z);
+      if (candidates.length > 0) {
+        block = candidates.reduce((a, b) => a.y > b.y ? a : b);
+      }
+    }
+    if (!block) return;
+
+    this.selectedType = block.type;
+    this.selectedRotation = block.rotation || 0;
+    this.placingTarget = false;
+
+    // Update UI selection
+    const allBtns = document.querySelectorAll('#castle-builder-ui .block-btn[data-type]');
+    const targetBtn = document.getElementById('builder-target-btn');
+    allBtns.forEach(b => {
+      b.style.background = 'rgba(255,255,255,0.06)';
+      b.style.borderColor = 'rgba(255,255,255,0.15)';
+    });
+    if (targetBtn) {
+      targetBtn.style.background = 'rgba(255,255,255,0.06)';
+      targetBtn.style.borderColor = 'rgba(255,255,255,0.15)';
+    }
+    const match = document.querySelector(`#castle-builder-ui .block-btn[data-type="${block.type}"]`);
+    if (match) {
+      match.style.background = 'rgba(255,255,255,0.2)';
+      match.style.borderColor = '#e67e22';
+    }
+
+    this.updateGhostGeometry();
   }
 
   _handleContextMenu(e) {

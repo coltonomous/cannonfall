@@ -49,6 +49,12 @@ export const BLOCK_TYPES = {
   SHIELD:      { cost: 1, size: [1, 1, 0.5], mass: 0.3,
     material: { color: 0x4488ff, transparent: true, opacity: 0.35,
       emissive: 0x2244aa, emissiveIntensity: 0.3 }},
+  PLANK:       { cost: 1, size: [2, 0.25, 0.5] },
+  CYLINDER:    { cost: 3, size: [1, 1, 1] },
+  WEDGE:       { cost: 2, size: [1, 1, 1] },
+  LATTICE:     { cost: 1, size: [1, 0.1, 1], mass: 0.2,
+    material: { color: 0x887766, transparent: true, opacity: 0.5 }},
+  BARREL:      { cost: 1, size: [0.5, 0.5, 0.5] },
 };
 
 // ── HP ────────────────────────────────────────────────

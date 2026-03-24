@@ -39,8 +39,11 @@ function corvettePreset() {
   placeMany(L, [[2,1,0,'THRUSTER',0,3], [3,1,0,'THRUSTER',0,3], [4,1,0,'THRUSTER',0,3]]);
   place(L, 3, 1, 1, 'CUBE');
 
-  // Fuselage spine (y=1)
-  for (let z = 2; z <= 10; z++) placeMany(L, [[2,1,z,'RAMP',2], [3,1,z,'CUBE'], [4,1,z,'RAMP',0]]);
+  // Fuselage spine (y=1) — skip target position at z=6
+  for (let z = 2; z <= 10; z++) {
+    placeMany(L, [[2,1,z,'RAMP',2], [4,1,z,'RAMP',0]]);
+    if (z !== 6) place(L, 3, 1, z, 'CUBE');
+  }
   placeMany(L, [[3,1,11,'CUBE'], [3,1,12,'HALF_SLAB']]);
 
   // y=2: Dorsal ridge
@@ -71,8 +74,10 @@ function frigatePreset() {
   const L = [];
   fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
 
-  // y=1: Main deck with ramp edges
+  // y=1: Main deck with ramp edges — remove block at target position
   fillTaperedDeck(L, hullRows, 1, 'z');
+  const tIdx = L.findIndex(b => b.x === 3 && b.y === 1 && b.z === 5);
+  if (tIdx >= 0) L.splice(tIdx, 1);
   place(L, 3, 1, 12, 'HALF_SLAB');
 
   // y=2: Upper hull + dorsal ridge
@@ -115,8 +120,10 @@ function cruiserPreset() {
   const L = [];
   fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
 
-  // y=1: Main deck
+  // y=1: Main deck — remove block at target position
   fillTaperedDeck(L, hullRows, 1, 'z');
+  const cIdx = L.findIndex(b => b.x === 3 && b.y === 1 && b.z === 6);
+  if (cIdx >= 0) L.splice(cIdx, 1);
 
   // y=2: Upper hull + dorsal ridge
   const upper = [

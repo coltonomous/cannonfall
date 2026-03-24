@@ -9,7 +9,7 @@ function presetCost(layout) {
   return layout.reduce((sum, b) => sum + (BLOCK_TYPES[b.type]?.cost || 0), 0);
 }
 
-function validatePreset(preset, name, skipOverlapCheck = false) {
+function validatePreset(preset, name) {
   describe(name, () => {
     it('should have a layout array', () => {
       expect(Array.isArray(preset.layout)).toBe(true);
@@ -35,7 +35,7 @@ function validatePreset(preset, name, skipOverlapCheck = false) {
       }
     });
 
-    it.skipIf(skipOverlapCheck)('target should not be fully enclosed by a full cube', () => {
+    it('target should not be fully enclosed by a full cube', () => {
       const t = preset.target;
       const overlap = preset.layout.find(
         b => b.x === t.x && b.y === t.y && b.z === t.z && b.type === 'CUBE'
@@ -73,11 +73,9 @@ describe('Pirate Presets', () => {
 });
 
 describe('Space Presets', () => {
-  // TODO: space ship targets overlap with hull cubes — fix preset layouts
-  const SKIP_OVERLAP_CHECK = ['CORVETTE', 'FRIGATE', 'CRUISER'];
   for (const name of GAME_MODES.SPACE.presets) {
     const preset = getSpacePreset(name);
-    validatePreset(preset, name, SKIP_OVERLAP_CHECK.includes(name));
+    validatePreset(preset, name);
 
     it(`${name} should be within space budget`, () => {
       expect(presetCost(preset.layout)).toBeLessThanOrEqual(GAME_MODES.SPACE.budget);

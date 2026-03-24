@@ -271,18 +271,19 @@ export class Game {
     this.castles[0] = new Castle(
       this.sceneManager,
       this.physicsWorld,
-      -(this.gameMode.castleOffsetX || (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X)),
+      -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
       this.gameMode.player0Color,
-      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth }
+      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping }
     );
-    this.castles[0].buildFromLayout(data0.layout, data0.target, data0.floor);
+    const mirror = !!this.gameMode.mirrorZ;
+    this.castles[0].buildFromLayout(data0.layout, data0.target, data0.floor, mirror);
 
     this.castles[1] = new Castle(
       this.sceneManager,
       this.physicsWorld,
       (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
       this.gameMode.player1Color,
-      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth }
+      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping }
     );
     this.castles[1].buildFromLayout(data1.layout, data1.target, data1.floor);
 
@@ -364,7 +365,7 @@ export class Game {
     this.ui.updatePower(C.MIN_POWER, C.MIN_POWER, C.MAX_POWER);
     this.ui.setStatus('');
 
-    const myCastleX = this.currentTurn === 0 ? -(this.gameMode.castleOffsetX || (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X)) : (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X);
+    const myCastleX = this.currentTurn === 0 ? -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X) : (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X);
     this.sceneManager.setupMinimap(myCastleX);
 
     if (this.state === State.MY_TURN) {
@@ -509,6 +510,7 @@ export class Game {
       }
     }
 
+    this.battle.updateThrusters();
     this.particles.update(dt);
     this.sceneManager.updateCamera(dt);
     this.sceneManager.render();

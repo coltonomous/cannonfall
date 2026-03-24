@@ -301,13 +301,36 @@ export class BattleController {
       }
     }
 
+    // Explosion effect — big radial burst + flash
+    const isPerfect = this._perfectShot;
+    const shakeIntensity = isPerfect ? 1.5 : 1.0;
+    const shakeDuration = isPerfect ? 0.8 : 0.6;
+    const particleCount = isPerfect ? 100 : 60;
+    const burstSpeed = isPerfect ? 15 : 10;
+
+    // Radial burst — particles fly outward in all directions
+    for (let i = 0; i < particleCount; i++) {
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      const speed = burstSpeed * (0.3 + Math.random() * 0.7);
+      const vel = {
+        x: Math.sin(phi) * Math.cos(theta) * speed,
+        y: Math.sin(phi) * Math.sin(theta) * speed,
+        z: Math.cos(phi) * speed,
+      };
+      this.particles.emit(impactPos, vel, 1.5,
+        this.gameMode.impactColor, 1, 1.0 + Math.random() * 0.5, { noGravity: true });
+    }
+    // Core flash — bright hot center
+    this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 3,
+      { r: 1, g: 0.9, b: 0.6 }, 20, 0.3, { noGravity: true });
+
+    this.sceneManager.shake(shakeIntensity, shakeDuration);
+
     // Check target hit
     const targetCastle = this.castles[1 - this.currentTurn];
     const targetPos = targetCastle.getTargetPosition();
     if (targetPos && impactPos.distanceTo(targetPos) < 2.0) {
-      this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 12,
-        this.gameMode.impactColor, 60, 1.2);
-      this.sceneManager.shake(0.8, 0.5);
       this.projectile.destroy();
       this.projectile = null;
 
@@ -319,11 +342,6 @@ export class BattleController {
       }
       return;
     }
-
-    // Miss explosion
-    this.particles.emit(impactPos, { x: 0, y: 0, z: 0 }, 10,
-      this.gameMode.impactColor, 40, 1.0);
-    this.sceneManager.shake(0.5, 0.3);
 
     this.projectile.destroy();
     this.projectile = null;
@@ -377,6 +395,32 @@ export class BattleController {
           if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
           castle.blocks.splice(i, 1);
         }
+      }
+    }
+  }
+
+  // ── Thruster Exhaust ────────────────────────────────────
+
+  updateThrusters() {
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (const thruster of castle.thrusters) {
+        // Only emit if the thruster block is still alive (body in world)
+        if (!thruster.body.world) continue;
+
+        // Emit position: block center + offset along exhaust direction
+        const pos = thruster.mesh.position.clone()
+          .add(thruster.exhaustDir.clone().multiplyScalar(0.4));
+
+        // Emit a small puff along the exhaust direction
+        const vel = {
+          x: thruster.exhaustDir.x * 8,
+          y: thruster.exhaustDir.y * 8,
+          z: thruster.exhaustDir.z * 8,
+        };
+
+        this.particles.emit(pos, vel, 2.5,
+          this.gameMode.muzzleColor, 2, 0.6, { noGravity: true });
       }
     }
   }

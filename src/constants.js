@@ -44,7 +44,7 @@ export const BLOCK_TYPES = {
   QUARTER_DOME:{ cost: 1, size: [1, 1, 1] },          // vol ~0.13
   BULLNOSE:    { cost: 3, size: [1, 1, 1] },          // vol ~0.85
   HALF_BULLNOSE:{ cost: 2, size: [1, 1, 1] },         // vol ~0.75
-  THRUSTER:    { cost: 1, size: [1, 0.5, 0.5], rotZ: Math.PI / 2 }, // vol ~0.15
+  THRUSTER:    { cost: 1, size: [0.5, 0.5, 0.5] }, // vol ~0.15
   SHIELD:      { cost: 1, size: [1, 1, 0.5], mass: 0.3,             // vol 0.5, fragile
     material: { color: 0x4488ff, transparent: true, opacity: 0.35,
       emissive: 0x2244aa, emissiveIntensity: 0.3 }},

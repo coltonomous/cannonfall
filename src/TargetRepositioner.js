@@ -40,6 +40,7 @@ export class TargetRepositioner {
     this.centerX = castle.centerX;
     this.castleGridW = castle.gridWidth || 9;
     this.castleGridD = castle.gridDepth || 9;
+    this._floorOffset = castle._floorOffset || 0;
     this.targetPos = { x: Math.floor(this.castleGridW / 2), y: 0, z: Math.floor(this.castleGridD / 2) };
 
     this.orbit.orbitCenter.set(this.centerX, 2, 0);
@@ -61,7 +62,7 @@ export class TargetRepositioner {
       })
     );
     this.gridPlane.rotation.x = -Math.PI / 2;
-    this.gridPlane.position.set(this.centerX, BLOCK_SIZE + 0.5, 0);
+    this.gridPlane.position.set(this.centerX, this._floorOffset + 0.5, 0);
     this.group.add(this.gridPlane);
 
     // Ghost target preview
@@ -85,7 +86,7 @@ export class TargetRepositioner {
       gridGeo,
       new THREE.LineBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.5 })
     );
-    gridLine.position.set(this.centerX, BLOCK_SIZE + 0.5, 0);
+    gridLine.position.set(this.centerX, this._floorOffset + 0.5, 0);
     this.group.add(gridLine);
 
     this.setupEventListeners();
@@ -183,7 +184,7 @@ export class TargetRepositioner {
     if (label) label.textContent = `Layer ${layer + 1}`;
 
     // Update raycast plane height
-    this.gridPlane.position.y = BLOCK_SIZE + layer * BLOCK_SIZE + 0.5;
+    this.gridPlane.position.y = this._floorOffset + layer * BLOCK_SIZE + 0.5;
 
     this.applyLayerTransparency();
   }
@@ -191,7 +192,7 @@ export class TargetRepositioner {
   applyLayerTransparency() {
     if (!this.castle) return;
     // Blocks above the current layer go transparent so you can see inside
-    const layerWorldY = BLOCK_SIZE + this.currentLayer * BLOCK_SIZE;
+    const layerWorldY = this._floorOffset + this.currentLayer * BLOCK_SIZE;
     for (const { mesh } of this.castle.blocks) {
       const blockBottom = mesh.position.y - 0.5;
       if (blockBottom > layerWorldY + 0.5) {
@@ -239,7 +240,7 @@ export class TargetRepositioner {
 
   getHitY(point) {
     // Returns the Y position to place the target — on top of whatever was hit
-    return Math.max(BLOCK_SIZE + 0.5, point.y + 0.5);
+    return Math.max(this._floorOffset + 0.5, point.y + 0.5);
   }
 
   // === EVENT HANDLERS ===
@@ -267,7 +268,7 @@ export class TargetRepositioner {
     // Raycast against castle blocks at or below current layer only.
     // Blocks above the layer are transparent and shouldn't intercept clicks.
     if (this.castle) {
-      const layerWorldY = BLOCK_SIZE + this.currentLayer * BLOCK_SIZE + BLOCK_SIZE;
+      const layerWorldY = this._floorOffset + this.currentLayer * BLOCK_SIZE + BLOCK_SIZE;
       const visibleMeshes = this.castle.blocks
         .filter(b => b.mesh.position.y <= layerWorldY)
         .map(b => b.mesh);
@@ -286,7 +287,7 @@ export class TargetRepositioner {
     const hits = this.orbit.raycaster.intersectObject(this.gridPlane);
     if (hits.length === 0) return null;
     const gridPos = this.getGridPos(hits[0].point);
-    if (gridPos) gridPos.hitY = BLOCK_SIZE + 0.5; // floor level
+    if (gridPos) gridPos.hitY = this._floorOffset + 0.5;
     return gridPos;
   }
 
@@ -300,7 +301,7 @@ export class TargetRepositioner {
 
     const halfW = Math.floor(this.castleGridW / 2);
     const halfD = Math.floor(this.castleGridD / 2);
-    const hitY = gridPos.hitY || (BLOCK_SIZE + 0.5);
+    const hitY = gridPos.hitY || (this._floorOffset + 0.5);
     this.ghostTarget.position.set(
       this.centerX + (gridPos.x - halfW) * BLOCK_SIZE,
       hitY,
@@ -317,7 +318,7 @@ export class TargetRepositioner {
     if (!gridPos) return;
 
     // Compute target Y: use hit surface position, convert to grid layer
-    const hitY = gridPos.hitY || (BLOCK_SIZE + 0.5);
+    const hitY = gridPos.hitY || (this._floorOffset + 0.5);
     const gridY = Math.max(0, Math.round((hitY - BLOCK_SIZE - 0.5) / BLOCK_SIZE));
     this.targetPos = { x: gridPos.x, y: gridY, z: gridPos.z };
 

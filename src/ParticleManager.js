@@ -9,6 +9,7 @@ export class ParticleManager {
     this.velocities = new Float32Array(maxParticles * 3);
     this.colors = new Float32Array(maxParticles * 3);
     this.lives = new Float32Array(maxParticles);
+    this.noGravity = new Uint8Array(maxParticles);
 
     const geo = new THREE.BufferGeometry();
     geo.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
@@ -30,7 +31,7 @@ export class ParticleManager {
   }
 
   // pos: THREE.Vector3, vel: {x,y,z}, spread: number, color: {r,g,b} (0-1), count: int, life: seconds
-  emit(pos, vel, spread, color, count, life) {
+  emit(pos, vel, spread, color, count, life, options) {
     for (let i = 0; i < count; i++) {
       if (this.count >= this.maxParticles) return;
       const idx = this.count++;
@@ -49,6 +50,7 @@ export class ParticleManager {
       this.colors[i3 + 2] = Math.min(1, Math.max(0, color.b + (Math.random() - 0.5) * 0.15));
 
       this.lives[idx] = life * (0.5 + Math.random());
+      this.noGravity[idx] = options?.noGravity ? 1 : 0;
     }
   }
 
@@ -66,8 +68,10 @@ export class ParticleManager {
       this.positions[i3 + 1] += this.velocities[i3 + 1] * dt;
       this.positions[i3 + 2] += this.velocities[i3 + 2] * dt;
 
-      // Gravity
-      this.velocities[i3 + 1] -= 6 * dt;
+      // Gravity (skip for noGravity particles)
+      if (!this.noGravity[i]) {
+        this.velocities[i3 + 1] -= 6 * dt;
+      }
 
       // Drag
       this.velocities[i3]     *= 0.995;
@@ -86,6 +90,7 @@ export class ParticleManager {
         this.colors[w3 + 1] = this.colors[i3 + 1];
         this.colors[w3 + 2] = this.colors[i3 + 2];
         this.lives[write] = this.lives[i];
+        this.noGravity[write] = this.noGravity[i];
       }
       write++;
     }

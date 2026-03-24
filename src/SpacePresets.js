@@ -1,5 +1,5 @@
 import {
-  fillRowX, fillRowZ, fillHull, fillTaperedDeck,
+  fillRowX, fillHull, fillTaperedDeck,
   place, placeMany,
 } from './PresetHelpers.js';
 
@@ -36,7 +36,7 @@ function corvettePreset() {
   // y=1: Engine section
   fillRowX(L, 1, 5, 1, 1, 'HALF_SLAB');
   fillRowX(L, 2, 4, 0, 1, 'HALF_SLAB');
-  placeMany(L, [[2,1,0,'THRUSTER',1], [3,1,0,'THRUSTER',1], [4,1,0,'THRUSTER',1]]);
+  placeMany(L, [[2,1,0,'THRUSTER',0,3], [3,1,0,'THRUSTER',0,3], [4,1,0,'THRUSTER',0,3]]);
   place(L, 3, 1, 1, 'CUBE');
 
   // Fuselage spine (y=1)
@@ -95,7 +95,7 @@ function frigatePreset() {
 
   // Thrusters + details
   placeMany(L, [
-    [0,1,0,'THRUSTER',1], [2,1,0,'THRUSTER',1], [4,1,0,'THRUSTER',1], [6,1,0,'THRUSTER',1],
+    [0,1,0,'THRUSTER',0,3], [2,1,0,'THRUSTER',0,3], [4,1,0,'THRUSTER',0,3], [6,1,0,'THRUSTER',0,3],
     [1,2,6,'COLUMN'], [5,2,6,'COLUMN'],
     [2,1,11,'SHIELD',1], [4,1,11,'SHIELD',1], [2,1,12,'SHIELD',1], [4,1,12,'SHIELD',1],
   ]);
@@ -149,8 +149,8 @@ function cruiserPreset() {
 
   // Thrusters + turrets
   placeMany(L, [
-    [2,2,0,'THRUSTER',1], [3,2,0,'THRUSTER',1], [4,2,0,'THRUSTER',1],
-    [0,2,6,'THRUSTER',0], [6,2,6,'THRUSTER',2],
+    [2,2,0,'THRUSTER',0,3], [3,2,0,'THRUSTER',0,3], [4,2,0,'THRUSTER',0,3],
+    [0,2,6,'THRUSTER',0,3], [6,2,6,'THRUSTER',0,3],
   ]);
 
   return { layout: L, target: { x: 3, y: 1, z: 6 }, cannonPos: { x: 6, z: 6 }, floor: [] };

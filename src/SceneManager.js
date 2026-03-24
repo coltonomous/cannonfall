@@ -115,7 +115,7 @@ export class SceneManager {
         });
         this.ground = new THREE.Mesh(geo, mat);
         this.ground.rotation.x = -Math.PI / 2;
-        this.ground.position.y = -0.8; // water sits below deck, hull visible above
+        this.ground.position.y = -0.15; // water sits just below deck surface
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
         this._waterGeo = geo;
@@ -226,6 +226,12 @@ export class SceneManager {
           Math.sin(x * 0.08 + y * 0.06 + this._waterTime * 0.4) * 0.15;
       }
       pos.needsUpdate = true;
+    }
+
+    // Slowly rotate starfield
+    if (this.starfield) {
+      this.starfield.rotation.y += dt * 0.025;
+      this.starfield.rotation.x += dt * 0.008;
     }
   }
 

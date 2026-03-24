@@ -85,9 +85,12 @@ export const GAME_MODES = {
     dirPosition: [-8, 15, 12],
 
     gravity: -9.82,
-    friction: 0.4,
-    restitution: 0.4,
+    friction: 0.8,
+    restitution: 0.1,
     explosiveProjectile: false,
+    blockMassMultiplier: 5,
+    blockDamping: 0.5,
+    cannonballMass: 2,
 
     player0Color: 0x8b6340,
     player1Color: 0x6b4226,
@@ -113,6 +116,7 @@ export const GAME_MODES = {
 
     outOfBoundsY: -5,
     castleOffsetX: 16,
+    mirrorZ: true,
     gridWidth: 7,
     gridDepth: 11,
     budget: 500,
@@ -140,10 +144,11 @@ export const GAME_MODES = {
     friction: 0.9,
     restitution: 0.05,
     explosiveProjectile: true,
+    mirrorZ: true,
     debrisField: true,
 
-    player0Color: 0x2266aa,
-    player1Color: 0xaa3344,
+    player0Color: 0x4488cc,
+    player1Color: 0xcc5566,
     floorColor: 0x334455,
 
     cannonBaseColor: 0x224466,

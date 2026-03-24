@@ -11,7 +11,10 @@ export class Castle {
     this.color = new THREE.Color(color);
     this.gridWidth = gridConfig?.gridWidth || 9;
     this.gridDepth = gridConfig?.gridDepth || 9;
+    this.blockMassMultiplier = gridConfig?.blockMassMultiplier || 1;
+    this.blockDamping = gridConfig?.blockDamping || 0.01;
     this.blocks = []; // { mesh, body }
+    this.thrusters = []; // { mesh, exhaustDir: THREE.Vector3 }
     this.target = null; // THREE.Mesh
     this.targetBody = null; // CANNON.Body
   }
@@ -20,9 +23,10 @@ export class Castle {
   // and a targetPosition: { x, y, z }
   // x, z are grid coords, y is layer index
   // Grid origin is the castle center
-  buildFromLayout(layout, targetPosition, customFloor) {
+  buildFromLayout(layout, targetPosition, customFloor, mirrorZ = false) {
     this.clear();
     this.layoutData = layout;
+    this.mirrorZ = mirrorZ;
 
     const halfW = Math.floor(this.gridWidth / 2);
     const halfD = Math.floor(this.gridDepth / 2);
@@ -50,31 +54,41 @@ export class Castle {
 
     const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
 
-    // Build floor layer (static)
-    if (customFloor && customFloor.length > 0) {
-      // Custom shaped floor — uses block types for hull contouring
+    // Build floor layer (static) — skip for water/space modes with no custom floor
+    const hasCustomFloor = customFloor && customFloor.length > 0;
+    const needsDefaultFloor = !this.physicsWorld.waterSurface && !hasCustomFloor;
+    this._floorOffset = needsDefaultFloor ? BLOCK_SIZE : 0;
+
+    if (hasCustomFloor) {
+      // Custom shaped floor — physics-only for water modes, visible for others
+      const hideFloor = this.physicsWorld.waterSurface;
       for (const fb of customFloor) {
-        const geo = geometries[fb.type] || geometries.CUBE;
+        const fbz = mirrorZ ? (this.gridDepth - 1 - fb.z) : fb.z;
         const worldX = this.centerX + (fb.x - halfW) * BLOCK_SIZE;
         const worldY = BLOCK_SIZE / 2 + (fb.yOffset || 0) * BLOCK_SIZE;
-        const worldZ = (fb.z - halfD) * BLOCK_SIZE;
+        const worldZ = (fbz - halfD) * BLOCK_SIZE;
 
-        const mat = baseMat.clone();
-        mat.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
-
-        const mesh = new THREE.Mesh(geo, mat);
-        mesh.position.set(worldX, worldY, worldZ);
-        mesh.rotation.y = (fb.rotation || 0) * Math.PI / 2;
-        // Flip upside down for ventral hull contouring
-        if (fb.flip) {
-          mesh.rotation.x = Math.PI;
+        let fbRotY = fb.rotation || 0;
+        if (mirrorZ) {
+          if (fbRotY === 1) fbRotY = 3;
+          else if (fbRotY === 3) fbRotY = 1;
         }
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        this.sceneManager.scene.add(mesh);
+
+        let mesh = null;
+        if (!hideFloor) {
+          const geo = geometries[fb.type] || geometries.CUBE;
+          const mat = baseMat.clone();
+          mat.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.08);
+          mesh = new THREE.Mesh(geo, mat);
+          mesh.position.set(worldX, worldY, worldZ);
+          mesh.rotation.y = fbRotY * Math.PI / 2;
+          if (fb.flip) mesh.rotation.x = Math.PI;
+          mesh.castShadow = true;
+          mesh.receiveShadow = true;
+          this.sceneManager.scene.add(mesh);
+        }
 
         const shape = shapes[fb.type] || shapes.CUBE;
-
         const body = new CANNON.Body({
           mass: 0,
           shape: shape,
@@ -83,18 +97,18 @@ export class Castle {
         });
         body.quaternion.setFromEuler(
           fb.flip ? Math.PI : 0,
-          (fb.rotation || 0) * Math.PI / 2,
+          fbRotY * Math.PI / 2,
           0
         );
         this.physicsWorld.world.addBody(body);
-        this.physicsWorld.addPair(mesh, body);
+        if (mesh) this.physicsWorld.addPair(mesh, body);
         this.blocks.push({ mesh, body });
         if (this.physicsWorld.waterSurface) {
           this.physicsWorld.registerFloorBody(body, this.centerX);
         }
       }
-    } else {
-      // Default flat floor
+    } else if (needsDefaultFloor) {
+      // Default flat floor (castle mode only)
       for (let gx = 0; gx < this.gridWidth; gx++) {
         for (let gz = 0; gz < this.gridDepth; gz++) {
           const worldX = this.centerX + (gx - halfW) * BLOCK_SIZE;
@@ -132,10 +146,11 @@ export class Castle {
       if (!typeInfo) continue;
 
       const geo = geometries[block.type];
+      const bz = mirrorZ ? (this.gridDepth - 1 - block.z) : block.z;
       const worldX = this.centerX + (block.x - halfW) * BLOCK_SIZE;
       const yOffset = typeInfo.size[1] < BLOCK_SIZE ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
-      const worldY = block.y * BLOCK_SIZE + yOffset + BLOCK_SIZE; // +BLOCK_SIZE for floor layer
-      const worldZ = (block.z - halfD) * BLOCK_SIZE;
+      const worldY = block.y * BLOCK_SIZE + yOffset + this._floorOffset;
+      const worldZ = (bz - halfD) * BLOCK_SIZE;
 
       // Material: use block type override if defined, otherwise base castle color
       let mat;
@@ -152,8 +167,16 @@ export class Castle {
       mesh.receiveShadow = true;
 
       // Rotation: per-block axes + any extra Z rotation from block type definition
-      const rotX = (block.rotX || 0) * Math.PI / 2;
-      const rotY = (block.rotation || 0) * Math.PI / 2;
+      // When Z-mirrored, flip Y rotation (1↔3) and negate rotX to maintain correct facing
+      let blockRotY = block.rotation || 0;
+      let blockRotX = block.rotX || 0;
+      if (mirrorZ) {
+        if (blockRotY === 1) blockRotY = 3;
+        else if (blockRotY === 3) blockRotY = 1;
+        blockRotX = blockRotX ? (4 - blockRotX) % 4 : 0;
+      }
+      const rotX = blockRotX * Math.PI / 2;
+      const rotY = blockRotY * Math.PI / 2;
       const rotZ = (block.rotZ || 0) * Math.PI / 2 + (typeInfo.rotZ || 0);
       mesh.rotation.set(rotX, rotY, rotZ);
 
@@ -161,7 +184,7 @@ export class Castle {
 
       // Physics body
       const shape = shapes[block.type] || shapes.CUBE;
-      const blockMass = typeInfo.mass ?? BLOCK_MASS;
+      const blockMass = (typeInfo.mass ?? BLOCK_MASS) * this.blockMassMultiplier;
       const body = new CANNON.Body({
         mass: blockMass,
         shape: shape,
@@ -171,19 +194,34 @@ export class Castle {
 
       body.quaternion.setFromEuler(rotX, rotY, rotZ);
 
+      // Per-mode damping: high damping makes blocks resist movement (punch-through vs topple)
+      body.linearDamping = this.blockDamping;
+      body.angularDamping = this.blockDamping;
+
       // Enable sleep for performance
       body.allowSleep = true;
       body.sleepSpeedLimit = 0.1;
       body.sleepTimeLimit = 0.5;
-      body.sleep(); // Start sleeping since blocks are at rest
+      body.sleep();
 
       this.physicsWorld.world.addBody(body);
       this.physicsWorld.addPair(mesh, body);
       this.blocks.push({ mesh, body });
+
+      // Track thrusters for exhaust particles
+      if (block.type === 'THRUSTER') {
+        // Exhaust direction: +Y in local space (narrow end), rotated by block rotation
+        const exhaustDir = new THREE.Vector3(0, 1, 0);
+        exhaustDir.applyEuler(new THREE.Euler(rotX, rotY, rotZ));
+        this.thrusters.push({ mesh, body, exhaustDir });
+      }
     }
 
     // Create target
-    this.createTarget(targetPosition, halfW, halfD);
+    const tp = mirrorZ
+      ? { ...targetPosition, z: this.gridDepth - 1 - targetPosition.z }
+      : targetPosition;
+    this.createTarget(tp, halfW, halfD);
   }
 
   createTarget(gridPos, halfW, halfD) {
@@ -197,7 +235,7 @@ export class Castle {
     this.target = new THREE.Mesh(geo, mat);
 
     const worldX = this.centerX + (gridPos.x - halfW) * BLOCK_SIZE;
-    const worldY = gridPos.y * BLOCK_SIZE + BLOCK_SIZE + 0.5; // on top of floor + half sphere
+    const worldY = gridPos.y * BLOCK_SIZE + this._floorOffset + 0.5;
     const worldZ = (gridPos.z - halfD) * BLOCK_SIZE;
 
     this.target.position.set(worldX, worldY, worldZ);
@@ -235,8 +273,7 @@ export class Castle {
       }
     }
 
-    // World Y: floor (BLOCK_SIZE) + stacked block height + cannon base offset
-    const worldY = BLOCK_SIZE + maxLayerTop * BLOCK_SIZE + 0.25;
+    const worldY = this._floorOffset + maxLayerTop * BLOCK_SIZE + 0.25;
     return new THREE.Vector3(worldX, worldY, worldZ);
   }
 
@@ -277,6 +314,7 @@ export class Castle {
       if (idx >= 0) this.physicsWorld.pairs.splice(idx, 1);
     }
     this.blocks = [];
+    this.thrusters = [];
 
     if (this.target) {
       this.sceneManager.scene.remove(this.target);

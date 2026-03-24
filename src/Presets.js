@@ -1,8 +1,8 @@
 import { getSpacePreset } from './SpacePresets.js';
 import { getPiratePreset } from './PiratePresets.js';
 import {
-  fillRect, fillRowX, fillRowZ, fillPerimeter, fillPerimeterLayers,
-  fillTower, fillCrenellations, place, placeMany, fillHull,
+  fillRowX, fillRowZ, fillPerimeter, fillPerimeterLayers,
+  fillTower, fillCrenellations, place, placeMany,
 } from './PresetHelpers.js';
 
 export function getPreset(name, mode = 'castle') {

@@ -1,5 +1,5 @@
 import {
-  fillRowX, fillRowZ, fillRect, fillHull,
+  fillRowX, fillRect, fillHull,
   place, placeMany,
 } from './PresetHelpers.js';
 
@@ -77,8 +77,8 @@ function galleonPreset() {
 
   // Bow
   placeMany(L, [
-    [2,1,9,'RAMP',1], [4,1,9,'RAMP',1],
-    [3,1,10,'RAMP',1],
+    [2,1,9,'RAMP',3], [4,1,9,'RAMP',3],
+    [3,1,10,'RAMP',3],
     [1,1,8,'WALL',0], [5,1,8,'WALL',0],
     [1,2,8,'WALL',0], [5,2,8,'WALL',0],
     [2,1,9,'WALL',0], [4,1,9,'WALL',0],
@@ -104,7 +104,7 @@ function galleonPreset() {
   buildMast(L, 3, 3, 5);
   place(L, 3, 4, 3, 'PLANK', 1);
   place(L, 3, 3, 3, 'PLANK', 1);
-  buildMast(L, 3, 5, 6);
+  buildMast(L, 3, 5, 5);
   place(L, 3, 5, 5, 'PLANK', 1);
   place(L, 3, 4, 5, 'PLANK', 1);
   buildMast(L, 3, 7, 4);
@@ -183,8 +183,8 @@ function sloopPreset() {
   place(L, 3, 3, 7, 'PLANK', 1);
 
   // Bowsprit
-  place(L, 3, 1, 9, 'RAMP', 1);
-  place(L, 3, 1, 10, 'RAMP', 1);
+  place(L, 3, 1, 9, 'RAMP', 3);
+  place(L, 3, 1, 10, 'RAMP', 3);
 
   // Deck structures
   placeMany(L, [
@@ -252,12 +252,12 @@ function fortressPreset() {
   place(L, 3, 1, 5, 'CYLINDER');
   place(L, 3, 2, 5, 'CYLINDER');
   place(L, 3, 3, 5, 'LATTICE');
-  buildMast(L, 3, 5, 5);
-  place(L, 3, 4, 5, 'PLANK', 1);
+  buildMast(L, 3, 5, 4);
+  place(L, 3, 3, 5, 'PLANK', 1);
 
   // Bow reinforcement
   placeMany(L, [
-    [2,1,10,'RAMP',1], [3,1,10,'RAMP',1], [4,1,10,'RAMP',1],
+    [2,1,10,'RAMP',3], [3,1,10,'RAMP',3], [4,1,10,'RAMP',3],
   ]);
 
   // Interior structures — ammunition stores and cross-bracing

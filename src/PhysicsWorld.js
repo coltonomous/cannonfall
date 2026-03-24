@@ -113,10 +113,10 @@ export class PhysicsWorld {
       if (body.mass === 0) continue;
 
       const y = body.position.y;
-      if (y < this.waterLevel + 1) {
+      if (y < this.waterLevel) {
         // Buoyancy: stronger the deeper the body is submerged
-        const submersion = Math.max(0, this.waterLevel + 1 - y);
-        const buoyancy = submersion * 12;
+        const submersion = Math.max(0, this.waterLevel - y);
+        const buoyancy = submersion * 15;
         body.applyForce(new CANNON.Vec3(0, buoyancy, 0));
 
         // Water drag: slow horizontal + vertical movement

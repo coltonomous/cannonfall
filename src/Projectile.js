@@ -43,7 +43,7 @@ export class Projectile {
 
     // Physics body
     this.body = new CANNON.Body({
-      mass: CANNONBALL_MASS,
+      mass: modeConfig?.cannonballMass ?? CANNONBALL_MASS,
       shape: new CANNON.Sphere(CANNONBALL_RADIUS),
       position: new CANNON.Vec3(position.x, position.y, position.z),
       velocity: new CANNON.Vec3(velocity.x, velocity.y, velocity.z),

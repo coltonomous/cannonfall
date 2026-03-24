@@ -28,6 +28,7 @@ export class CastleBuilder {
     this.ghostMesh = null;
     this.targetMesh = null;
     this.floorMeshes = [];
+    this._geometries = null; // cached block geometries
 
     // Orbit camera + raycasting (shared controller)
     this.orbit = new OrbitController(sceneManager);
@@ -60,6 +61,7 @@ export class CastleBuilder {
     this.placingTarget = false;
     this.customFloor = null;
 
+    this._geometries = createAllBlockGeometries();
     this.setupScene();
     this.setupEventListeners();
     this.orbit.updateCamera();
@@ -78,31 +80,8 @@ export class CastleBuilder {
   setupScene() {
     this.scene.add(this.gridGroup);
 
-    // Floor base — only for ground-based modes (castle). Space mode has no floor.
     const halfW = Math.floor(this.gridW / 2);
     const halfD = Math.floor(this.gridD / 2);
-    const showFloor = this.modeConfig?.hasGround !== false && !this.modeConfig?.waterSurface;
-
-    if (showFloor) {
-      const floorGeo = new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
-      const floorMat = new THREE.MeshStandardMaterial({ color: this.modeConfig?.floorColor ?? 0x8b7355 });
-
-      for (let x = 0; x < this.gridW; x++) {
-        for (let z = 0; z < this.gridD; z++) {
-          const mesh = new THREE.Mesh(floorGeo, floorMat.clone());
-          mesh.material.color.offsetHSL(0, 0, (Math.random() - 0.5) * 0.06);
-          mesh.position.set(
-            (x - halfW) * BLOCK_SIZE,
-            -BLOCK_SIZE / 2,
-            (z - halfD) * BLOCK_SIZE
-          );
-          mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        this.gridGroup.add(mesh);
-        this.floorMeshes.push(mesh);
-      }
-    }
-    } // end if (showFloor)
 
     // Grid lines — rectangular support via EdgesGeometry on a flat box
     const gridOutline = new THREE.LineSegments(
@@ -295,8 +274,7 @@ export class CastleBuilder {
         pointer-events: auto;
       ">
         <div class="budget-display" style="font-size: 1rem; font-weight: 700;">
-          <span>Budget: </span>
-          <span id="builder-budget">${this.budget}</span>
+          <span id="builder-budget">${this.maxBudget - this.budget}</span>
           <span> / ${this.maxBudget}</span>
         </div>
         <div class="layer-display" style="display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700;">
@@ -457,7 +435,7 @@ export class CastleBuilder {
 
   updateBudgetDisplay() {
     const el = document.getElementById('builder-budget');
-    if (el) el.textContent = this.budget;
+    if (el) el.textContent = this.maxBudget - this.budget;
   }
 
   // === LAYER MANAGEMENT ===
@@ -586,7 +564,7 @@ export class CastleBuilder {
 
     const halfW = Math.floor(this.gridW / 2);
     const halfD = Math.floor(this.gridD / 2);
-    const geometries = createAllBlockGeometries();
+    const geometries = this._geometries;
 
     for (const block of this.layout) {
       const geo = geometries[block.type] || geometries.CUBE;
@@ -655,9 +633,7 @@ export class CastleBuilder {
 
   updateGhostGeometry() {
     if (!this.ghostMesh) return;
-    this.ghostMesh.geometry.dispose();
-    const geos = createAllBlockGeometries();
-    this.ghostMesh.geometry = geos[this.selectedType] || geos.CUBE;
+    this.ghostMesh.geometry = this._geometries[this.selectedType] || this._geometries.CUBE;
     this._applySelectedRotation(this.ghostMesh);
   }
 

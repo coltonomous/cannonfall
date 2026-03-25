@@ -69,6 +69,10 @@ jobs:
           docker compose up -d
           sleep 10
           docker compose ps
+
+          # Restart shared reverse proxy
+          cd /opt/caddy
+          docker compose restart
           EOF
 
           rm -f key.pem

@@ -1,5 +1,7 @@
 # Sawbuck
 {$SAWBUCK_DOMAIN:localhost} {
+	tls internal
+
 	encode gzip zstd
 
 	header {
@@ -15,6 +17,8 @@
 
 # Cannonfall
 {$CANNONFALL_DOMAIN:localhost:8080} {
+	tls internal
+
 	encode gzip zstd
 
 	header {

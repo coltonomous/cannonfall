@@ -17,6 +17,8 @@ jobs:
         with:
           node-version: 22
 
-      - run: rm -rf node_modules package-lock.json && npm install
+      - uses: pnpm/action-setup@v4
 
-      - run: npx vitest run
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm vitest run

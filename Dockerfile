@@ -1,16 +1,18 @@
 # Stage 1: Build
 FROM node:22-alpine AS build
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
-COPY package.json ./
-RUN npm install
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile
 COPY . .
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Production
 FROM node:22-alpine
+RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
 WORKDIR /app
-COPY package.json ./
-RUN npm install --omit=dev
+COPY package.json pnpm-lock.yaml .npmrc ./
+RUN pnpm install --frozen-lockfile --prod
 COPY server.js ./
 COPY --from=build /app/dist ./dist
 EXPOSE 3000

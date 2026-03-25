@@ -16,8 +16,7 @@ jobs:
       - uses: actions/setup-node@v5
         with:
           node-version: 22
-          cache: npm
 
-      - run: npm install
+      - run: rm -rf node_modules package-lock.json && npm install
 
       - run: npx vitest run

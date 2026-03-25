@@ -3,6 +3,11 @@ import * as CANNON from 'cannon-es';
 import { Projectile } from './Projectile.js';
 import * as C from './constants.js';
 
+// Collision group flags for projectile-target detection
+const COL_DEFAULT = 1;
+const COL_TARGET = 2;
+const COL_PROJECTILE = 4;
+
 export class BattleController {
   constructor({ sceneManager, physicsWorld, particles, ui, network }) {
     this.sceneManager = sceneManager;
@@ -29,6 +34,8 @@ export class BattleController {
     this._impactEmitted = false;
     this._perfectShot = false;
     this._lastProjDir = null;
+    this._pendingTargetHit = false;
+    this._pendingSpaceImpact = null;
 
     // Trajectory line
     this.trajectoryLine = null;
@@ -144,6 +151,39 @@ export class BattleController {
     }
   }
 
+  // ── Projectile Collision Setup ───────────────────────────
+
+  _setupProjectileCollision() {
+    this._pendingTargetHit = false;
+    this._pendingSpaceImpact = null;
+    this.projectile.body.addEventListener('collide', (e) => {
+      if (!this.projectile || !this.projectile.alive) return;
+      if (e.body.isTarget) {
+        // Defer — can't remove bodies mid-physics step
+        this._pendingTargetHit = true;
+        return;
+      }
+      if (this.gameMode.explosiveProjectile && !this._pendingSpaceImpact) {
+        this._pendingSpaceImpact = e.body;
+      }
+    });
+  }
+
+  _handleDirectTargetHit() {
+    const pos = this.projectile.getPosition();
+    this.particles.emit(pos, { x: 0, y: 5, z: 0 }, 10, { r: 1, g: 0.3, b: 0.1 }, 60, 1.2);
+    this.sceneManager.shake(0.8, 0.5);
+    this.projectile.destroy();
+    this.projectile = null;
+
+    if (this.mode === 'online') {
+      this._onReportShot(true, this._perfectShot);
+      this.ui.setStatus('Hit detected...');
+    } else {
+      this._onHitLocal();
+    }
+  }
+
   // ── Firing ────────────────────────────────────────────────
 
   fire(debugPerfectShot) {
@@ -169,13 +209,7 @@ export class BattleController {
     const launchProjectile = () => {
       const velocity = dir.clone().multiplyScalar(power);
       this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot, this.gameMode);
-
-      if (this.gameMode.explosiveProjectile) {
-        this.projectile.body.addEventListener('collide', (e) => {
-          if (!this.projectile || !this.projectile.alive) return;
-          this._handleSpaceImpact(e.body);
-        });
-      }
+      this._setupProjectileCollision();
 
       // Muzzle flash
       if (this._perfectShot) {
@@ -193,7 +227,7 @@ export class BattleController {
       this.ui.setStatus('PERFECT!');
       this.sceneManager.shake(0.2, 0.3);
       this.particles.emit(pos, { x: 0, y: 3, z: 0 }, 3, { r: 1, g: 0.9, b: 0.3 }, 25, 0.5);
-      setTimeout(() => launchProjectile(), 350);
+      setTimeout(() => launchProjectile(), C.PERFECT_FIRE_DELAY);
     } else {
       this.ui.setStatus('Firing...');
       launchProjectile();
@@ -213,13 +247,7 @@ export class BattleController {
     const velocity = dir.multiplyScalar(data.power);
 
     this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, false, this.gameMode);
-
-    if (!this.gameMode.hasGround) {
-      this.projectile.body.addEventListener('collide', (e) => {
-        if (!this.projectile || !this.projectile.alive) return;
-        this._handleSpaceImpact(e.body);
-      });
-    }
+    this._setupProjectileCollision();
 
     this.settleTimer = 0;
     this.fireTime = performance.now();
@@ -235,6 +263,19 @@ export class BattleController {
   checkProjectile(dt) {
     if (!this.projectile || !this.projectile.alive) return false;
 
+    // Process deferred collision events (can't remove bodies mid-physics step)
+    if (this._pendingTargetHit) {
+      this._pendingTargetHit = false;
+      this._handleDirectTargetHit();
+      return true;
+    }
+    if (this._pendingSpaceImpact) {
+      const hitBody = this._pendingSpaceImpact;
+      this._pendingSpaceImpact = null;
+      this._handleSpaceImpact(hitBody);
+      return true;
+    }
+
     const pos = this.projectile.getPosition();
 
     // Out of bounds
@@ -245,37 +286,18 @@ export class BattleController {
       return true;
     }
 
-    // Target collision
-    const targetCastle = this.castles[1 - this.currentTurn];
-    const targetPos = targetCastle.getTargetPosition();
-
-    if (targetPos && pos.distanceTo(targetPos) < 1.2) {
-      this.particles.emit(pos, { x: 0, y: 5, z: 0 }, 10, { r: 1, g: 0.3, b: 0.1 }, 60, 1.2);
-      this.sceneManager.shake(0.8, 0.5);
-      this.projectile.destroy();
-      this.projectile = null;
-
-      if (this.mode === 'online') {
-        this._onReportShot(true, this._perfectShot);
-        this.ui.setStatus('Hit detected...');
-      } else {
-        this._onHitLocal();
-      }
-      return true;
-    }
-
     // First impact debris
     const speed = this.projectile.getSpeed();
-    if (!this._impactEmitted && speed < this.power * 0.5 && pos.y < C.CANNON_HEIGHT) {
+    if (!this._impactEmitted && speed < this.power * C.IMPACT_SPEED_RATIO && pos.y < C.CANNON_HEIGHT) {
       this._impactEmitted = true;
       this.particles.emit(pos, { x: 0, y: 4, z: 0 }, 8, this.gameMode.impactColor, 40, 1.0);
       this.sceneManager.shake(0.5, 0.3);
     }
 
     // Settled
-    if (speed < 0.5 && pos.y < C.CANNON_HEIGHT) {
+    if (speed < C.SETTLE_SPEED && pos.y < C.CANNON_HEIGHT) {
       this.settleTimer += dt;
-      if (this.settleTimer > 1.5) {
+      if (this.settleTimer > C.SETTLE_TIME) {
         this.projectile.destroy();
         this.projectile = null;
         this._onShotMiss();
@@ -381,10 +403,10 @@ export class BattleController {
 
     this.sceneManager.shake(shakeIntensity, shakeDuration);
 
-    // Check target hit
+    // AoE target check — explosion can damage the target even without direct contact
     const targetCastle = this.castles[1 - this.currentTurn];
     const targetPos = targetCastle.getTargetPosition();
-    if (targetPos && impactPos.distanceTo(targetPos) < 2.0) {
+    if (targetPos && impactPos.distanceTo(targetPos) < C.EXPLOSIVE_HIT_RADIUS) {
       this.projectile.destroy();
       this.projectile = null;
 
@@ -392,7 +414,7 @@ export class BattleController {
         this._onReportShot(true, this._perfectShot);
         this.ui.setStatus('Hit detected...');
       } else {
-        setTimeout(() => this._onHitLocal(), this.gameMode.explosionDelay || 2500);
+        setTimeout(() => this._onHitLocal(), this.gameMode.explosionDelay || C.EXPLOSION_SETTLE_DELAY);
       }
       return;
     }
@@ -401,7 +423,7 @@ export class BattleController {
     this.projectile = null;
 
     this.ui.setStatus('');
-    setTimeout(() => this._onShotMiss(), this.gameMode.explosionDelay || 2500);
+    setTimeout(() => this._onShotMiss(), this.gameMode.explosionDelay || C.EXPLOSION_SETTLE_DELAY);
   }
 
   // ── Camera ────────────────────────────────────────────────
@@ -508,5 +530,7 @@ export class BattleController {
     this._lastProjDir = null;
     this._perfectShot = false;
     this._impactEmitted = false;
+    this._pendingTargetHit = false;
+    this._pendingSpaceImpact = null;
   }
 }

@@ -1,5 +1,28 @@
 services:
-  cannonfall:
+  app:
     build: .
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
     ports:
-      - "4000:3000"
+      - "80:80"
+      - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN:-localhost}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  caddy_data:
+  caddy_config:

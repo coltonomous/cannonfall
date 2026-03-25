@@ -25,7 +25,47 @@
       </div>
     </div>
 
-    <!-- Matchmaking -->
+    <!-- Lobby Browser -->
+    <div id="lobby-screen" class="screen hidden">
+      <h2>Online Lobby</h2>
+
+      <div class="lobby-name-row">
+        <input type="text" id="lobby-name-input" placeholder="Your name" maxlength="20" autocomplete="off" />
+      </div>
+
+      <div class="lobby-actions">
+        <button id="lobby-create-btn">Create Game</button>
+      </div>
+
+      <div id="lobby-create-form" class="hidden">
+        <input type="password" id="lobby-password-input" placeholder="Password (optional)" maxlength="30" autocomplete="off" />
+        <button id="lobby-confirm-create-btn">Start Hosting</button>
+        <button id="lobby-cancel-create-btn" class="lobby-btn-secondary">Cancel</button>
+      </div>
+
+      <div id="lobby-hosting" class="hidden">
+        <div class="spinner"></div>
+        <p>Waiting for opponent to join...</p>
+        <button id="lobby-cancel-host-btn" class="lobby-btn-secondary">Cancel</button>
+      </div>
+
+      <div id="lobby-list">
+        <p class="lobby-empty">No open games. Create one!</p>
+      </div>
+
+      <div id="lobby-password-prompt" class="hidden">
+        <p>This game requires a password:</p>
+        <input type="password" id="lobby-join-password" placeholder="Enter password" maxlength="30" autocomplete="off" />
+        <div class="lobby-prompt-actions">
+          <button id="lobby-join-confirm-btn">Join</button>
+          <button id="lobby-join-cancel-btn" class="lobby-btn-secondary">Cancel</button>
+        </div>
+      </div>
+
+      <button id="lobby-back-btn" class="lobby-btn-secondary">Back</button>
+    </div>
+
+    <!-- Matchmaking (fallback) -->
     <div id="matching-screen" class="screen hidden">
       <div class="spinner"></div>
       <p>Finding opponent...</p>

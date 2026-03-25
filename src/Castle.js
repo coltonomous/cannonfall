@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
-import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES } from './constants.js';
+import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES, TARGET_HIT_RADIUS } from './constants.js';
 import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape } from './BlockGeometry.js';
 
 export class Castle {
@@ -250,13 +250,15 @@ export class Castle {
     this.targetLight.position.copy(this.target.position);
     this.sceneManager.scene.add(this.targetLight);
 
-    // Physics body (sensor - detects collision but doesn't block)
+    // Physics body (sensor — detects collision but doesn't block)
+    // Sphere radius matches TARGET_HIT_RADIUS for consistent hit detection
     this.targetBody = new CANNON.Body({
       mass: 0,
-      shape: new CANNON.Sphere(0.5),
+      shape: new CANNON.Sphere(TARGET_HIT_RADIUS),
       position: new CANNON.Vec3(worldX, worldY, worldZ),
       collisionResponse: false,
     });
+    this.targetBody.isTarget = true;
     this.physicsWorld.world.addBody(this.targetBody);
   }
 

@@ -146,6 +146,7 @@ describe('Frontend: UI Class Logic', () => {
     document.body.innerHTML = `
       <div id="overlay">
         <div id="menu-screen" class="screen"></div>
+        <div id="lobby-screen" class="screen hidden"></div>
         <div id="matching-screen" class="screen hidden"></div>
         <div id="build-screen" class="screen hidden"></div>
         <div id="pass-device-screen" class="screen hidden">
@@ -169,7 +170,7 @@ describe('Frontend: UI Class Logic', () => {
 
   // Simulate UI methods
   function hideAllScreens() {
-    ['menu-screen', 'matching-screen', 'build-screen', 'pass-device-screen', 'result-screen']
+    ['menu-screen', 'lobby-screen', 'matching-screen', 'build-screen', 'pass-device-screen', 'result-screen']
       .forEach(id => document.getElementById(id)?.classList.add('hidden'));
   }
 

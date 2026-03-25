@@ -31,11 +31,29 @@ export class UI {
     this.hpLeft = document.getElementById('hp-left');
     this.hpRight = document.getElementById('hp-right');
     this.minimapFrame = document.getElementById('minimap-frame');
+
+    // Lobby screen
+    this.lobbyScreen = document.getElementById('lobby-screen');
+    this.lobbyNameInput = document.getElementById('lobby-name-input');
+    this.lobbyCreateBtn = document.getElementById('lobby-create-btn');
+    this.lobbyCreateForm = document.getElementById('lobby-create-form');
+    this.lobbyPasswordInput = document.getElementById('lobby-password-input');
+    this.lobbyConfirmCreateBtn = document.getElementById('lobby-confirm-create-btn');
+    this.lobbyCancelCreateBtn = document.getElementById('lobby-cancel-create-btn');
+    this.lobbyHosting = document.getElementById('lobby-hosting');
+    this.lobbyCancelHostBtn = document.getElementById('lobby-cancel-host-btn');
+    this.lobbyList = document.getElementById('lobby-list');
+    this.lobbyPasswordPrompt = document.getElementById('lobby-password-prompt');
+    this.lobbyJoinPassword = document.getElementById('lobby-join-password');
+    this.lobbyJoinConfirmBtn = document.getElementById('lobby-join-confirm-btn');
+    this.lobbyJoinCancelBtn = document.getElementById('lobby-join-cancel-btn');
+    this.lobbyBackBtn = document.getElementById('lobby-back-btn');
+    this._pendingJoinLobbyId = null;
   }
 
   hideAllScreens() {
     // Hide all overlay screens
-    [this.menuScreen, this.matchingScreen, this.buildScreen, this.passScreen, this.resultScreen]
+    [this.menuScreen, this.matchingScreen, this.buildScreen, this.passScreen, this.resultScreen, this.lobbyScreen]
       .forEach(s => s && s.classList.add('hidden'));
   }
 
@@ -113,5 +131,78 @@ export class UI {
 
   setStatus(text) {
     this.statusText.textContent = text || '';
+  }
+
+  // ── Lobby ───────────────────────────────────────────
+
+  showLobby() {
+    this.overlay.classList.remove('hidden');
+    this.gameUI.classList.add('hidden');
+    this.hideAllScreens();
+    this.lobbyScreen.classList.remove('hidden');
+    const savedName = sessionStorage.getItem('cannonfall-name') || '';
+    this.lobbyNameInput.value = savedName;
+    this.lobbyCreateForm.classList.add('hidden');
+    this.lobbyHosting.classList.add('hidden');
+    this.lobbyPasswordPrompt.classList.add('hidden');
+    this.lobbyCreateBtn.classList.remove('hidden');
+    this.lobbyNameInput.disabled = false;
+  }
+
+  showLobbyHosting() {
+    this.lobbyCreateBtn.classList.add('hidden');
+    this.lobbyCreateForm.classList.add('hidden');
+    this.lobbyHosting.classList.remove('hidden');
+    this.lobbyNameInput.disabled = true;
+  }
+
+  hideLobbyHosting() {
+    this.lobbyHosting.classList.add('hidden');
+    this.lobbyCreateBtn.classList.remove('hidden');
+    this.lobbyNameInput.disabled = false;
+  }
+
+  updateLobbyList(lobbies) {
+    this.lobbyList.innerHTML = '';
+    if (lobbies.length === 0) {
+      this.lobbyList.innerHTML = '<p class="lobby-empty">No open games. Create one!</p>';
+      return;
+    }
+    for (const lobby of lobbies) {
+      const row = document.createElement('div');
+      row.className = 'lobby-row';
+      row.innerHTML = `
+        <div class="lobby-row-info">
+          <div class="lobby-host-name">${this._escapeHtml(lobby.hostName)}</div>
+          <div class="lobby-mode-tag">${lobby.gameMode}</div>
+        </div>
+        ${lobby.hasPassword ? '<span class="lobby-lock">&#128274;</span>' : ''}
+        <button class="lobby-join-btn" data-lobby-id="${lobby.id}" data-has-password="${lobby.hasPassword}">Join</button>
+      `;
+      this.lobbyList.appendChild(row);
+    }
+  }
+
+  showPasswordPrompt(lobbyId) {
+    this._pendingJoinLobbyId = lobbyId;
+    this.lobbyJoinPassword.value = '';
+    this.lobbyPasswordPrompt.classList.remove('hidden');
+  }
+
+  hidePasswordPrompt() {
+    this._pendingJoinLobbyId = null;
+    this.lobbyPasswordPrompt.classList.add('hidden');
+  }
+
+  getLobbyName() {
+    const name = this.lobbyNameInput.value.trim();
+    if (name) sessionStorage.setItem('cannonfall-name', name);
+    return name;
+  }
+
+  _escapeHtml(str) {
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
   }
 }

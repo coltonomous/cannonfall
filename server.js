@@ -1,74 +1,138 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 
 const app = express();
 const http = createServer(app);
 const io = new Server(http, { cors: { origin: '*' } });
 
 app.use(express.static('dist'));
+app.get('/health', (req, res) => res.send('ok'));
 
-// --- In-memory store with TTL (replaces Redis) ---
+// ── In-memory state ───────────────────────────────────
 
-const store = new Map(); // key -> { value, timer }
+const games = new Map();        // gameId → game object
+const players = new Map();      // sessionId → { gameId, playerIndex }
+const graceTimers = new Map();  // "gameId:playerIndex" → timeout handle
+const liveSockets = new Map();  // sessionId → socket
+const turnTimeouts = new Map(); // gameId → timeout handle
+const pendingShots = new Map(); // gameId → { reports, timer }
+const lobbies = new Map();      // lobbyId → { id, hostSessionId, hostName, gameMode, passwordHash, createdAt }
+const lobbyClients = new Set(); // sessionIds currently viewing the lobby
 
-function storeSet(key, value, ttlSeconds) {
-  const existing = store.get(key);
-  if (existing?.timer) clearTimeout(existing.timer);
-  const timer = ttlSeconds
-    ? setTimeout(() => store.delete(key), ttlSeconds * 1000)
-    : null;
-  store.set(key, { value, timer });
+const RECONNECT_GRACE = 30;
+
+// ── Input Validation ──────────────────────────────────
+
+const MIN_POWER = 10;
+const MAX_POWER = 50;
+const MIN_PITCH = -0.15;
+const MAX_PITCH = Math.PI / 3;
+const MAX_YAW_OFFSET = Math.PI / 4;
+const MAX_LAYOUT_BLOCKS = 600;
+const MAX_GRID_SIZE = 20;
+const SHOT_RESOLVE_TIMEOUT = 3000;
+const FIRE_SAFETY_TIMEOUT = 10000;
+const VALID_MODES = ['castle', 'pirate', 'space'];
+
+function isFiniteNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
 }
 
-function storeGet(key) {
-  const entry = store.get(key);
-  return entry ? entry.value : null;
+function validateFirePayload({ yaw, pitch, power }) {
+  if (!isFiniteNumber(yaw) || !isFiniteNumber(pitch) || !isFiniteNumber(power)) return false;
+  if (power < MIN_POWER || power > MAX_POWER) return false;
+  if (pitch < MIN_PITCH || pitch > MAX_PITCH) return false;
+  if (Math.abs(yaw) > MAX_YAW_OFFSET) return false;
+  return true;
 }
 
-function storeDel(key) {
-  const entry = store.get(key);
-  if (entry?.timer) clearTimeout(entry.timer);
-  store.delete(key);
+function validateCastleData(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (!Array.isArray(data.layout) || data.layout.length > MAX_LAYOUT_BLOCKS) return false;
+  if (!data.target || !isFiniteNumber(data.target.x) || !isFiniteNumber(data.target.z)) return false;
+  if (data.target.x < 0 || data.target.x >= MAX_GRID_SIZE) return false;
+  if (data.target.z < 0 || data.target.z >= MAX_GRID_SIZE) return false;
+  for (const block of data.layout) {
+    if (!block || typeof block !== 'object') return false;
+    if (!isFiniteNumber(block.x) || !isFiniteNumber(block.y) || !isFiniteNumber(block.z)) return false;
+    if (typeof block.type !== 'string' || block.type.length > 20) return false;
+  }
+  return true;
 }
 
-const RECONNECT_GRACE = 30; // seconds to hold a game for a disconnected player
-const GAME_TTL = 3600;      // 1 hour max game lifetime
-
-// --- Game helpers ---
-
-function getGame(gameId) {
-  return storeGet(`game:${gameId}`);
+function validateRepositionPayload({ targetPos }) {
+  if (!targetPos || typeof targetPos !== 'object') return false;
+  if (!isFiniteNumber(targetPos.x) || !isFiniteNumber(targetPos.z)) return false;
+  if (targetPos.x < 0 || targetPos.x >= MAX_GRID_SIZE) return false;
+  if (targetPos.z < 0 || targetPos.z >= MAX_GRID_SIZE) return false;
+  return true;
 }
 
-function saveGame(game) {
-  storeSet(`game:${game.id}`, game, GAME_TTL);
+// ── Lobby helpers ─────────────────────────────────────
+
+function hashPassword(pw) {
+  return createHash('sha256').update(pw).digest('hex');
 }
 
-function deleteGame(gameId) {
-  storeDel(`game:${gameId}`);
+function getLobbyList() {
+  return Array.from(lobbies.values()).map(l => ({
+    id: l.id,
+    hostName: l.hostName,
+    gameMode: l.gameMode,
+    hasPassword: !!l.passwordHash,
+  }));
 }
 
-function setPlayerGame(sessionId, gameId, playerIndex) {
-  storeSet(`player:${sessionId}`, { gameId, playerIndex }, GAME_TTL);
+function broadcastLobbyList() {
+  const list = getLobbyList();
+  for (const sid of lobbyClients) {
+    const s = liveSockets.get(sid);
+    if (s) s.emit('lobby:list', list);
+  }
 }
 
-function getPlayerGame(sessionId) {
-  return storeGet(`player:${sessionId}`);
+function removeLobbyByHost(sessionId) {
+  for (const [id, lobby] of lobbies) {
+    if (lobby.hostSessionId === sessionId) {
+      lobbies.delete(id);
+      broadcastLobbyList();
+      return;
+    }
+  }
 }
 
-function clearPlayerGame(sessionId) {
-  storeDel(`player:${sessionId}`);
+// ── Matchmaking ───────────────────────────────────────
+
+function matchPlayers(s1, s2, gameMode) {
+  const gameId = randomUUID();
+  const currentTurn = Math.random() < 0.5 ? 0 : 1;
+
+  const game = {
+    id: gameId,
+    sessionIds: [s1.sessionId, s2.sessionId],
+    currentTurn,
+    phase: 'build',
+    castles: [null, null],
+    hp: [3, 3],
+    gameMode,
+  };
+
+  games.set(gameId, game);
+  players.set(s1.sessionId, { gameId, playerIndex: 0 });
+  players.set(s2.sessionId, { gameId, playerIndex: 1 });
+
+  s1.gameId = gameId;
+  s1.playerIndex = 0;
+  s2.gameId = gameId;
+  s2.playerIndex = 1;
+
+  s1.emit('matched', { playerIndex: 0, firstTurn: currentTurn, gameMode });
+  s2.emit('matched', { playerIndex: 1, firstTurn: currentTurn, gameMode });
 }
 
-// --- In-memory state (sockets can't be serialized) ---
-const queue = [];
-const liveSockets = new Map();  // sessionId -> socket
-const turnTimeouts = new Map(); // gameId -> timeout handle
-const pendingShots = new Map(); // gameId -> { reports: Map<playerIndex, {hit,perfect}>, timer }
-
-// --- Shot resolution (server-authoritative) ---
+// ── Shot resolution (server-authoritative) ────────────
 
 function resolveShot(gameId) {
   const pending = pendingShots.get(gameId);
@@ -77,10 +141,9 @@ function resolveShot(gameId) {
   if (pending.timer) clearTimeout(pending.timer);
   pendingShots.delete(gameId);
 
-  const game = getGame(gameId);
+  const game = games.get(gameId);
   if (!game || game.phase !== 'battle') return;
 
-  // Clear the fire turn timeout — shot resolution handles turn transitions now
   if (turnTimeouts.has(gameId)) {
     clearTimeout(turnTimeouts.get(gameId));
     turnTimeouts.delete(gameId);
@@ -92,7 +155,6 @@ function resolveShot(gameId) {
   const attackerReport = pending.reports.get(attacker);
   const defenderReport = pending.reports.get(defender);
 
-  // Decision: trust defender if they reported; fall back to attacker on timeout
   let isHit;
   if (defenderReport) {
     isHit = defenderReport.hit;
@@ -110,27 +172,23 @@ function resolveShot(gameId) {
 
     if (game.hp[damagedPlayer] <= 0) {
       game.phase = 'over';
-      saveGame(game);
       for (const sid of game.sessionIds) {
         const s = liveSockets.get(sid);
         if (s) s.emit('game-over', { winner: attacker });
       }
       setTimeout(() => {
-        deleteGame(gameId);
-        for (const sid of game.sessionIds) clearPlayerGame(sid);
+        games.delete(gameId);
+        for (const sid of game.sessionIds) players.delete(sid);
       }, 10000);
     } else {
       game.phase = 'reposition';
-      saveGame(game);
       for (const sid of game.sessionIds) {
         const s = liveSockets.get(sid);
         if (s) s.emit('shot-resolved', { hit: true, damagedPlayer, hp: [...game.hp] });
       }
     }
   } else {
-    // Miss — advance turn
     game.currentTurn = 1 - game.currentTurn;
-    saveGame(game);
     for (const sid of game.sessionIds) {
       const s = liveSockets.get(sid);
       if (s) s.emit('shot-resolved', { hit: false, nextTurn: game.currentTurn });
@@ -138,7 +196,7 @@ function resolveShot(gameId) {
   }
 }
 
-// --- Socket.io ---
+// ── Socket.io ─────────────────────────────────────────
 
 io.on('connection', (socket) => {
   const sessionId = socket.handshake.auth.sessionId;
@@ -151,17 +209,19 @@ io.on('connection', (socket) => {
   socket.sessionId = sessionId;
 
   // Check for active game to reconnect to
-  const playerInfo = getPlayerGame(sessionId);
+  const playerInfo = players.get(sessionId);
   if (playerInfo) {
-    const game = getGame(playerInfo.gameId);
+    const game = games.get(playerInfo.gameId);
     if (game && game.phase !== 'over') {
       socket.gameId = game.id;
       socket.playerIndex = playerInfo.playerIndex;
 
-      // Clear disconnect grace timer
-      storeDel(`grace:${game.id}:${playerInfo.playerIndex}`);
+      const graceKey = `${game.id}:${playerInfo.playerIndex}`;
+      if (graceTimers.has(graceKey)) {
+        clearTimeout(graceTimers.get(graceKey));
+        graceTimers.delete(graceKey);
+      }
 
-      // Send reconnection state
       socket.emit('reconnected', {
         gameId: game.id,
         playerIndex: playerInfo.playerIndex,
@@ -174,60 +234,91 @@ io.on('connection', (socket) => {
         },
       });
 
-      // Notify opponent
       const oppSessionId = game.sessionIds[1 - playerInfo.playerIndex];
       const oppSocket = liveSockets.get(oppSessionId);
-      if (oppSocket) {
-        oppSocket.emit('opponent-reconnected');
-      }
+      if (oppSocket) oppSocket.emit('opponent-reconnected');
       return;
     }
   }
 
-  // --- Matchmaking ---
+  // ── Lobby ───────────────────────────────────────────
 
-  socket.on('join-queue', () => {
-    const idx = queue.findIndex(q => q.sessionId === sessionId);
-    if (idx >= 0) queue.splice(idx, 1);
-
-    queue.push(socket);
-
-    if (queue.length >= 2) {
-      matchPlayers(queue.shift(), queue.shift());
-    }
+  socket.on('lobby:enter', () => {
+    lobbyClients.add(sessionId);
+    socket.emit('lobby:list', getLobbyList());
   });
 
-  function matchPlayers(s1, s2) {
-    const gameId = randomUUID();
-    const currentTurn = Math.random() < 0.5 ? 0 : 1;
+  socket.on('lobby:leave', () => {
+    lobbyClients.delete(sessionId);
+    removeLobbyByHost(sessionId);
+  });
 
-    const game = {
-      id: gameId,
-      sessionIds: [s1.sessionId, s2.sessionId],
-      currentTurn,
-      phase: 'build',
-      castles: [null, null],
-      hp: [3, 3],
-    };
+  socket.on('lobby:create', ({ name, gameMode, password }) => {
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 20) return;
+    if (!VALID_MODES.includes(gameMode)) return;
+    if (password && (typeof password !== 'string' || password.length > 30)) return;
 
-    saveGame(game);
-    setPlayerGame(s1.sessionId, gameId, 0);
-    setPlayerGame(s2.sessionId, gameId, 1);
+    removeLobbyByHost(sessionId);
 
-    s1.gameId = gameId;
-    s1.playerIndex = 0;
-    s2.gameId = gameId;
-    s2.playerIndex = 1;
+    const lobbyId = randomUUID();
+    lobbies.set(lobbyId, {
+      id: lobbyId,
+      hostSessionId: sessionId,
+      hostName: name.trim(),
+      gameMode,
+      passwordHash: password ? hashPassword(password) : null,
+      createdAt: Date.now(),
+    });
 
-    s1.emit('matched', { playerIndex: 0, firstTurn: currentTurn });
-    s2.emit('matched', { playerIndex: 1, firstTurn: currentTurn });
-  }
+    socket.lobbyId = lobbyId;
+    socket.emit('lobby:created', { lobbyId });
+    broadcastLobbyList();
+  });
 
-  // --- Build phase ---
+  socket.on('lobby:join', ({ lobbyId, name, password }) => {
+    if (!name || typeof name !== 'string' || name.trim().length === 0 || name.length > 20) return;
+
+    const lobby = lobbies.get(lobbyId);
+    if (!lobby) {
+      socket.emit('lobby:error', { message: 'Lobby no longer exists' });
+      return;
+    }
+    if (lobby.hostSessionId === sessionId) return;
+
+    if (lobby.passwordHash) {
+      if (!password || hashPassword(password) !== lobby.passwordHash) {
+        socket.emit('lobby:error', { message: 'Incorrect password' });
+        return;
+      }
+    }
+
+    const hostSocket = liveSockets.get(lobby.hostSessionId);
+    if (!hostSocket) {
+      lobbies.delete(lobbyId);
+      broadcastLobbyList();
+      socket.emit('lobby:error', { message: 'Host disconnected' });
+      return;
+    }
+
+    // Clean up lobby state for both players
+    lobbies.delete(lobbyId);
+    lobbyClients.delete(sessionId);
+    lobbyClients.delete(lobby.hostSessionId);
+    broadcastLobbyList();
+
+    matchPlayers(hostSocket, socket, lobby.gameMode);
+  });
+
+  socket.on('lobby:cancel', () => {
+    removeLobbyByHost(sessionId);
+  });
+
+  // ── Build phase ─────────────────────────────────────
 
   socket.on('build-ready', ({ castleData }) => {
     if (!socket.gameId) return;
-    const game = getGame(socket.gameId);
+    if (!validateCastleData(castleData)) return;
+    const game = games.get(socket.gameId);
     if (!game || game.phase !== 'build') return;
 
     game.castles[socket.playerIndex] = castleData;
@@ -235,7 +326,6 @@ io.on('connection', (socket) => {
     if (game.castles[0] !== null && game.castles[1] !== null) {
       game.phase = 'battle';
     }
-    saveGame(game);
 
     if (game.phase === 'battle') {
       const s0 = liveSockets.get(game.sessionIds[0]);
@@ -246,71 +336,67 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- Battle phase ---
+  // ── Battle phase ────────────────────────────────────
 
   socket.on('fire', ({ yaw, pitch, power }) => {
     if (!socket.gameId) return;
-    const game = getGame(socket.gameId);
+    if (!validateFirePayload({ yaw, pitch, power })) return;
+    const game = games.get(socket.gameId);
     if (!game || game.phase !== 'battle') return;
     if (socket.playerIndex !== game.currentTurn) return;
 
-    // Relay to opponent
     const oppSessionId = game.sessionIds[1 - socket.playerIndex];
     const oppSocket = liveSockets.get(oppSessionId);
     if (oppSocket) oppSocket.emit('opponent-fired', { yaw, pitch, power });
 
-    // Safety timeout: if neither client reports within 10s, force miss
     if (turnTimeouts.has(game.id)) clearTimeout(turnTimeouts.get(game.id));
     turnTimeouts.set(game.id, setTimeout(() => {
       turnTimeouts.delete(game.id);
-      // If no shot-result received, treat as miss
       if (!pendingShots.has(game.id)) {
-        const g = getGame(game.id);
+        const g = games.get(game.id);
         if (!g || g.phase !== 'battle') return;
         g.currentTurn = 1 - g.currentTurn;
-        saveGame(g);
         for (const sid of g.sessionIds) {
           const s = liveSockets.get(sid);
           if (s) s.emit('shot-resolved', { hit: false, nextTurn: g.currentTurn });
         }
       }
-    }, 10000));
+    }, FIRE_SAFETY_TIMEOUT));
   });
 
-  // --- Shot result (both clients report independently) ---
+  // ── Shot result ─────────────────────────────────────
 
   socket.on('shot-result', ({ hit, perfect }) => {
     if (!socket.gameId) return;
-    const game = getGame(socket.gameId);
+    if (typeof hit !== 'boolean' && hit !== undefined) return;
+    const game = games.get(socket.gameId);
     if (!game || game.phase !== 'battle') return;
 
     let pending = pendingShots.get(game.id);
     if (!pending) {
       pending = { reports: new Map(), timer: null };
       pendingShots.set(game.id, pending);
-
-      // Wait up to 3s for both clients to report
-      pending.timer = setTimeout(() => resolveShot(game.id), 3000);
+      pending.timer = setTimeout(() => resolveShot(game.id), SHOT_RESOLVE_TIMEOUT);
     }
 
     pending.reports.set(socket.playerIndex, { hit: !!hit, perfect: !!perfect });
 
-    // If both reported, resolve immediately
     if (pending.reports.size >= 2) {
       resolveShot(game.id);
     }
   });
 
-  // --- Reposition ---
+  // ── Reposition ──────────────────────────────────────
 
-  socket.on('reposition-complete', ({ targetPos }) => {
+  socket.on('reposition-complete', (data) => {
     if (!socket.gameId) return;
-    const game = getGame(socket.gameId);
+    if (!validateRepositionPayload(data)) return;
+    const { targetPos } = data;
+    const game = games.get(socket.gameId);
     if (!game || game.phase !== 'reposition') return;
 
     game.phase = 'battle';
-    game.currentTurn = 1 - game.currentTurn; // damaged player's turn next
-    saveGame(game);
+    game.currentTurn = 1 - game.currentTurn;
 
     for (const sid of game.sessionIds) {
       const s = liveSockets.get(sid);
@@ -318,45 +404,42 @@ io.on('connection', (socket) => {
     }
   });
 
-  // --- Disconnect with grace period ---
+  // ── Disconnect ──────────────────────────────────────
 
   socket.on('disconnect', () => {
     liveSockets.delete(sessionId);
-
-    const qIdx = queue.findIndex(q => q.sessionId === sessionId);
-    if (qIdx >= 0) queue.splice(qIdx, 1);
+    lobbyClients.delete(sessionId);
+    removeLobbyByHost(sessionId);
 
     if (!socket.gameId) return;
 
-    const game = getGame(socket.gameId);
+    const game = games.get(socket.gameId);
     if (!game || game.phase === 'over') return;
 
-    // Notify opponent of temporary disconnect
     const oppSessionId = game.sessionIds[1 - socket.playerIndex];
     const oppSocket = liveSockets.get(oppSessionId);
     if (oppSocket) oppSocket.emit('opponent-disconnected-temp');
 
-    // Grace period — if player doesn't reconnect, forfeit
-    const graceKey = `grace:${game.id}:${socket.playerIndex}`;
-    storeSet(graceKey, true, RECONNECT_GRACE);
+    const graceKey = `${game.id}:${socket.playerIndex}`;
+    const timer = setTimeout(() => {
+      if (!graceTimers.has(graceKey)) return; // player reconnected
+      graceTimers.delete(graceKey);
 
-    setTimeout(() => {
-      if (!storeGet(graceKey)) return; // player reconnected
-
-      const g = getGame(socket.gameId);
+      const g = games.get(socket.gameId);
       if (!g || g.phase === 'over') return;
 
       g.phase = 'over';
-      saveGame(g);
 
       const opp = liveSockets.get(oppSessionId);
       if (opp) opp.emit('opponent-disconnected');
 
       setTimeout(() => {
-        deleteGame(game.id);
-        for (const sid of game.sessionIds) clearPlayerGame(sid);
+        games.delete(game.id);
+        for (const sid of game.sessionIds) players.delete(sid);
       }, 5000);
     }, RECONNECT_GRACE * 1000);
+
+    graceTimers.set(graceKey, timer);
   });
 });
 

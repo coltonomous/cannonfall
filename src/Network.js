@@ -11,6 +11,9 @@ const EVENTS = [
   'reconnected',
   'shot-resolved',
   'reposition-done',
+  'lobby:list',
+  'lobby:created',
+  'lobby:error',
 ];
 
 function getSessionId() {
@@ -81,6 +84,26 @@ export class Network {
 
   sendRepositionComplete(targetPos) {
     this.socket.emit('reposition-complete', { targetPos });
+  }
+
+  enterLobby() {
+    this.socket.emit('lobby:enter');
+  }
+
+  leaveLobby() {
+    if (this.socket) this.socket.emit('lobby:leave');
+  }
+
+  createLobby(name, gameMode, password) {
+    this.socket.emit('lobby:create', { name, gameMode, password: password || null });
+  }
+
+  joinLobby(lobbyId, name, password) {
+    this.socket.emit('lobby:join', { lobbyId, name, password: password || null });
+  }
+
+  cancelLobby() {
+    this.socket.emit('lobby:cancel');
   }
 
   on(event, callback) {

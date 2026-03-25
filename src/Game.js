@@ -24,7 +24,23 @@ const State = {
   OPPONENT_FIRING: 'opponent_firing',
   REPOSITION: 'reposition',
   PASS_DEVICE_REPOSITION: 'pass_device_reposition',
+  TURN_TRANSITION: 'turn_transition',
   GAME_OVER: 'game_over',
+};
+
+const VALID_TRANSITIONS = {
+  [State.MENU]:                  [State.BUILD],
+  [State.BUILD]:                 [State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN],
+  [State.PASS_DEVICE]:           [State.BUILD],
+  [State.WAITING_OPPONENT_BUILD]:[State.MY_TURN, State.OPPONENT_TURN],
+  [State.MY_TURN]:               [State.FIRING, State.GAME_OVER, State.MENU],
+  [State.FIRING]:                [State.GAME_OVER, State.PASS_DEVICE_REPOSITION, State.TURN_TRANSITION, State.OPPONENT_TURN, State.MY_TURN, State.REPOSITION],
+  [State.OPPONENT_TURN]:         [State.OPPONENT_FIRING, State.REPOSITION, State.MY_TURN, State.GAME_OVER, State.MENU],
+  [State.OPPONENT_FIRING]:       [State.GAME_OVER, State.REPOSITION, State.MY_TURN, State.OPPONENT_TURN, State.TURN_TRANSITION],
+  [State.REPOSITION]:            [State.MY_TURN, State.OPPONENT_TURN],
+  [State.PASS_DEVICE_REPOSITION]:[State.REPOSITION],
+  [State.TURN_TRANSITION]:       [State.MY_TURN, State.OPPONENT_TURN],
+  [State.GAME_OVER]:             [State.MENU],
 };
 
 export class Game {
@@ -46,7 +62,6 @@ export class Game {
     this.cannons = [null, null];
     this.castleData = [null, null];
 
-    // HP
     this.hp = [C.MAX_HP, C.MAX_HP];
 
     // Castle builder & repositioner
@@ -81,6 +96,19 @@ export class Game {
     this.clock = new THREE.Clock();
   }
 
+  // ── State Machine ───────────────────────────────────────
+
+  transition(newState) {
+    const valid = VALID_TRANSITIONS[this.state];
+    if (!valid || !valid.includes(newState)) {
+      console.warn(`[Cannonfall] Invalid state transition: ${this.state} → ${newState}`);
+      return false;
+    }
+    this.debugLog(`State: ${this.state} → ${newState}`);
+    this.state = newState;
+    return true;
+  }
+
   // ── UI Listeners ─────────────────────────────────────────
 
   setupUIListeners() {
@@ -97,7 +125,7 @@ export class Game {
 
     this.ui.playAgainBtn.addEventListener('click', () => {
       this.cleanup();
-      this.state = State.MENU;
+      this.transition(State.MENU);
       this.ui.showMenu();
     });
 
@@ -112,7 +140,7 @@ export class Game {
       if (this.state === State.MENU || this.state === State.BUILD ||
           this.state === State.PASS_DEVICE || this.state === State.GAME_OVER) return;
       this.cleanup();
-      this.state = State.MENU;
+      this.transition(State.MENU);
       this.ui.showMenu();
     });
 
@@ -129,6 +157,67 @@ export class Game {
     this.ui.debugLogs.addEventListener('change', (e) => {
       this.debugLogsEnabled = e.target.checked;
     });
+
+    // ── Lobby UI ──────────────────────────────────────────
+
+    this.ui.lobbyCreateBtn.addEventListener('click', () => {
+      const name = this.ui.getLobbyName();
+      if (!name) { this.ui.lobbyNameInput.focus(); return; }
+      this.ui.lobbyCreateForm.classList.remove('hidden');
+      this.ui.lobbyCreateBtn.classList.add('hidden');
+    });
+
+    this.ui.lobbyCancelCreateBtn.addEventListener('click', () => {
+      this.ui.lobbyCreateForm.classList.add('hidden');
+      this.ui.lobbyCreateBtn.classList.remove('hidden');
+    });
+
+    this.ui.lobbyConfirmCreateBtn.addEventListener('click', () => {
+      const name = this.ui.getLobbyName();
+      if (!name) return;
+      const password = this.ui.lobbyPasswordInput.value || null;
+      this.network.createLobby(name, this.gameMode.id, password);
+    });
+
+    this.ui.lobbyCancelHostBtn.addEventListener('click', () => {
+      this.network.cancelLobby();
+      this.ui.hideLobbyHosting();
+    });
+
+    this.ui.lobbyBackBtn.addEventListener('click', () => {
+      this.network.leaveLobby();
+      this.network.disconnect();
+      this.transition(State.MENU);
+      this.ui.showMenu();
+    });
+
+    this.ui.lobbyList.addEventListener('click', (e) => {
+      const btn = e.target.closest('.lobby-join-btn');
+      if (!btn) return;
+      const lobbyId = btn.dataset.lobbyId;
+      const hasPassword = btn.dataset.hasPassword === 'true';
+      const name = this.ui.getLobbyName();
+      if (!name) { this.ui.lobbyNameInput.focus(); return; }
+
+      if (hasPassword) {
+        this.ui.showPasswordPrompt(lobbyId);
+      } else {
+        this.network.joinLobby(lobbyId, name, null);
+      }
+    });
+
+    this.ui.lobbyJoinConfirmBtn.addEventListener('click', () => {
+      const password = this.ui.lobbyJoinPassword.value;
+      const name = this.ui.getLobbyName();
+      if (this.ui._pendingJoinLobbyId && name) {
+        this.network.joinLobby(this.ui._pendingJoinLobbyId, name, password);
+      }
+      this.ui.hidePasswordPrompt();
+    });
+
+    this.ui.lobbyJoinCancelBtn.addEventListener('click', () => {
+      this.ui.hidePasswordPrompt();
+    });
   }
 
   // ── Network Listeners ────────────────────────────────────
@@ -137,7 +226,26 @@ export class Game {
     this.network.on('matched', (data) => {
       this.playerIndex = data.playerIndex;
       this.currentTurn = data.firstTurn;
-      this.startBuildPhase();
+      // Server is authoritative on game mode for online matches
+      if (data.gameMode) {
+        const modeKey = data.gameMode.toUpperCase();
+        if (GAME_MODES[modeKey]) this.gameMode = GAME_MODES[modeKey];
+      }
+      this.applyGameMode();
+      this.startBuildPhase(true);
+    });
+
+    this.network.on('lobby:list', (lobbies) => {
+      this.ui.updateLobbyList(lobbies);
+    });
+
+    this.network.on('lobby:created', () => {
+      this.ui.showLobbyHosting();
+    });
+
+    this.network.on('lobby:error', ({ message }) => {
+      this.ui.hidePasswordPrompt();
+      this.ui.setStatus(message);
     });
 
     this.network.on('build-complete', (data) => {
@@ -147,7 +255,7 @@ export class Game {
 
     this.network.on('opponent-fired', (data) => {
       this.battle.handleOpponentFire(data);
-      this.state = State.OPPONENT_FIRING;
+      this.transition(State.OPPONENT_FIRING);
       this.battle.updateCamera();
     });
 
@@ -158,14 +266,14 @@ export class Game {
         this.ui.updateHP(this.hp[0], this.hp[1]);
 
         if (this.hp[damagedPlayer] <= 0) {
-          this.state = State.GAME_OVER;
+          this.transition(State.GAME_OVER);
           this.ui.showResult(damagedPlayer !== this.playerIndex);
         } else {
           this.ui.setStatus(`HIT! ${this.hp[damagedPlayer]} hit${this.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
           if (damagedPlayer === this.playerIndex) {
-            setTimeout(() => this.startRepositionPhase(damagedPlayer), 1500);
+            setTimeout(() => this.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY);
           } else {
-            this.state = State.OPPONENT_TURN;
+            this.transition(State.OPPONENT_TURN);
             this.ui.setStatus('Opponent repositioning...');
           }
         }
@@ -177,12 +285,12 @@ export class Game {
     });
 
     this.network.on('game-over', (data) => {
-      this.state = State.GAME_OVER;
+      this.transition(State.GAME_OVER);
       this.ui.showResult(data.winner === this.playerIndex);
     });
 
     this.network.on('opponent-disconnected', () => {
-      this.state = State.GAME_OVER;
+      this.transition(State.GAME_OVER);
       this.ui.showResult(true);
     });
   }
@@ -202,29 +310,33 @@ export class Game {
     this.applyGameMode();
     this.mode = 'local';
     this.playerIndex = 0;
-    this.startBuildPhase();
+    this.startBuildPhase(true);
   }
 
   // ── Online Mode ──────────────────────────────────────────
 
   async startOnline() {
-    this.applyGameMode();
     this.mode = 'online';
-    this.ui.showMatchmaking();
+    this.ui.showLobby();
     try {
       await this.network.connect();
-      this.network.joinQueue();
+      this.network.enterLobby();
     } catch (err) {
-      this.ui.setStatus('Failed to connect. Try again.');
-      this.state = State.MENU;
+      this.ui.setStatus('Failed to connect to server.');
+      this.transition(State.MENU);
       this.ui.showMenu();
     }
   }
 
   // ── Build Phase ──────────────────────────────────────────
 
-  startBuildPhase() {
-    this.state = State.BUILD;
+  startBuildPhase(fromMenu = false) {
+    if (fromMenu) {
+      this.transition(State.BUILD);
+    } else {
+      // Coming from PASS_DEVICE — already validated
+      this.transition(State.BUILD);
+    }
     this.ui.overlay.classList.add('hidden');
     this.ui.gameUI.classList.add('hidden');
 
@@ -240,7 +352,7 @@ export class Game {
     if (this.mode === 'local') {
       if (this.playerIndex === 0) {
         this.playerIndex = 1;
-        this.state = State.PASS_DEVICE;
+        this.transition(State.PASS_DEVICE);
         this.ui.showPassDevice(2);
       } else {
         this.buildBothCastles(this.castleData[0], this.castleData[1]);
@@ -249,7 +361,7 @@ export class Game {
       }
     } else {
       this.network.sendBuildReady(castleData);
-      this.state = State.WAITING_OPPONENT_BUILD;
+      this.transition(State.WAITING_OPPONENT_BUILD);
       this.ui.overlay.classList.remove('hidden');
       document.getElementById('build-screen').classList.remove('hidden');
       document.getElementById('build-screen').innerHTML =
@@ -295,8 +407,8 @@ export class Game {
     const cp1 = { x: gw - 1 - cp1Raw.x, z: cp1Raw.z };
     const pos0 = this.castles[0].getCannonWorldPosition(cp0.x, cp0.z);
     const pos1 = this.castles[1].getCannonWorldPosition(cp1.x, cp1.z);
-    pos0.x += 4;
-    pos1.x -= 4;
+    pos0.x += C.CANNON_OFFSET_FROM_CASTLE;
+    pos1.x -= C.CANNON_OFFSET_FROM_CASTLE;
     const cannonColors = { baseColor: this.gameMode.cannonBaseColor, barrelColor: this.gameMode.cannonBarrelColor };
     const cannonStyle = this.gameMode.cannonStyle;
     this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1, cannonColors, cannonStyle);
@@ -308,16 +420,17 @@ export class Game {
     }
 
     // Target markers on layer 2 — minimap only
+    this._cleanupTargetMarkers();
     this.targetMarkers = [];
     for (let i = 0; i < 2; i++) {
       const tp = this.castles[i].getTargetPosition();
       if (!tp) continue;
       const ring = new THREE.Mesh(
-        new THREE.RingGeometry(0.6, 0.9, 16),
+        new THREE.RingGeometry(C.MINIMAP_RING_INNER, C.MINIMAP_RING_OUTER, 16),
         new THREE.MeshBasicMaterial({ color: 0xff2222, side: THREE.DoubleSide })
       );
       ring.rotation.x = -Math.PI / 2;
-      ring.position.set(tp.x, 25, tp.z);
+      ring.position.set(tp.x, C.MINIMAP_RING_Y, tp.z);
       ring.layers.set(2);
       this.sceneManager.scene.add(ring);
       this.targetMarkers.push(ring);
@@ -349,11 +462,11 @@ export class Game {
     this.debugLog('Turn:', this.currentTurn, 'State:', this.state);
     if (this.mode === 'local') {
       this.playerIndex = this.currentTurn;
-      this.state = State.MY_TURN;
+      this.transition(State.MY_TURN);
       this.ui.setTurn(true, this.currentTurn + 1);
     } else {
       const isMyTurn = this.currentTurn === this.playerIndex;
-      this.state = isMyTurn ? State.MY_TURN : State.OPPONENT_TURN;
+      this.transition(isMyTurn ? State.MY_TURN : State.OPPONENT_TURN);
       this.ui.setTurn(isMyTurn);
     }
 
@@ -388,30 +501,30 @@ export class Game {
     this.debugLog('Target hit!', { damage, perfect: this.battle._perfectShot, hp: [...this.hp] });
 
     if (this.hp[damagedPlayer] <= 0) {
-      this.state = State.GAME_OVER;
+      this.transition(State.GAME_OVER);
       this.ui.showLocalResult(this.currentTurn + 1);
     } else {
       this.ui.setStatus(`HIT! ${this.hp[damagedPlayer]} hit${this.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
       setTimeout(() => {
-        this.state = State.PASS_DEVICE_REPOSITION;
+        this.transition(State.PASS_DEVICE_REPOSITION);
         this._damagedPlayer = damagedPlayer;
         this.ui.showPassDevice(damagedPlayer + 1);
-      }, 1500);
+      }, C.HIT_DISPLAY_DELAY);
     }
   }
 
   onShotMiss() {
     if (this.mode === 'local') {
-      this.state = State.GAME_OVER; // temporary: prevent further input
+      this.transition(State.TURN_TRANSITION);
       this.ui.setStatus('');
       setTimeout(() => {
         this.currentTurn = 1 - this.currentTurn;
         this.syncBattle();
         this.onTurnStart();
-      }, 1000);
+      }, C.MISS_TURN_DELAY);
     } else {
       this.network.sendShotResult(false);
-      this.state = State.OPPONENT_TURN;
+      this.transition(State.OPPONENT_TURN);
       this.ui.setStatus('Waiting...');
     }
   }
@@ -419,7 +532,7 @@ export class Game {
   // ── Reposition ───────────────────────────────────────────
 
   startRepositionPhase(damagedPlayerIndex) {
-    this.state = State.REPOSITION;
+    this.transition(State.REPOSITION);
     this.ui.overlay.classList.add('hidden');
     this.ui.gameUI.classList.add('hidden');
     this.sceneManager.disableMinimap();
@@ -441,7 +554,7 @@ export class Game {
 
     const tp = this.castles[damagedPlayerIndex].getTargetPosition();
     if (tp && this.targetMarkers && this.targetMarkers[damagedPlayerIndex]) {
-      this.targetMarkers[damagedPlayerIndex].position.set(tp.x, 25, tp.z);
+      this.targetMarkers[damagedPlayerIndex].position.set(tp.x, C.MINIMAP_RING_Y, tp.z);
     }
 
     this.currentTurn = damagedPlayerIndex;
@@ -462,7 +575,8 @@ export class Game {
       this.state === State.PASS_DEVICE ||
       this.state === State.PASS_DEVICE_REPOSITION ||
       this.state === State.WAITING_OPPONENT_BUILD ||
-      this.state === State.REPOSITION
+      this.state === State.REPOSITION ||
+      this.state === State.TURN_TRANSITION
     ) {
       this.sceneManager.render();
       return;
@@ -473,7 +587,7 @@ export class Game {
       const action = this.input.handleInput(dt, this.cannons[this.currentTurn], this.battle, this.ui);
       if (action === 'fire') {
         this.battle.fire(this.debugPerfectShot);
-        this.state = State.FIRING;
+        this.transition(State.FIRING);
       }
       this.battle.updateCamera();
       this.battle.updateTrajectory();
@@ -498,7 +612,7 @@ export class Game {
       }
 
       const elapsed = (performance.now() - this.battle.fireTime) / 1000;
-      if (elapsed > 2 && this.state === State.FIRING) {
+      if (elapsed > C.SKIP_PROMPT_DELAY && this.state === State.FIRING) {
         this.ui.setStatus('Press Space to skip');
         if (this.input.keys['Space']) {
           this.input.keys['Space'] = false;
@@ -506,7 +620,7 @@ export class Game {
           this.onShotMiss();
         }
       }
-      if (elapsed > 6 && (this.state === State.FIRING || this.state === State.OPPONENT_FIRING)) {
+      if (elapsed > C.AUTO_MISS_TIMEOUT && (this.state === State.FIRING || this.state === State.OPPONENT_FIRING)) {
         this.battle.destroyProjectile();
         this.onShotMiss();
       }
@@ -516,6 +630,19 @@ export class Game {
     this.particles.update(dt);
     this.sceneManager.updateCamera(dt);
     this.sceneManager.render();
+  }
+
+  // ── Target Marker Cleanup ────────────────────────────
+
+  _cleanupTargetMarkers() {
+    if (this.targetMarkers) {
+      for (const m of this.targetMarkers) {
+        this.sceneManager.scene.remove(m);
+        m.geometry.dispose();
+        m.material.dispose();
+      }
+      this.targetMarkers = [];
+    }
   }
 
   // ── Cleanup ──────────────────────────────────────────────
@@ -532,17 +659,17 @@ export class Game {
     this.particles.clear();
     this.builder.stop();
     this.repositioner.stop();
-    if (this.targetMarkers) {
-      for (const m of this.targetMarkers) this.sceneManager.scene.remove(m);
-      this.targetMarkers = [];
-    }
+    this._cleanupTargetMarkers();
     this.hp = [C.MAX_HP, C.MAX_HP];
     this.sceneManager.disableMinimap();
     const debugOverlay = document.getElementById('debug-log-overlay');
     if (debugOverlay) debugOverlay.remove();
     this.ui.menuPanel.classList.add('hidden');
 
-    if (this.network.socket) this.network.disconnect();
+    if (this.network.socket) {
+      this.network.leaveLobby();
+      this.network.disconnect();
+    }
   }
 
   // ── Debug ────────────────────────────────────────────────

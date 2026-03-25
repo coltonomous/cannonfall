@@ -33,6 +33,25 @@ function setupDOM() {
     <canvas id="game-canvas"></canvas>
     <div id="overlay">
       <div id="menu-screen" class="screen"></div>
+      <div id="lobby-screen" class="screen hidden">
+        <input type="text" id="lobby-name-input" />
+        <button id="lobby-create-btn"></button>
+        <div id="lobby-create-form" class="hidden">
+          <input type="password" id="lobby-password-input" />
+          <button id="lobby-confirm-create-btn"></button>
+          <button id="lobby-cancel-create-btn"></button>
+        </div>
+        <div id="lobby-hosting" class="hidden">
+          <button id="lobby-cancel-host-btn"></button>
+        </div>
+        <div id="lobby-list"></div>
+        <div id="lobby-password-prompt" class="hidden">
+          <input type="password" id="lobby-join-password" />
+          <button id="lobby-join-confirm-btn"></button>
+          <button id="lobby-join-cancel-btn"></button>
+        </div>
+        <button id="lobby-back-btn"></button>
+      </div>
       <div id="matching-screen" class="screen hidden"></div>
       <div id="build-screen" class="screen hidden"></div>
       <div id="pass-device-screen" class="screen hidden">
@@ -307,18 +326,26 @@ describe('Integration: Hit Detection', () => {
     startBattle(game, 'CASTLE', keep, keep);
   });
 
-  it('should detect hit when projectile is near target', () => {
+  it('should detect hit when projectile reaches target via collision', () => {
     fireAt(game, 0.1, 1);
     const target = game.castles[1].getTargetPosition();
-    // Place projectile at target position (both body AND mesh, since getPosition reads mesh)
-    game.battle.projectile.body.position.set(target.x, target.y, target.z);
-    game.battle.projectile.mesh.position.set(target.x, target.y, target.z);
-    game.battle.projectile.body.velocity.set(5, 0, 0);
 
     let hitDetected = false;
     game.battle._onHitLocal = () => { hitDetected = true; };
 
-    game.battle.checkProjectile(1 / 60);
+    // Place projectile near target and step physics so collision fires
+    game.battle.projectile.body.position.set(target.x - 0.5, target.y, target.z);
+    game.battle.projectile.body.velocity.set(10, 0, 0);
+
+    // Step physics to trigger collision, then checkProjectile to process deferred hit
+    for (let i = 0; i < 30; i++) {
+      game.physicsWorld.step(1 / 60);
+      game.physicsWorld.sync();
+      if (game.battle._pendingTargetHit) {
+        game.battle.checkProjectile(1 / 60);
+        break;
+      }
+    }
     expect(hitDetected).toBe(true);
   });
 
@@ -357,9 +384,9 @@ describe('Integration: Turn Flow', () => {
 
   it('onShotMiss should advance turn in local mode', () => {
     expect(game.currentTurn).toBe(0);
+    game.state = 'firing'; // onShotMiss transitions from firing
     game.onShotMiss();
-    // Uses setTimeout, so check state change
-    expect(game.state).toBe('game_over'); // temporary state during turn transition
+    expect(game.state).toBe('turn_transition');
   });
 
   it('onTargetHit should reduce HP', () => {

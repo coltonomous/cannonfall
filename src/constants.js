@@ -55,5 +55,34 @@ export const BLOCK_TYPES = {
   BARREL:      { cost: 1, size: [0.5, 0.5, 0.5] },    // vol ~0.05
 };
 
+// ── Hit Detection ─────────────────────────────────────
+export const TARGET_HIT_RADIUS = 1.2;
+export const EXPLOSIVE_HIT_RADIUS = 2.0;
+
+// ── Projectile Settling ───────────────────────────────
+export const SETTLE_SPEED = 0.5;
+export const SETTLE_TIME = 1.5;
+export const IMPACT_SPEED_RATIO = 0.5;
+
+// ── Timing (seconds) ─────────────────────────────────
+export const SKIP_PROMPT_DELAY = 2;
+export const AUTO_MISS_TIMEOUT = 6;
+export const MISS_TURN_DELAY = 1000;       // ms
+export const HIT_DISPLAY_DELAY = 1500;     // ms
+export const PERFECT_FIRE_DELAY = 350;     // ms
+export const EXPLOSION_SETTLE_DELAY = 2500;// ms
+
+// ── Cannon Placement ──────────────────────────────────
+export const CANNON_OFFSET_FROM_CASTLE = 4;
+
+// ── Minimap ───────────────────────────────────────────
+export const MINIMAP_RING_INNER = 0.6;
+export const MINIMAP_RING_OUTER = 0.9;
+export const MINIMAP_RING_Y = 25;
+
+// ── Network Timeouts (server) ─────────────────────────
+export const SHOT_RESOLVE_TIMEOUT = 3000;  // ms
+export const FIRE_SAFETY_TIMEOUT = 10000;  // ms
+
 // ── HP ────────────────────────────────────────────────
 export const MAX_HP = 3;

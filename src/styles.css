@@ -476,6 +476,191 @@ body {
   text-shadow: none;
 }
 
+/* ── Lobby Screen ──────────────────────────────────── */
+#lobby-screen {
+  max-width: 500px;
+}
+
+.lobby-name-row {
+  width: 100%;
+}
+
+#lobby-name-input,
+#lobby-password-input,
+#lobby-join-password {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 1rem;
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#lobby-name-input:focus,
+#lobby-password-input:focus,
+#lobby-join-password:focus {
+  border-color: #e67e22;
+}
+
+#lobby-name-input::placeholder,
+#lobby-password-input::placeholder,
+#lobby-join-password::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.lobby-actions {
+  width: 100%;
+}
+
+#lobby-create-btn,
+#lobby-confirm-create-btn,
+#lobby-join-confirm-btn {
+  padding: 12px 24px;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  background: #e67e22;
+  color: #fff;
+  transition: background 0.2s, transform 0.1s;
+  width: 100%;
+}
+
+#lobby-create-btn:hover,
+#lobby-confirm-create-btn:hover,
+#lobby-join-confirm-btn:hover {
+  background: #cf6d17;
+  transform: scale(1.03);
+}
+
+.lobby-btn-secondary {
+  padding: 10px 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.lobby-btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+#lobby-create-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#lobby-hosting {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+#lobby-hosting p {
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+#lobby-list {
+  width: 100%;
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lobby-empty {
+  opacity: 0.5;
+  font-size: 0.9rem;
+  padding: 20px 0;
+}
+
+.lobby-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  transition: background 0.2s;
+}
+
+.lobby-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.lobby-row-info {
+  flex: 1;
+  text-align: left;
+}
+
+.lobby-host-name {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.lobby-mode-tag {
+  font-size: 0.75rem;
+  opacity: 0.6;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.lobby-lock {
+  font-size: 1rem;
+  opacity: 0.5;
+}
+
+.lobby-join-btn {
+  padding: 6px 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  background: #27ae60;
+  color: #fff;
+  transition: background 0.2s;
+}
+
+.lobby-join-btn:hover {
+  background: #219a52;
+}
+
+#lobby-password-prompt {
+  background: rgba(20, 20, 20, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 12px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+}
+
+.lobby-prompt-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.lobby-prompt-actions button {
+  flex: 1;
+}
+
 /* ── Minimap ───────────────────────────────────────── */
 #minimap-frame {
   position: absolute;

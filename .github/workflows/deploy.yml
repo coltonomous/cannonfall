@@ -1,0 +1,82 @@
+name: Deploy Cannonfall
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx vitest run
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Get runner IP
+        id: ip
+        run: echo "addr=$(curl -s https://ifconfig.me)" >> "$GITHUB_OUTPUT"
+
+      - name: Open SSH for runner
+        run: |
+          aws ec2 authorize-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.addr }}/32
+
+      - name: Deploy to EC2
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
+          chmod 400 key.pem
+
+          rsync -avz --exclude node_modules --exclude .git --exclude .env \
+            -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
+            ./ ec2-user@${{ secrets.EC2_HOST }}:/opt/cannonfall/
+
+          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} bash -s <<'EOF'
+          set -e
+
+          # Grow filesystem if EBS was expanded
+          ROOT_DEV=$(df / --output=source | tail -1)
+          DISK=$(echo "$ROOT_DEV" | sed 's/p\?[0-9]*$//')
+          PART=$(echo "$ROOT_DEV" | grep -o '[0-9]*$')
+          sudo growpart "$DISK" "$PART" 2>/dev/null || true
+          if command -v xfs_growfs &>/dev/null; then
+            sudo xfs_growfs / 2>/dev/null || true
+          else
+            sudo resize2fs "$ROOT_DEV" 2>/dev/null || true
+          fi
+
+          cd /opt/cannonfall
+          docker image prune -f
+          docker compose build
+          docker compose down
+          docker compose up -d
+          sleep 10
+          docker compose ps
+          EOF
+
+          rm -f key.pem
+
+      - name: Close SSH for runner
+        if: always()
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ secrets.EC2_SG_ID }} \
+            --protocol tcp --port 22 --cidr ${{ steps.ip.outputs.addr }}/32 \
+            2>/dev/null || true

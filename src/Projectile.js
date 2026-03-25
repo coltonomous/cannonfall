@@ -78,6 +78,12 @@ export class Projectile {
     if (!this.alive) return;
     this.alive = false;
     this.sceneManager.scene.remove(this.mesh);
+    this.mesh.geometry.dispose();
+    this.mesh.material.dispose();
+    // Dispose child objects (glow lights)
+    for (const child of this.mesh.children) {
+      if (child.dispose) child.dispose();
+    }
     this.physicsWorld.removePair(this.mesh);
   }
 }

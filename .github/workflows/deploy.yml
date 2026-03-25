@@ -72,9 +72,11 @@ jobs:
           sleep 10
           docker compose ps
 
-          # Restart shared reverse proxy
-          cd /opt/caddy
-          docker compose restart
+          # Restart shared reverse proxy (skip if not set up yet)
+          if [ -d /opt/caddy ]; then
+            cd /opt/caddy
+            docker compose restart
+          fi
           EOF
 
           rm -f key.pem

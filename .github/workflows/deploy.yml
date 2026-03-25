@@ -43,6 +43,9 @@ jobs:
           echo "${{ secrets.EC2_SSH_KEY }}" > key.pem
           chmod 400 key.pem
 
+          ssh -i key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} \
+            "sudo mkdir -p /opt/cannonfall && sudo chown ec2-user:ec2-user /opt/cannonfall"
+
           rsync -avz --exclude node_modules --exclude .git --exclude .env \
             -e "ssh -i key.pem -o StrictHostKeyChecking=no" \
             ./ ec2-user@${{ secrets.EC2_HOST }}:/opt/cannonfall/

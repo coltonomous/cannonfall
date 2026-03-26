@@ -833,13 +833,28 @@ export class Game {
   // ── Debug ────────────────────────────────────────────────
 
   toggleAxesHelper(enabled) {
-    if (enabled && !this._axesHelper) {
-      this._axesHelper = new THREE.AxesHelper(10);
-      this.sceneManager.scene.add(this._axesHelper);
-    } else if (!enabled && this._axesHelper) {
-      this.sceneManager.scene.remove(this._axesHelper);
-      this._axesHelper.dispose();
-      this._axesHelper = null;
+    // Remove existing helpers
+    if (this._blockAxes) {
+      for (const helper of this._blockAxes) {
+        this.sceneManager.scene.remove(helper);
+        helper.dispose();
+      }
+      this._blockAxes = null;
+    }
+
+    if (enabled) {
+      this._blockAxes = [];
+      for (const castle of this.castles) {
+        if (!castle) continue;
+        for (const { mesh } of castle.blocks) {
+          if (!mesh) continue;
+          const axes = new THREE.AxesHelper(0.6);
+          axes.position.copy(mesh.position);
+          axes.rotation.copy(mesh.rotation);
+          this.sceneManager.scene.add(axes);
+          this._blockAxes.push(axes);
+        }
+      }
     }
   }
 

@@ -76,16 +76,18 @@ export class TargetRepositioner {
     this.gridPlane.position.set(this.centerX, this._floorOffset + 0.5, 0);
     this.group.add(this.gridPlane);
 
-    // Ghost target preview
+    // Ghost target preview — bright enough to see in dark modes (space)
     const geo = new THREE.SphereGeometry(0.5, 16, 16);
     const mat = new THREE.MeshStandardMaterial({
       color: 0xff4444,
       emissive: 0xff0000,
-      emissiveIntensity: 0.3,
+      emissiveIntensity: 0.8,
       transparent: true,
-      opacity: 0.5,
+      opacity: 0.6,
     });
     this.ghostTarget = new THREE.Mesh(geo, mat);
+    const ghostLight = new THREE.PointLight(0xff4444, 1, 8);
+    this.ghostTarget.add(ghostLight);
     this.ghostTarget.visible = false;
     this.group.add(this.ghostTarget);
 

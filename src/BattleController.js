@@ -213,9 +213,15 @@ export class BattleController {
     this.projectile.destroy();
     this.projectile = null;
 
+    // In explosive modes (space), delay hit report so the explosion visual plays out
+    const delay = this.gameMode.explosiveProjectile ? (this.gameMode.explosionDelay || C.EXPLOSION_SETTLE_DELAY) : 0;
+
     if (this.mode === 'online') {
       this._onReportShot(true, this._perfectShot);
       this.ui.setStatus('Hit detected...');
+    } else if (delay > 0) {
+      this.ui.setStatus('Direct hit!');
+      setTimeout(() => this._onHitLocal(), delay);
     } else {
       this._onHitLocal();
     }

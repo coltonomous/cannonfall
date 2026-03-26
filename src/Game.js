@@ -505,13 +505,14 @@ export class Game {
     const myCastleX = this.currentTurn === 0 ? -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X) : (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X);
     this.sceneManager.setupMinimap(myCastleX);
 
+    const defaultPitch = this.gameMode.defaultPitch;
     if (this.state === State.MY_TURN) {
-      this.cannons[this.currentTurn].resetAim();
+      this.cannons[this.currentTurn].resetAim(defaultPitch);
       this.input.resetTouchState();
       this.ui.setControlsHint(this.isTouch);
     }
     if (this.state === State.AI_AIMING) {
-      this.cannons[this.currentTurn].resetAim();
+      this.cannons[this.currentTurn].resetAim(defaultPitch);
       this._startAITurn();
     }
 
@@ -660,7 +661,7 @@ export class Game {
   update() {
     const dt = this.clock.getDelta();
 
-    // Non-gameplay states: just render
+    // Non-gameplay states: disable input, just render
     if (
       this.state === State.MENU ||
       this.state === State.BUILD ||
@@ -670,9 +671,12 @@ export class Game {
       this.state === State.REPOSITION ||
       this.state === State.TURN_TRANSITION
     ) {
+      this.input.enabled = false;
+      this.input.resetTouchState();
       this.sceneManager.render();
       return;
     }
+    this.input.enabled = true;
 
     // Replay state
     if (this.state === State.REPLAY) {
@@ -722,7 +726,13 @@ export class Game {
 
     // AI aiming animation
     if (this.state === State.AI_AIMING) {
-      if (this.ai) this.ai.updateAiming(dt, this.cannons[this.currentTurn]);
+      if (this.ai) {
+        this.ai.updateAiming(dt, this.cannons[this.currentTurn]);
+        // Animate power meter during AI aim
+        const progress = this.ai._aimProgress;
+        const aiPower = C.MIN_POWER + (this.ai._targetPower - C.MIN_POWER) * progress;
+        this.ui.updatePower(aiPower, C.MIN_POWER, C.MAX_POWER);
+      }
       this.battle.updateCamera();
       this.battle.updateTrajectory();
     }

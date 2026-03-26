@@ -53,7 +53,9 @@ export class TargetRepositioner {
     this.targetPos = { x: Math.floor(this.castleGridW / 2), y: 0, z: Math.floor(this.castleGridD / 2) };
 
     this.orbit.orbitCenter.set(this.centerX, 2, 0);
-    this.orbit.orbitAngle = damagedPlayerIndex === 0 ? Math.PI / 4 : -Math.PI * 3 / 4;
+    // Face the castle from the opponent's side so the build is visible
+    this.orbit.orbitAngle = damagedPlayerIndex === 0 ? -Math.PI / 2 : Math.PI / 2;
+    this.orbit.orbitPitch = Math.PI / 4;
     this.currentLayer = 0;
     this._savedMaterials = [];
 

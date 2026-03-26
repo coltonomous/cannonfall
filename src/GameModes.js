@@ -130,6 +130,7 @@ export const GAME_MODES = {
     id: 'space',
     label: 'Space Battle',
     structureLabel: 'Ship',
+    defaultPitch: 0, // horizontal aim for zero-G
 
     backgroundColor: 0x050510,
     fogNear: null,

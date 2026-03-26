@@ -120,9 +120,9 @@ export class CannonTower {
     return tipPos.clone().sub(pivotPos).normalize();
   }
 
-  resetAim() {
+  resetAim(defaultPitch) {
     this.yaw = 0;
-    this.pitch = Math.PI / 6;
+    this.pitch = defaultPitch ?? Math.PI / 6;
     this.updateAim();
   }
 

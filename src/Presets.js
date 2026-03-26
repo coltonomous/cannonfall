@@ -63,27 +63,28 @@ function keepPreset() {
 }
 
 function bunkerPreset() {
-  // Low bunker: half-slab walls, lattice roof with gaps, corner ramps.
+  // Low bunker: bullnose walls, full roof, ramp deflectors, skylight.
   const L = [];
 
-  // Half-slab perimeter walls (y=0)
-  fillRowX(L, 0, 8, 0, 0, 'HALF_SLAB'); // front
-  fillRowX(L, 0, 8, 8, 0, 'HALF_SLAB'); // back
-  fillRowZ(L, 0, 1, 7, 0, 'HALF_SLAB'); // left
-  fillRowZ(L, 8, 1, 7, 0, 'HALF_SLAB'); // right
+  // Bullnose perimeter walls (y=0)
+  fillRowX(L, 0, 8, 0, 0, 'BULLNOSE', 1); // front
+  fillRowX(L, 0, 8, 8, 0, 'BULLNOSE', 1); // back
+  fillRowZ(L, 0, 1, 7, 0, 'BULLNOSE', 0); // left
+  fillRowZ(L, 8, 1, 7, 0, 'BULLNOSE', 0); // right
 
   // Support columns
-  placeMany(L, [[2,0,2,'COLUMN'], [6,0,2,'COLUMN'], [2,0,6,'COLUMN'], [6,0,6,'COLUMN']]);
+  placeMany(L, [[2,0,2,'CUBE'], [6,0,2,'CUBE'], [2,0,6,'CUBE'], [6,0,6,'CUBE']]);
 
-  // Lattice roof (y=1) — checkerboard pattern with gaps
+  // Full roof (y=1) with skylight hole at center
   for (let x = 0; x < 9; x++)
     for (let z = 0; z < 9; z++)
-      if ((x + z) % 2 === 0) place(L, x, 1, z, 'HALF_SLAB');
+      if (!(x === 4 && z === 4)) place(L, x, 1, z, 'CUBE');
 
-  // Corner ramp deflectors (y=1)
-  placeMany(L, [
-    [0,1,0,'RAMP',0], [8,1,0,'RAMP',2], [0,1,8,'RAMP',0], [8,1,8,'RAMP',2],
-  ]);
+  // Ramp deflectors (y=2)
+  fillRowX(L, 1, 7, 1, 2, 'RAMP', 1); // front
+  fillRowX(L, 1, 7, 7, 2, 'RAMP', 3); // back
+  fillRowZ(L, 1, 2, 6, 2, 'RAMP', 2); // left
+  fillRowZ(L, 7, 2, 6, 2, 'RAMP', 0); // right
 
   return { layout: L, target: { x: 4, y: 0, z: 4 }, cannonPos: { x: 8, z: 4 } };
 }

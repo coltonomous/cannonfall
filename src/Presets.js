@@ -56,8 +56,11 @@ function keepPreset() {
   fillCrenellations(L, 0, 0, 2, 6, 4);
   fillCrenellations(L, 8, 8, 2, 6, 4);
 
-  // Interior cross-wall (z=4, y=0-1)
-  for (let y = 0; y < 2; y++) fillRowX(L, 1, 7, 4, y, 'WALL', 1);
+  // Interior cross-wall (z=4, y=0-1), gap at x=4 for target
+  for (let y = 0; y < 2; y++) {
+    fillRowX(L, 1, 3, 4, y, 'WALL', 1);
+    fillRowX(L, 5, 7, 4, y, 'WALL', 1);
+  }
 
   return { layout: L, target: { x: 4, y: 0, z: 4 }, cannonPos: { x: 8, z: 4 } };
 }

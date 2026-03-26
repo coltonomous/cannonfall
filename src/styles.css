@@ -712,26 +712,23 @@ body {
   margin-bottom: 8px;
 }
 
-/* ── Com Match Row ────────────────────────────────── */
-.com-row {
+/* ── Difficulty Picker ────────────────────────────── */
+.diff-picker {
   display: flex;
   gap: 8px;
-  align-items: stretch;
+  justify-content: center;
+  align-items: center;
 }
 
-.com-row #ai-match-btn {
-  flex: 1;
-}
-
-.ai-difficulty {
-  display: flex;
-  gap: 4px;
-  align-items: stretch;
+.diff-label {
+  font-size: 0.85rem;
+  opacity: 0.6;
+  margin-right: 4px;
 }
 
 .diff-btn {
-  padding: 6px 10px;
-  font-size: 0.8rem;
+  padding: 10px 20px;
+  font-size: 0.95rem;
   font-weight: 600;
   border: 2px solid rgba(255, 255, 255, 0.15);
   border-radius: 6px;
@@ -742,12 +739,24 @@ body {
 }
 
 .diff-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(230, 126, 34, 0.3);
+  border-color: #e67e22;
 }
 
-.diff-btn.selected {
-  border-color: #e67e22;
-  background: rgba(230, 126, 34, 0.2);
+.diff-btn:active {
+  transform: scale(0.97);
+}
+
+/* ── Disabled Match Buttons ──────────────────────── */
+.menu-buttons button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.menu-buttons button:disabled:hover {
+  background: #e67e22;
+  transform: none;
 }
 
 /* ── Disconnect Banner ────────────────────────────── */

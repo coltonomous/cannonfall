@@ -18,24 +18,23 @@ export function setupUIListeners(game, State) {
 
   document.getElementById('build-castle-btn')?.addEventListener('click', () => game.buildFromMenu());
 
-  const requireBuild = (startFn) => {
-    if (game.hasBuildForCurrentMode()) {
-      startFn();
-    } else {
-      game.flashBuildRequired();
-    }
-  };
+  // Com Match: toggle difficulty picker
+  const picker = document.getElementById('diff-picker');
+  document.getElementById('ai-match-btn')?.addEventListener('click', () => {
+    if (picker) picker.classList.toggle('hidden');
+  });
 
-  ui.localMatchBtn.addEventListener('click', () => requireBuild(() => game.startLocal()));
-  document.getElementById('ai-match-btn')?.addEventListener('click', () => requireBuild(() => game.startAIMatch()));
+  // Difficulty buttons start the AI match directly
   document.querySelectorAll('.diff-btn').forEach(btn => {
     btn.addEventListener('click', () => {
-      document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
       game.aiDifficulty = btn.dataset.diff;
+      if (picker) picker.classList.add('hidden');
+      game.startAIMatch();
     });
   });
-  ui.onlineMatchBtn.addEventListener('click', () => requireBuild(() => game.startOnline()));
+
+  ui.localMatchBtn.addEventListener('click', () => game.startLocal());
+  ui.onlineMatchBtn.addEventListener('click', () => game.startOnline());
 
   ui.playAgainBtn.addEventListener('click', () => {
     game.cleanup();

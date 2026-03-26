@@ -27,16 +27,15 @@
       <button id="build-castle-btn" class="build-btn">Build Your Castle</button>
       <p id="castle-ready-label" class="hidden castle-ready">Castle Ready</p>
       <div class="menu-buttons">
-        <div class="com-row">
-          <button id="ai-match-btn">Com Match</button>
-          <div class="ai-difficulty">
-            <button class="diff-btn" data-diff="EASY">Easy</button>
-            <button class="diff-btn selected" data-diff="MEDIUM">Med</button>
-            <button class="diff-btn" data-diff="HARD">Hard</button>
-          </div>
+        <button id="ai-match-btn" disabled>Com Match</button>
+        <div id="diff-picker" class="diff-picker hidden">
+          <span class="diff-label">Difficulty:</span>
+          <button class="diff-btn" data-diff="EASY">Easy</button>
+          <button class="diff-btn" data-diff="MEDIUM">Medium</button>
+          <button class="diff-btn" data-diff="HARD">Hard</button>
         </div>
-        <button id="local-match-btn">Local Match</button>
-        <button id="online-match-btn">Online Match</button>
+        <button id="local-match-btn" disabled>Local Match</button>
+        <button id="online-match-btn" disabled>Online Match</button>
       </div>
     </div>
 

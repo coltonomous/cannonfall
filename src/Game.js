@@ -199,6 +199,7 @@ export class Game {
       readyLabel.textContent = `${label} Ready`;
       readyLabel.classList.toggle('hidden', !hasBuild);
     }
+    this.updateMatchButtons();
   }
 
   _showCastleReady() {
@@ -210,6 +211,7 @@ export class Game {
       readyLabel.classList.remove('hidden');
     }
     if (btn) btn.textContent = `Edit ${label}`;
+    this.updateMatchButtons();
   }
 
   _hideCastleReady() {
@@ -222,6 +224,18 @@ export class Game {
 
   hasBuildForCurrentMode() {
     return !!this.castleBuilds[this.getModeKey()];
+  }
+
+  updateMatchButtons() {
+    const ready = this.hasBuildForCurrentMode();
+    const ids = ['ai-match-btn', 'local-match-btn', 'online-match-btn'];
+    for (const id of ids) {
+      const btn = document.getElementById(id);
+      if (btn) btn.disabled = !ready;
+    }
+    // Hide difficulty picker when buttons change state
+    const picker = document.getElementById('diff-picker');
+    if (picker) picker.classList.add('hidden');
   }
 
   flashBuildRequired() {
@@ -778,7 +792,7 @@ export class Game {
     if (debugOverlay) debugOverlay.remove();
     this.ui.menuPanel.classList.add('hidden');
     this.ui.hideDisconnectBanner();
-    this._hideCastleReady();
+    this.onModeChanged();
 
     if (this.network.socket) {
       this.network.leaveLobby();

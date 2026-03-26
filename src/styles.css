@@ -60,6 +60,12 @@ body {
   margin-bottom: 12px;
 }
 
+.version-tag {
+  font-size: 0.75rem;
+  opacity: 0.3;
+  margin-top: 8px;
+}
+
 .mode-selector {
   display: flex;
   gap: 8px;

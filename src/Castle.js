@@ -244,11 +244,14 @@ export class Castle {
     const worldZ = (gridPos.z - halfD) * BLOCK_SIZE;
 
     this.target.position.set(worldX, worldY, worldZ);
+    // Layer 1: visible to main camera but hidden from minimap
+    this.target.layers.set(1);
     this.sceneManager.scene.add(this.target);
 
     // Add a point light to make target glow and be visible through gaps
     this.targetLight = new THREE.PointLight(0xff4444, 1, 8);
     this.targetLight.position.copy(this.target.position);
+    this.targetLight.layers.set(1);
     this.sceneManager.scene.add(this.targetLight);
 
     // Physics body (sensor — detects collision but doesn't block)

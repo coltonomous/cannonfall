@@ -335,6 +335,9 @@ export class Game {
     if (this._importedDesign) {
       this.builder.loadFromDesignData(this._importedDesign);
       this._importedDesign = null;
+    } else if (this._prebuild && this.castleBuilds[this.getModeKey()]) {
+      // Re-entering builder with existing build — load it
+      this.builder.loadFromDesignData(this.castleBuilds[this.getModeKey()]);
     }
   }
 
@@ -504,6 +507,13 @@ export class Game {
 
     const myCastleX = this.currentTurn === 0 ? -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X) : (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X);
     this.sceneManager.setupMinimap(myCastleX);
+
+    // Only show your own target marker on minimap (hide opponent's)
+    if (this.targetMarkers) {
+      for (let i = 0; i < this.targetMarkers.length; i++) {
+        this.targetMarkers[i].visible = (i === this.currentTurn);
+      }
+    }
 
     const defaultPitch = this.gameMode.defaultPitch;
     if (this.state === State.MY_TURN) {
@@ -728,9 +738,10 @@ export class Game {
     if (this.state === State.AI_AIMING) {
       if (this.ai) {
         this.ai.updateAiming(dt, this.cannons[this.currentTurn]);
-        // Animate power meter during AI aim
+        // Animate power meter and trajectory during AI aim
         const progress = this.ai._aimProgress;
         const aiPower = C.MIN_POWER + (this.ai._targetPower - C.MIN_POWER) * progress;
+        this.battle.power = aiPower;
         this.ui.updatePower(aiPower, C.MIN_POWER, C.MAX_POWER);
       }
       this.battle.updateCamera();

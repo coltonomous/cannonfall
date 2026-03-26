@@ -75,6 +75,13 @@ export function setupUIListeners(game, State) {
     game.toggleAxesHelper(e.target.checked);
   });
 
+  document.getElementById('debug-nextshotwins')?.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      game.hp = [1, 1];
+      game.ui.updateHP(1, 1);
+    }
+  });
+
   // ── Lobby UI ──────────────────────────────────────────
 
   ui.lobbyCreateBtn.addEventListener('click', () => {

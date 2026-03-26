@@ -236,6 +236,7 @@ export class BattleController {
 
     this.trajectoryLine.visible = false;
     this.reticle.visible = false;
+    this._reticleInitialized = false;
     this._impactEmitted = false;
     this.settleTimer = 0;
     this.fireTime = performance.now();

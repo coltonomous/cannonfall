@@ -15,9 +15,10 @@ export class InputHandler {
     this._touchActive = false;
     this._touchStart = null;
     this._touchLast = null;
+    this._touchStartTime = 0;
     this._touchAimDelta = { yaw: 0, pitch: 0 };
     this._touchTapped = false;
-    this._touchSwiping = false; // true once finger moves past threshold
+    this._touchCharging = false; // true after hold threshold, enables charge/fire
     this._canvas = null;
     this.enabled = true; // disabled during non-gameplay states
   }
@@ -39,7 +40,8 @@ export class InputHandler {
     const t = e.touches[0];
     this._touchActive = true;
     this._touchTapped = false;
-    this._touchSwiping = false;
+    this._touchCharging = false;
+    this._touchStartTime = performance.now();
     this._touchStart = { x: t.clientX, y: t.clientY };
     this._touchLast = { x: t.clientX, y: t.clientY };
   }
@@ -53,35 +55,27 @@ export class InputHandler {
     this._touchAimDelta.yaw += dx * -C.TOUCH_AIM_SENSITIVITY;
     this._touchAimDelta.pitch += dy * -C.TOUCH_AIM_SENSITIVITY;
     this._touchLast = { x: t.clientX, y: t.clientY };
-
-    // Mark as swipe once finger moves past threshold — swipes aim but don't fire
-    if (!this._touchSwiping && this._touchStart) {
-      const totalDx = t.clientX - this._touchStart.x;
-      const totalDy = t.clientY - this._touchStart.y;
-      if (Math.abs(totalDx) > 15 || Math.abs(totalDy) > 15) {
-        this._touchSwiping = true;
-      }
-    }
   }
 
   _handleTouchEnd(e) {
     if (!this.enabled || !this._touchActive) return;
     e.preventDefault();
     this._touchActive = false;
-    // Only register as tap/fire if the finger didn't swipe
-    if (!this._touchSwiping) {
+    // Fire only if charge was active (held long enough)
+    if (this._touchCharging) {
       this._touchTapped = true;
     }
-    this._touchSwiping = false;
+    this._touchCharging = false;
   }
 
   resetTouchState() {
     this._touchActive = false;
     this._touchStart = null;
     this._touchLast = null;
+    this._touchStartTime = 0;
     this._touchAimDelta = { yaw: 0, pitch: 0 };
     this._touchTapped = false;
-    this._touchSwiping = false;
+    this._touchCharging = false;
   }
 
   /**
@@ -109,8 +103,15 @@ export class InputHandler {
       this._touchAimDelta.pitch = 0;
     }
 
-    // Power charge: hold Space or tap-hold (not swipe) to charge, release to fire
-    const holding = this.keys['Space'] || (this._touchActive && !this._touchSwiping);
+    // Touch: promote to charging after 200ms hold (quick swipes aim without charging)
+    if (this._touchActive && !this._touchCharging) {
+      if (performance.now() - this._touchStartTime > 200) {
+        this._touchCharging = true;
+      }
+    }
+
+    // Power charge: hold Space or sustained touch to charge, release to fire
+    const holding = this.keys['Space'] || (this._touchActive && this._touchCharging);
     if (holding && !chargeState.charging) {
       chargeState.charging = true;
       chargeState.chargeTime = 0;

@@ -84,6 +84,21 @@ export class AI {
       }
     }
 
+    // Vary power occasionally — don't always fire at max
+    const powerVariation = (Math.random() - 0.3) * 8; // slight bias toward lower power
+    bestPower = Math.max(MIN_POWER, Math.min(MAX_POWER, bestPower + powerVariation));
+
+    // Recompute pitch for the varied power
+    const a2 = (g * horizDist * horizDist) / (2 * bestPower * bestPower);
+    if (a2 > 0) {
+      const disc2 = horizDist * horizDist - 4 * a2 * (dy + a2);
+      if (disc2 >= 0) {
+        const tanT = (horizDist - Math.sqrt(disc2)) / (2 * a2);
+        const p2 = Math.atan(tanT);
+        if (p2 >= MIN_PITCH && p2 <= MAX_PITCH) bestPitch = p2;
+      }
+    }
+
     return { yaw, pitch: bestPitch, power: bestPower };
   }
 
@@ -99,9 +114,9 @@ export class AI {
 
   /**
    * Choose a reposition target based on difficulty.
-   * - random: any grid cell
-   * - covered: prefer cells with blocks above them
-   * - optimal: pick the most protected cell (most blocks overhead)
+   * Cover = blocks between the target cell and the opponent's cannon.
+   * The opponent fires from negative X, so blocks with lower X than
+   * the target (same Z, any Y) act as shields.
    */
   chooseRepositionTarget(castle) {
     const gw = castle.gridWidth || 9;
@@ -112,32 +127,33 @@ export class AI {
       return { x: Math.floor(Math.random() * gw), y: 0, z: Math.floor(Math.random() * gd) };
     }
 
-    // Score each grid cell by how many blocks are above it (cover)
+    // Score each grid cell by blocks shielding it from the opponent's direction.
+    // Opponent fires from -X toward +X, so count blocks at same Z with x < candidate x.
     const layout = castle.layoutData || [];
     const scores = [];
     for (let x = 0; x < gw; x++) {
       for (let z = 0; z < gd; z++) {
-        const blocksAbove = layout.filter(b => b.x === x && b.z === z && b.y >= 0).length;
-        scores.push({ x, z, cover: blocksAbove });
+        // Count blocks in front (lower x) at similar z (±1) that would intercept shots
+        const shielding = layout.filter(b =>
+          b.x < x && Math.abs(b.z - z) <= 1
+        ).length;
+        scores.push({ x, z, cover: shielding });
       }
     }
 
     if (strategy === 'optimal') {
-      // Pick the best-covered cell
       scores.sort((a, b) => b.cover - a.cover);
-      // Small random selection from top candidates to avoid being too predictable
       const top = scores.slice(0, Math.max(3, Math.floor(scores.length * 0.1)));
       const pick = top[Math.floor(Math.random() * top.length)];
       return { x: pick.x, y: 0, z: pick.z };
     }
 
-    // covered: prefer cells with some cover, but not strictly the best
+    // covered: prefer cells with some cover
     const covered = scores.filter(s => s.cover > 0);
     if (covered.length > 0) {
       const pick = covered[Math.floor(Math.random() * covered.length)];
       return { x: pick.x, y: 0, z: pick.z };
     }
-    // Fallback to random if no cover exists
     const pick = scores[Math.floor(Math.random() * scores.length)];
     return { x: pick.x, y: 0, z: pick.z };
   }

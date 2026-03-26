@@ -85,12 +85,12 @@ export class UI {
     this.gameUI.classList.remove('hidden');
   }
 
-  showResult(won) {
+  showResult(won, message) {
     this.overlay.classList.remove('hidden');
     this.gameUI.classList.add('hidden');
     this.hideAllScreens();
     this.resultScreen.classList.remove('hidden');
-    this.resultText.textContent = won ? 'YOU WIN!' : 'YOU LOSE!';
+    this.resultText.textContent = message || (won ? 'YOU WIN!' : 'YOU LOSE!');
   }
 
   // For local mode, show "Player X Wins!"
@@ -142,6 +142,24 @@ export class UI {
     } else {
       el.innerHTML = '<span>WASD/Arrows: Aim</span><span>Hold Space: Charge &amp; Release to Fire</span>';
     }
+  }
+
+  // ── Disconnect Banner ────────────────────────────────
+
+  showDisconnectBanner() {
+    let banner = document.getElementById('disconnect-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'disconnect-banner';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = 'Opponent disconnected — waiting for reconnect...';
+    banner.classList.remove('hidden');
+  }
+
+  hideDisconnectBanner() {
+    const banner = document.getElementById('disconnect-banner');
+    if (banner) banner.classList.add('hidden');
   }
 
   // ── Lobby ───────────────────────────────────────────

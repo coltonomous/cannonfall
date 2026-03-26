@@ -231,6 +231,7 @@ io.on('connection', (socket) => {
           castles: game.castles,
           hp: game.hp,
           firstTurn: game.currentTurn,
+          gameMode: game.gameMode,
         },
       });
 

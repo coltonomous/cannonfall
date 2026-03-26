@@ -29,7 +29,7 @@ const State = {
 };
 
 const VALID_TRANSITIONS = {
-  [State.MENU]:                  [State.BUILD],
+  [State.MENU]:                  [State.BUILD, State.MY_TURN, State.OPPONENT_TURN, State.WAITING_OPPONENT_BUILD],
   [State.BUILD]:                 [State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN],
   [State.PASS_DEVICE]:           [State.BUILD],
   [State.WAITING_OPPONENT_BUILD]:[State.MY_TURN, State.OPPONENT_TURN],
@@ -94,8 +94,17 @@ export class Game {
 
     this.setupUIListeners();
     this.setupNetworkListeners();
+    this.attemptReconnect();
 
     this.clock = new THREE.Clock();
+  }
+
+  attemptReconnect() {
+    // If we have a persisted session, try connecting to see if the server
+    // has an active game for us. The 'reconnected' handler takes over if so.
+    if (sessionStorage.getItem('cannonfall-session')) {
+      this.network.connect(3000).catch(() => {});
+    }
   }
 
   // ── State Machine ───────────────────────────────────────
@@ -296,9 +305,53 @@ export class Game {
     });
 
     this.network.on('opponent-disconnected', () => {
+      this.ui.hideDisconnectBanner();
       this.transition(State.GAME_OVER);
-      this.ui.showResult(true);
+      this.ui.showResult(true, 'Opponent left the game');
     });
+
+    this.network.on('opponent-disconnected-temp', () => {
+      this.ui.showDisconnectBanner();
+    });
+
+    this.network.on('opponent-reconnected', () => {
+      this.ui.hideDisconnectBanner();
+    });
+
+    this.network.on('reconnected', (data) => {
+      this.handleReconnect(data);
+    });
+  }
+
+  handleReconnect(data) {
+    this.mode = 'online';
+    this.playerIndex = data.playerIndex;
+    this.currentTurn = data.game.currentTurn;
+
+    const gameMode = data.game.gameMode || 'CASTLE';
+    const modeKey = typeof gameMode === 'string' ? gameMode.toUpperCase() : 'CASTLE';
+    if (GAME_MODES[modeKey]) this.gameMode = GAME_MODES[modeKey];
+    this.applyGameMode();
+
+    const { phase, castles, hp } = data.game;
+
+    // If still in build phase, we can't fully restore — go to waiting
+    if (phase === 'build' || !castles[0] || !castles[1]) {
+      this.transition(State.WAITING_OPPONENT_BUILD);
+      this.ui.overlay.classList.remove('hidden');
+      document.getElementById('build-screen').classList.remove('hidden');
+      document.getElementById('build-screen').innerHTML =
+        '<h2>Reconnected — waiting for builds...</h2><div class="spinner"></div>';
+      return;
+    }
+
+    // Rebuild scene from server state
+    this.buildBothCastles(castles[0], castles[1]);
+    this.hp = [...hp];
+    this.ui.updateHP(this.hp[0], this.hp[1]);
+    this.ui.showGame();
+    this.syncBattle();
+    this.onTurnStart();
   }
 
   // ── Mode Setup ───────────────────────────────────────────
@@ -686,6 +739,7 @@ export class Game {
     const debugOverlay = document.getElementById('debug-log-overlay');
     if (debugOverlay) debugOverlay.remove();
     this.ui.menuPanel.classList.add('hidden');
+    this.ui.hideDisconnectBanner();
 
     if (this.network.socket) {
       this.network.leaveLobby();

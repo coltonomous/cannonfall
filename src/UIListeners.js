@@ -36,6 +36,17 @@ export function setupUIListeners(game, State) {
   ui.localMatchBtn.addEventListener('click', () => game.startLocal());
   ui.onlineMatchBtn.addEventListener('click', () => game.startOnline());
 
+  // Disable online button when offline
+  const updateOnlineBtn = () => {
+    ui.onlineMatchBtn.disabled = !navigator.onLine || !game.hasBuildForCurrentMode();
+  };
+  window.addEventListener('online', updateOnlineBtn);
+  window.addEventListener('offline', updateOnlineBtn);
+  // Also check when match buttons update
+  const origUpdate = game.updateMatchButtons.bind(game);
+  game.updateMatchButtons = () => { origUpdate(); updateOnlineBtn(); };
+  updateOnlineBtn();
+
   ui.playAgainBtn.addEventListener('click', () => {
     game.cleanup();
     game.transition(State.MENU);

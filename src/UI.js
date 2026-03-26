@@ -138,7 +138,7 @@ export class UI {
     const el = document.getElementById('controls-hint');
     if (!el) return;
     if (isTouch) {
-      el.innerHTML = '<span>Swipe: Aim</span><span>Hold &amp; Release: Fire</span>';
+      el.innerHTML = '<span>Swipe: Aim</span><span>Hold FIRE button to charge</span>';
     } else {
       el.innerHTML = '<span>WASD/Arrows: Aim</span><span>Hold Space: Charge &amp; Release to Fire</span>';
     }

@@ -11,16 +11,17 @@ export class InputHandler {
       this.keys[e.code] = false;
     });
 
-    // Touch state
+    // Touch state — swipe to aim only, no charge/fire logic
     this._touchActive = false;
-    this._touchStart = null;
     this._touchLast = null;
-    this._touchStartTime = 0;
     this._touchAimDelta = { yaw: 0, pitch: 0 };
-    this._touchTapped = false;
-    this._touchCharging = false; // true after hold threshold, enables charge/fire
+    this._touchTapped = false; // used for skip (FIRING/REPLAY), not for firing
     this._canvas = null;
-    this.enabled = true; // disabled during non-gameplay states
+    this.enabled = true;
+
+    // Fire button state — completely separate from touch aiming
+    this._fireButtonDown = false;
+    this._fireBtn = null;
   }
 
   setupTouchListeners(canvas) {
@@ -34,15 +35,29 @@ export class InputHandler {
     canvas.addEventListener('touchcancel', this._onTouchEnd, { passive: false });
   }
 
+  setupFireButton(btn) {
+    this._fireBtn = btn;
+    btn.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (this.enabled) this._fireButtonDown = true;
+    });
+    btn.addEventListener('pointerup', () => {
+      this._fireButtonDown = false;
+    });
+    btn.addEventListener('pointercancel', () => {
+      this._fireButtonDown = false;
+    });
+    btn.addEventListener('pointerleave', () => {
+      this._fireButtonDown = false;
+    });
+  }
+
   _handleTouchStart(e) {
     if (!this.enabled || e.touches.length !== 1) return;
     e.preventDefault();
     const t = e.touches[0];
     this._touchActive = true;
     this._touchTapped = false;
-    this._touchCharging = false;
-    this._touchStartTime = performance.now();
-    this._touchStart = { x: t.clientX, y: t.clientY };
     this._touchLast = { x: t.clientX, y: t.clientY };
   }
 
@@ -61,31 +76,18 @@ export class InputHandler {
     if (!this.enabled || !this._touchActive) return;
     e.preventDefault();
     this._touchActive = false;
-    // Fire only if charge was active (held long enough)
-    if (this._touchCharging) {
-      this._touchTapped = true;
-    }
-    this._touchCharging = false;
+    // Tap signal for skip actions (FIRING/REPLAY), not for firing
+    this._touchTapped = true;
   }
 
   resetTouchState() {
     this._touchActive = false;
-    this._touchStart = null;
     this._touchLast = null;
-    this._touchStartTime = 0;
     this._touchAimDelta = { yaw: 0, pitch: 0 };
     this._touchTapped = false;
-    this._touchCharging = false;
+    this._fireButtonDown = false;
   }
 
-  /**
-   * Process aiming and charging input during the active player's turn.
-   * @param {number} dt - delta time
-   * @param {CannonTower} cannon - the active cannon
-   * @param {object} chargeState - { charging, chargeTime, power } mutated in place
-   * @param {UI} ui - for power meter updates
-   * @returns {'fire' | null} - returns 'fire' when player releases space
-   */
   handleInput(dt, cannon, chargeState, ui) {
     // Yaw
     if (this.keys['ArrowLeft'] || this.keys['KeyA']) cannon.adjustYaw(-C.AIM_SPEED);
@@ -95,7 +97,7 @@ export class InputHandler {
     if (this.keys['ArrowUp'] || this.keys['KeyW']) cannon.adjustPitch(C.AIM_SPEED);
     if (this.keys['ArrowDown'] || this.keys['KeyS']) cannon.adjustPitch(-C.AIM_SPEED);
 
-    // Touch aim deltas
+    // Touch aim deltas (swipe always aims, never charges)
     if (this._touchAimDelta.yaw !== 0 || this._touchAimDelta.pitch !== 0) {
       cannon.adjustYaw(this._touchAimDelta.yaw);
       cannon.adjustPitch(this._touchAimDelta.pitch);
@@ -103,15 +105,8 @@ export class InputHandler {
       this._touchAimDelta.pitch = 0;
     }
 
-    // Touch: promote to charging after 200ms hold (quick swipes aim without charging)
-    if (this._touchActive && !this._touchCharging) {
-      if (performance.now() - this._touchStartTime > 200) {
-        this._touchCharging = true;
-      }
-    }
-
-    // Power charge: hold Space or sustained touch to charge, release to fire
-    const holding = this.keys['Space'] || (this._touchActive && this._touchCharging);
+    // Power charge: Space bar or fire button (completely independent of touch aiming)
+    const holding = this.keys['Space'] || this._fireButtonDown;
     if (holding && !chargeState.charging) {
       chargeState.charging = true;
       chargeState.chargeTime = 0;
@@ -124,8 +119,16 @@ export class InputHandler {
       chargeState.power = C.MIN_POWER + (C.MAX_POWER - C.MIN_POWER) * (0.5 - 0.5 * Math.cos(t));
       ui.updatePower(chargeState.power, C.MIN_POWER, C.MAX_POWER);
 
+      // Update fire button visual
+      if (this._fireBtn) {
+        const pct = ((chargeState.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER)) * 100;
+        this._fireBtn.style.setProperty('--charge-pct', pct + '%');
+        this._fireBtn.classList.toggle('charging', true);
+      }
+
       if (!holding) {
         chargeState.charging = false;
+        if (this._fireBtn) this._fireBtn.classList.remove('charging');
         return 'fire';
       }
     }

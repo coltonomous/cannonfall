@@ -63,6 +63,8 @@ export class Game {
     this.input = new InputHandler();
     this.input.setupTouchListeners(canvas);
     this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    const fireBtn = document.getElementById('fire-btn');
+    if (fireBtn && this.isTouch) this.input.setupFireButton(fireBtn);
     this.particles = new ParticleManager(this.sceneManager.scene);
 
     this.state = State.MENU;
@@ -183,13 +185,14 @@ export class Game {
     return this.gameMode.id.toUpperCase();
   }
 
+  /** Get the stored prebuild for the current mode, or null. */
+  getPlayerBuild() {
+    return this.castleBuilds[this.getModeKey()] || null;
+  }
+
   onModeChanged() {
     const label = this.gameMode.structureLabel;
-    const modeKey = this.getModeKey();
-    const hasBuild = !!this.castleBuilds[modeKey];
-
-    // Sync castleData[0] with the stored build for this mode
-    this.castleData[0] = hasBuild ? this.castleBuilds[modeKey] : null;
+    const hasBuild = !!this.getPlayerBuild();
 
     // Update build button and ready label
     const btn = document.getElementById('build-castle-btn');
@@ -223,7 +226,7 @@ export class Game {
   }
 
   hasBuildForCurrentMode() {
-    return !!this.castleBuilds[this.getModeKey()];
+    return !!this.getPlayerBuild();
   }
 
   updateMatchButtons() {
@@ -253,7 +256,7 @@ export class Game {
     this.applyGameMode();
     this.mode = 'local';
     this.playerIndex = 0;
-    this.castleData[0] = this.castleBuilds[this.getModeKey()] || null;
+    this.castleData[0] = this.getPlayerBuild();
     if (this.castleData[0]) {
       // P1 already built — skip to P2
       this.playerIndex = 1;
@@ -272,7 +275,7 @@ export class Game {
     this.mode = 'ai';
     this.playerIndex = 0;
     this.ai = new AI(this.aiDifficulty);
-    this.castleData[0] = this.castleBuilds[this.getModeKey()] || null;
+    this.castleData[0] = this.getPlayerBuild();
     if (this.castleData[0]) {
       this._startAIBattle();
     } else {
@@ -335,9 +338,9 @@ export class Game {
     if (this._importedDesign) {
       this.builder.loadFromDesignData(this._importedDesign);
       this._importedDesign = null;
-    } else if (this._prebuild && this.castleBuilds[this.getModeKey()]) {
+    } else if (this._prebuild && this.getPlayerBuild()) {
       // Re-entering builder with existing build — load it
-      this.builder.loadFromDesignData(this.castleBuilds[this.getModeKey()]);
+      this.builder.loadFromDesignData(this.getPlayerBuild());
     }
   }
 
@@ -520,6 +523,9 @@ export class Game {
       this.cannons[this.currentTurn].resetAim(defaultPitch);
       this.input.resetTouchState();
       this.ui.setControlsHint(this.isTouch);
+      this._showFireButton(true);
+    } else {
+      this._showFireButton(false);
     }
     if (this.state === State.AI_AIMING) {
       this.cannons[this.currentTurn].resetAim(defaultPitch);
@@ -832,28 +838,36 @@ export class Game {
 
   // ── Debug ────────────────────────────────────────────────
 
+  _showFireButton(visible) {
+    const btn = document.getElementById('fire-btn');
+    if (btn) btn.classList.toggle('hidden', !visible || !this.isTouch);
+  }
+
   toggleAxesHelper(enabled) {
-    // Remove existing helpers
+    this._showBlockAxes = enabled;
+    this._syncBlockAxes();
+  }
+
+  _syncBlockAxes() {
+    // Remove existing
     if (this._blockAxes) {
       for (const helper of this._blockAxes) {
-        this.sceneManager.scene.remove(helper);
+        helper.parent?.remove(helper);
         helper.dispose();
       }
       this._blockAxes = null;
     }
 
-    if (enabled) {
-      this._blockAxes = [];
-      for (const castle of this.castles) {
-        if (!castle) continue;
-        for (const { mesh } of castle.blocks) {
-          if (!mesh) continue;
-          const axes = new THREE.AxesHelper(0.6);
-          axes.position.copy(mesh.position);
-          axes.rotation.copy(mesh.rotation);
-          this.sceneManager.scene.add(axes);
-          this._blockAxes.push(axes);
-        }
+    if (!this._showBlockAxes) return;
+
+    this._blockAxes = [];
+    for (const castle of this.castles) {
+      if (!castle) continue;
+      for (const { mesh } of castle.blocks) {
+        if (!mesh) continue;
+        const axes = new THREE.AxesHelper(0.6);
+        mesh.add(axes); // parent to mesh so it moves/rotates with the block
+        this._blockAxes.push(axes);
       }
     }
   }

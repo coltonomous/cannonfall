@@ -192,6 +192,7 @@ export class SceneManager {
     this.minimapCamera.lookAt(centerX, 0, 0);
     this.minimapCamera.updateProjectionMatrix();
     this.minimapEnabled = true;
+    this._minimapRectDirty = true;
   }
 
   disableMinimap() {
@@ -243,6 +244,20 @@ export class SceneManager {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this._minimapRectDirty = true;
+  }
+
+  _updateMinimapRect() {
+    const frame = document.getElementById('minimap-frame');
+    if (!frame) { this._minimapRect = null; return; }
+    const rect = frame.getBoundingClientRect();
+    this._minimapRect = {
+      x: rect.left,
+      y: window.innerHeight - rect.bottom,
+      w: rect.width,
+      h: rect.height,
+    };
+    this._minimapRectDirty = false;
   }
 
   render() {
@@ -254,20 +269,15 @@ export class SceneManager {
     this.renderer.setScissorTest(false);
     this.renderer.render(this.scene, this.camera);
 
-    // Minimap render — read position/size from CSS frame element
+    // Minimap render — uses cached rect, recalculated on resize
     if (this.minimapEnabled) {
-      const frame = document.getElementById('minimap-frame');
-      if (frame) {
-        const rect = frame.getBoundingClientRect();
-        const mmX = rect.left;
-        const mmY = height - rect.bottom;
-        const mmW = rect.width;
-        const mmH = rect.height;
-
+      if (this._minimapRectDirty || !this._minimapRect) this._updateMinimapRect();
+      const mm = this._minimapRect;
+      if (mm) {
         this.renderer.autoClear = false;
         this.renderer.setScissorTest(true);
-        this.renderer.setViewport(mmX, mmY, mmW, mmH);
-        this.renderer.setScissor(mmX, mmY, mmW, mmH);
+        this.renderer.setViewport(mm.x, mm.y, mm.w, mm.h);
+        this.renderer.setScissor(mm.x, mm.y, mm.w, mm.h);
         this.renderer.clear(true, true, true);
         this.renderer.render(this.scene, this.minimapCamera);
         this.renderer.setScissorTest(false);

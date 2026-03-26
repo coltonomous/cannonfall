@@ -823,23 +823,24 @@ body {
 
   #power-meter {
     right: 12px;
-    height: 140px;
-    width: 24px;
-  }
-
-  #fire-btn {
-    right: 6px;
-    bottom: 60px;
-    width: 56px;
-    height: 56px;
-    font-size: 0.65rem;
+    top: 35%;
+    height: 120px;
+    width: 22px;
   }
 
   #minimap-frame {
-    width: 100px;
-    height: 100px;
-    bottom: 50px;
+    width: 80px;
+    height: 80px;
+    bottom: 120px;
     right: 8px;
+  }
+
+  #fire-btn {
+    right: 8px;
+    bottom: 32px;
+    width: 60px;
+    height: 60px;
+    font-size: 0.7rem;
   }
 
   #hp-display {

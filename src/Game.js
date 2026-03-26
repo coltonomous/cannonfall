@@ -511,10 +511,10 @@ export class Game {
     const myCastleX = this.currentTurn === 0 ? -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X) : (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X);
     this.sceneManager.setupMinimap(myCastleX);
 
-    // Only show your own target marker on minimap (hide opponent's)
+    // Only show your own target on minimap — never reveal the opponent's
     if (this.targetMarkers) {
       for (let i = 0; i < this.targetMarkers.length; i++) {
-        this.targetMarkers[i].visible = (i === this.currentTurn);
+        this.targetMarkers[i].visible = (i === this.playerIndex);
       }
     }
 

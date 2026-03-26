@@ -12,12 +12,22 @@ export function setupUIListeners(game, State) {
       document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
       game.gameMode = GAME_MODES[btn.dataset.mode];
+      game.onModeChanged();
     });
   });
 
   document.getElementById('build-castle-btn')?.addEventListener('click', () => game.buildFromMenu());
-  ui.localMatchBtn.addEventListener('click', () => game.startLocal());
-  document.getElementById('ai-match-btn')?.addEventListener('click', () => game.startAIMatch());
+
+  const requireBuild = (startFn) => {
+    if (game.hasBuildForCurrentMode()) {
+      startFn();
+    } else {
+      game.flashBuildRequired();
+    }
+  };
+
+  ui.localMatchBtn.addEventListener('click', () => requireBuild(() => game.startLocal()));
+  document.getElementById('ai-match-btn')?.addEventListener('click', () => requireBuild(() => game.startAIMatch()));
   document.querySelectorAll('.diff-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
@@ -25,7 +35,7 @@ export function setupUIListeners(game, State) {
       game.aiDifficulty = btn.dataset.diff;
     });
   });
-  ui.onlineMatchBtn.addEventListener('click', () => game.startOnline());
+  ui.onlineMatchBtn.addEventListener('click', () => requireBuild(() => game.startOnline()));
 
   ui.playAgainBtn.addEventListener('click', () => {
     game.cleanup();

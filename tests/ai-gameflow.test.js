@@ -121,7 +121,7 @@ describe('AI Game Flow', () => {
 
     it('should skip build if castleData[0] already exists', () => {
       const preset = getPreset('KEEP', 'castle');
-      game.castleData[0] = preset;
+      game.castleBuilds.CASTLE = preset;
       game.startAIMatch();
       // Should go directly to battle, not build phase
       expect(game.castles[0]).not.toBeNull();

@@ -76,6 +76,7 @@ export class Game {
     this.castles = [null, null];
     this.cannons = [null, null];
     this.castleData = [null, null];
+    this.castleBuilds = {}; // per-mode prebuild storage: { CASTLE: data, PIRATE: data, ... }
 
     this.hp = [C.MAX_HP, C.MAX_HP];
 
@@ -132,6 +133,7 @@ export class Game {
     }
     this._importedDesign = result.castleData;
     history.replaceState(null, '', window.location.pathname);
+    this.onModeChanged();
 
     // Open builder with the shared design loaded
     this.buildFromMenu();
@@ -177,18 +179,58 @@ export class Game {
     this.startBuildPhase(true);
   }
 
-  _showCastleReady() {
-    const label = document.getElementById('castle-ready-label');
+  getModeKey() {
+    return this.gameMode.id.toUpperCase();
+  }
+
+  onModeChanged() {
+    const label = this.gameMode.structureLabel;
+    const modeKey = this.getModeKey();
+    const hasBuild = !!this.castleBuilds[modeKey];
+
+    // Sync castleData[0] with the stored build for this mode
+    this.castleData[0] = hasBuild ? this.castleBuilds[modeKey] : null;
+
+    // Update build button and ready label
     const btn = document.getElementById('build-castle-btn');
-    if (label) label.classList.remove('hidden');
-    if (btn) btn.textContent = 'Edit Castle';
+    const readyLabel = document.getElementById('castle-ready-label');
+    if (btn) btn.textContent = hasBuild ? `Edit ${label}` : `Build Your ${label}`;
+    if (readyLabel) {
+      readyLabel.textContent = `${label} Ready`;
+      readyLabel.classList.toggle('hidden', !hasBuild);
+    }
+  }
+
+  _showCastleReady() {
+    const label = this.gameMode.structureLabel;
+    const readyLabel = document.getElementById('castle-ready-label');
+    const btn = document.getElementById('build-castle-btn');
+    if (readyLabel) {
+      readyLabel.textContent = `${label} Ready`;
+      readyLabel.classList.remove('hidden');
+    }
+    if (btn) btn.textContent = `Edit ${label}`;
   }
 
   _hideCastleReady() {
-    const label = document.getElementById('castle-ready-label');
+    const label = this.gameMode.structureLabel;
+    const readyLabel = document.getElementById('castle-ready-label');
     const btn = document.getElementById('build-castle-btn');
-    if (label) label.classList.add('hidden');
-    if (btn) btn.textContent = 'Build Your Castle';
+    if (readyLabel) readyLabel.classList.add('hidden');
+    if (btn) btn.textContent = `Build Your ${label}`;
+  }
+
+  hasBuildForCurrentMode() {
+    return !!this.castleBuilds[this.getModeKey()];
+  }
+
+  flashBuildRequired() {
+    const btn = document.getElementById('build-castle-btn');
+    if (!btn) return;
+    btn.classList.remove('shake');
+    void btn.offsetWidth;
+    btn.classList.add('shake');
+    setTimeout(() => btn.classList.remove('shake'), 600);
   }
 
   // ── Local Mode ───────────────────────────────────────────
@@ -197,6 +239,7 @@ export class Game {
     this.applyGameMode();
     this.mode = 'local';
     this.playerIndex = 0;
+    this.castleData[0] = this.castleBuilds[this.getModeKey()] || null;
     if (this.castleData[0]) {
       // P1 already built — skip to P2
       this.playerIndex = 1;
@@ -215,6 +258,7 @@ export class Game {
     this.mode = 'ai';
     this.playerIndex = 0;
     this.ai = new AI(this.aiDifficulty);
+    this.castleData[0] = this.castleBuilds[this.getModeKey()] || null;
     if (this.castleData[0]) {
       this._startAIBattle();
     } else {
@@ -284,9 +328,10 @@ export class Game {
     this.builder.stop();
     this.castleData[this.playerIndex] = castleData;
 
-    // Prebuild from menu: save castle and return to menu
+    // Prebuild from menu: save castle per-mode and return to menu
     if (this._prebuild) {
       this._prebuild = false;
+      this.castleBuilds[this.getModeKey()] = castleData;
       this.transition(State.MENU);
       this.ui.showMenu();
       this._showCastleReady();

@@ -15,6 +15,7 @@ export function setupNetworkListeners(game, State) {
     }
     game.applyGameMode();
 
+    game.castleData[0] = game.castleBuilds[game.getModeKey()] || null;
     if (game.castleData[0]) {
       // Already built — send immediately, wait for opponent
       game.network.sendBuildReady(game.castleData[0]);

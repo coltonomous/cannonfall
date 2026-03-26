@@ -1,9 +1,9 @@
 import { MIN_POWER, MAX_POWER, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET } from './constants.js';
 
 const DIFFICULTY = {
-  EASY:   { spreadRad: 0.35, powerOffset: 15, aimTime: 2.0 },
-  MEDIUM: { spreadRad: 0.18, powerOffset: 8,  aimTime: 1.5 },
-  HARD:   { spreadRad: 0.06, powerOffset: 3,  aimTime: 1.0 },
+  EASY:   { spreadRad: 0.18, powerOffset: 8,  aimTime: 2.0, repositionStrategy: 'random' },
+  MEDIUM: { spreadRad: 0.10, powerOffset: 5,  aimTime: 1.5, repositionStrategy: 'covered' },
+  HARD:   { spreadRad: 0.04, powerOffset: 2,  aimTime: 1.0, repositionStrategy: 'optimal' },
 };
 
 export class AI {
@@ -95,6 +95,51 @@ export class AI {
       power: Math.max(MIN_POWER, Math.min(MAX_POWER,
         aim.power + (Math.random() - 0.5) * 2 * powerOffset)),
     };
+  }
+
+  /**
+   * Choose a reposition target based on difficulty.
+   * - random: any grid cell
+   * - covered: prefer cells with blocks above them
+   * - optimal: pick the most protected cell (most blocks overhead)
+   */
+  chooseRepositionTarget(castle) {
+    const gw = castle.gridWidth || 9;
+    const gd = castle.gridDepth || 9;
+    const strategy = this.difficulty.repositionStrategy;
+
+    if (strategy === 'random') {
+      return { x: Math.floor(Math.random() * gw), y: 0, z: Math.floor(Math.random() * gd) };
+    }
+
+    // Score each grid cell by how many blocks are above it (cover)
+    const layout = castle.layoutData || [];
+    const scores = [];
+    for (let x = 0; x < gw; x++) {
+      for (let z = 0; z < gd; z++) {
+        const blocksAbove = layout.filter(b => b.x === x && b.z === z && b.y >= 0).length;
+        scores.push({ x, z, cover: blocksAbove });
+      }
+    }
+
+    if (strategy === 'optimal') {
+      // Pick the best-covered cell
+      scores.sort((a, b) => b.cover - a.cover);
+      // Small random selection from top candidates to avoid being too predictable
+      const top = scores.slice(0, Math.max(3, Math.floor(scores.length * 0.1)));
+      const pick = top[Math.floor(Math.random() * top.length)];
+      return { x: pick.x, y: 0, z: pick.z };
+    }
+
+    // covered: prefer cells with some cover, but not strictly the best
+    const covered = scores.filter(s => s.cover > 0);
+    if (covered.length > 0) {
+      const pick = covered[Math.floor(Math.random() * covered.length)];
+      return { x: pick.x, y: 0, z: pick.z };
+    }
+    // Fallback to random if no cover exists
+    const pick = scores[Math.floor(Math.random() * scores.length)];
+    return { x: pick.x, y: 0, z: pick.z };
   }
 
   startAiming(cannon, targetAim) {

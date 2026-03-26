@@ -694,16 +694,9 @@ export class Game {
   // ── Reposition ───────────────────────────────────────────
 
   startRepositionPhase(damagedPlayerIndex) {
-    // AI auto-repositions: pick random grid position
+    // AI auto-repositions using difficulty-based strategy
     if (this.mode === 'ai' && damagedPlayerIndex === 1) {
-      const castle = this.castles[1];
-      const gw = castle.gridWidth || 9;
-      const gd = castle.gridDepth || 9;
-      const newPos = {
-        x: Math.floor(Math.random() * gw),
-        y: 0,
-        z: Math.floor(Math.random() * gd),
-      };
+      const newPos = this.ai.chooseRepositionTarget(this.castles[1]);
       this.onRepositionComplete(1, newPos);
       return;
     }

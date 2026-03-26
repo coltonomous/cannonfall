@@ -11,6 +11,9 @@ import { CastleBuilder } from './CastleBuilder.js';
 import { TargetRepositioner } from './TargetRepositioner.js';
 import { InputHandler } from './InputHandler.js';
 import { BattleController } from './BattleController.js';
+import { decode as decodeDesign } from './DesignCodec.js';
+import { AI } from './AI.js';
+import { getPreset } from './Presets.js';
 import * as C from './constants.js';
 
 const State = {
@@ -25,21 +28,27 @@ const State = {
   REPOSITION: 'reposition',
   PASS_DEVICE_REPOSITION: 'pass_device_reposition',
   TURN_TRANSITION: 'turn_transition',
+  AI_AIMING: 'ai_aiming',
+  AI_FIRING: 'ai_firing',
+  REPLAY: 'replay',
   GAME_OVER: 'game_over',
 };
 
 const VALID_TRANSITIONS = {
   [State.MENU]:                  [State.BUILD, State.MY_TURN, State.OPPONENT_TURN, State.WAITING_OPPONENT_BUILD],
-  [State.BUILD]:                 [State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN],
+  [State.BUILD]:                 [State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
   [State.PASS_DEVICE]:           [State.BUILD],
   [State.WAITING_OPPONENT_BUILD]:[State.MY_TURN, State.OPPONENT_TURN],
   [State.MY_TURN]:               [State.FIRING, State.GAME_OVER, State.MENU],
-  [State.FIRING]:                [State.GAME_OVER, State.PASS_DEVICE_REPOSITION, State.TURN_TRANSITION, State.OPPONENT_TURN, State.MY_TURN, State.REPOSITION],
+  [State.FIRING]:                [State.GAME_OVER, State.REPLAY, State.PASS_DEVICE_REPOSITION, State.TURN_TRANSITION, State.OPPONENT_TURN, State.MY_TURN, State.REPOSITION, State.AI_AIMING],
   [State.OPPONENT_TURN]:         [State.OPPONENT_FIRING, State.REPOSITION, State.MY_TURN, State.GAME_OVER, State.MENU],
-  [State.OPPONENT_FIRING]:       [State.GAME_OVER, State.REPOSITION, State.MY_TURN, State.OPPONENT_TURN, State.TURN_TRANSITION],
-  [State.REPOSITION]:            [State.MY_TURN, State.OPPONENT_TURN],
+  [State.OPPONENT_FIRING]:       [State.GAME_OVER, State.REPLAY, State.REPOSITION, State.MY_TURN, State.OPPONENT_TURN, State.TURN_TRANSITION],
+  [State.REPOSITION]:            [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
   [State.PASS_DEVICE_REPOSITION]:[State.REPOSITION],
-  [State.TURN_TRANSITION]:       [State.MY_TURN, State.OPPONENT_TURN],
+  [State.TURN_TRANSITION]:       [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
+  [State.AI_AIMING]:             [State.AI_FIRING, State.GAME_OVER, State.MENU],
+  [State.AI_FIRING]:             [State.GAME_OVER, State.REPLAY, State.TURN_TRANSITION, State.MY_TURN, State.REPOSITION],
+  [State.REPLAY]:                [State.GAME_OVER],
   [State.GAME_OVER]:             [State.MENU],
 };
 
@@ -56,9 +65,11 @@ export class Game {
 
     this.state = State.MENU;
     this.gameMode = GAME_MODES.CASTLE;
-    this.mode = null; // 'local' or 'online'
+    this.mode = null; // 'local', 'online', or 'ai'
     this.playerIndex = 0;
     this.currentTurn = 0;
+    this.ai = null;
+    this.aiDifficulty = 'MEDIUM';
 
     this.castles = [null, null];
     this.cannons = [null, null];
@@ -95,8 +106,26 @@ export class Game {
     this.setupUIListeners();
     this.setupNetworkListeners();
     this.attemptReconnect();
+    this._checkShareHash();
 
     this.clock = new THREE.Clock();
+    this._importedDesign = null;
+  }
+
+  _checkShareHash() {
+    if (!location.hash || !location.hash.includes('d=')) return;
+    const result = decodeDesign(location.hash.slice(1));
+    if (!result) return;
+
+    const modeKey = result.modeId.toUpperCase();
+    if (GAME_MODES[modeKey]) {
+      this.gameMode = GAME_MODES[modeKey];
+      document.querySelectorAll('.mode-btn').forEach(b => {
+        b.classList.toggle('selected', b.dataset.mode === modeKey);
+      });
+    }
+    this._importedDesign = result.castleData;
+    history.replaceState(null, '', window.location.pathname);
   }
 
   attemptReconnect() {
@@ -132,6 +161,14 @@ export class Game {
     });
 
     this.ui.localMatchBtn.addEventListener('click', () => this.startLocal());
+    document.getElementById('ai-match-btn')?.addEventListener('click', () => this.startAIMatch());
+    document.querySelectorAll('.diff-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.diff-btn').forEach(b => b.classList.remove('selected'));
+        btn.classList.add('selected');
+        this.aiDifficulty = btn.dataset.diff;
+      });
+    });
     this.ui.onlineMatchBtn.addEventListener('click', () => this.startOnline());
 
     this.ui.playAgainBtn.addEventListener('click', () => {
@@ -281,8 +318,16 @@ export class Game {
         this.ui.updateHP(this.hp[0], this.hp[1]);
 
         if (this.hp[damagedPlayer] <= 0) {
-          this.transition(State.GAME_OVER);
-          this.ui.showResult(damagedPlayer !== this.playerIndex);
+          const won = damagedPlayer !== this.playerIndex;
+          if (this.battle._replayData && this.battle.startReplay()) {
+            this.transition(State.REPLAY);
+            this._replayStartTime = performance.now();
+            this._replayWonOnline = won;
+            this.ui.setStatus('REPLAY');
+          } else {
+            this.transition(State.GAME_OVER);
+            this.ui.showResult(won);
+          }
         } else {
           this.ui.setStatus(`HIT! ${this.hp[damagedPlayer]} hit${this.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
           if (damagedPlayer === this.playerIndex) {
@@ -372,6 +417,16 @@ export class Game {
     this.startBuildPhase(true);
   }
 
+  // ── AI Mode ──────────────────────────────────────────────
+
+  startAIMatch() {
+    this.applyGameMode();
+    this.mode = 'ai';
+    this.playerIndex = 0;
+    this.ai = new AI(this.aiDifficulty);
+    this.startBuildPhase(true);
+  }
+
   // ── Online Mode ──────────────────────────────────────────
 
   async startOnline() {
@@ -414,13 +469,26 @@ export class Game {
     this.builder.start((castleData) => {
       this.onBuildComplete(castleData);
     }, this.gameMode);
+
+    if (this._importedDesign) {
+      this.builder.loadFromDesignData(this._importedDesign);
+      this._importedDesign = null;
+    }
   }
 
   onBuildComplete(castleData) {
     this.builder.stop();
     this.castleData[this.playerIndex] = castleData;
 
-    if (this.mode === 'local') {
+    if (this.mode === 'ai') {
+      // Player built; AI gets a random preset
+      const presets = this.gameMode.presets;
+      const presetName = presets[Math.floor(Math.random() * presets.length)];
+      this.castleData[1] = getPreset(presetName, this.gameMode.id);
+      this.buildBothCastles(this.castleData[0], this.castleData[1]);
+      this.currentTurn = Math.random() < 0.5 ? 0 : 1;
+      this.startBattle();
+    } else if (this.mode === 'local') {
       if (this.playerIndex === 0) {
         this.playerIndex = 1;
         this.transition(State.PASS_DEVICE);
@@ -531,7 +599,16 @@ export class Game {
 
   onTurnStart() {
     this.debugLog('Turn:', this.currentTurn, 'State:', this.state);
-    if (this.mode === 'local') {
+    if (this.mode === 'ai') {
+      if (this.currentTurn === 0) {
+        this.transition(State.MY_TURN);
+        this.ui.setTurn(true);
+      } else {
+        this.transition(State.AI_AIMING);
+        this.ui.setTurn(false);
+        this.ui.setStatus('AI is aiming...');
+      }
+    } else if (this.mode === 'local') {
       this.playerIndex = this.currentTurn;
       this.transition(State.MY_TURN);
       this.ui.setTurn(true, this.currentTurn + 1);
@@ -558,14 +635,36 @@ export class Game {
       this.input.resetTouchState();
       this.ui.setControlsHint(this.isTouch);
     }
+    if (this.state === State.AI_AIMING) {
+      this.cannons[this.currentTurn].resetAim();
+      this._startAITurn();
+    }
 
     this.syncBattle();
     this.battle.updateCamera(true);
   }
 
+  async _startAITurn() {
+    const aiCannon = this.cannons[1];
+    const targetPos = this.castles[0].getTargetPosition();
+    const idealAim = this.ai.computeAim(aiCannon, targetPos, this.gameMode);
+    const aim = this.ai.applySpread(idealAim);
+
+    await this.ai.startAiming(aiCannon, aim);
+    if (this.state !== State.AI_AIMING) return; // game was quit
+
+    await new Promise(r => setTimeout(r, 300));
+    if (this.state !== State.AI_AIMING) return;
+
+    this.battle.power = aim.power;
+    this.battle._perfectShot = false;
+    this.battle.fire(false);
+    this.transition(State.AI_FIRING);
+  }
+
   // ── Hit / Miss Handlers ──────────────────────────────────
 
-  // Local mode only — online hits resolved by server via shot-resolved
+  // Local/AI mode — online hits resolved by server via shot-resolved
   onTargetHit() {
     const damagedPlayer = 1 - this.currentTurn;
     const damage = this.battle._perfectShot ? 2 : 1;
@@ -574,20 +673,37 @@ export class Game {
     this.debugLog('Target hit!', { damage, perfect: this.battle._perfectShot, hp: [...this.hp] });
 
     if (this.hp[damagedPlayer] <= 0) {
-      this.transition(State.GAME_OVER);
-      this.ui.showLocalResult(this.currentTurn + 1);
+      // Try cinematic replay before showing result
+      if (this.battle._replayData && this.battle.startReplay()) {
+        this.transition(State.REPLAY);
+        this._replayStartTime = performance.now();
+        this._replayWinnerLocal = this.currentTurn + 1;
+        this._replayWonOnline = this.currentTurn === 0;
+        this.ui.setStatus('REPLAY');
+      } else {
+        this.transition(State.GAME_OVER);
+        if (this.mode === 'ai') {
+          this.ui.showResult(this.currentTurn === 0);
+        } else {
+          this.ui.showLocalResult(this.currentTurn + 1);
+        }
+      }
     } else {
       this.ui.setStatus(`HIT! ${this.hp[damagedPlayer]} hit${this.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
-      setTimeout(() => {
-        this.transition(State.PASS_DEVICE_REPOSITION);
-        this._damagedPlayer = damagedPlayer;
-        this.ui.showPassDevice(damagedPlayer + 1);
-      }, C.HIT_DISPLAY_DELAY);
+      if (this.mode === 'ai') {
+        setTimeout(() => this.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY);
+      } else {
+        setTimeout(() => {
+          this.transition(State.PASS_DEVICE_REPOSITION);
+          this._damagedPlayer = damagedPlayer;
+          this.ui.showPassDevice(damagedPlayer + 1);
+        }, C.HIT_DISPLAY_DELAY);
+      }
     }
   }
 
   onShotMiss() {
-    if (this.mode === 'local') {
+    if (this.mode === 'local' || this.mode === 'ai') {
       this.transition(State.TURN_TRANSITION);
       this.ui.setStatus('');
       setTimeout(() => {
@@ -602,9 +718,37 @@ export class Game {
     }
   }
 
+  _endReplay() {
+    this.battle.destroyProjectile();
+    this.battle._replayTimeScale = 1;
+    this.battle._replayPhase = null;
+    this.transition(State.GAME_OVER);
+    if (this.mode === 'ai') {
+      this.ui.showResult(this._replayWonOnline);
+    } else if (this.mode === 'local') {
+      this.ui.showLocalResult(this._replayWinnerLocal);
+    } else {
+      this.ui.showResult(this._replayWonOnline);
+    }
+  }
+
   // ── Reposition ───────────────────────────────────────────
 
   startRepositionPhase(damagedPlayerIndex) {
+    // AI auto-repositions: pick random grid position
+    if (this.mode === 'ai' && damagedPlayerIndex === 1) {
+      const castle = this.castles[1];
+      const gw = castle.gridWidth || 9;
+      const gd = castle.gridDepth || 9;
+      const newPos = {
+        x: Math.floor(Math.random() * gw),
+        y: 0,
+        z: Math.floor(Math.random() * gd),
+      };
+      this.onRepositionComplete(1, newPos);
+      return;
+    }
+
     this.transition(State.REPOSITION);
     this.ui.overlay.classList.add('hidden');
     this.ui.gameUI.classList.add('hidden');
@@ -655,6 +799,41 @@ export class Game {
       return;
     }
 
+    // Replay state
+    if (this.state === State.REPLAY) {
+      const scaledDt = dt * this.battle._replayTimeScale;
+      this.physicsWorld.step(scaledDt);
+      this.physicsWorld.sync();
+      this.battle.cleanupFallenBlocks();
+
+      if (this.battle.projectile?.alive) {
+        if (this.battle._pendingTargetHit || this.battle._pendingSpaceImpact) {
+          const pos = this.battle.projectile.getPosition();
+          this.battle.onReplayImpact(pos);
+          this.particles.emit(pos, { x: 0, y: 5, z: 0 }, 10, { r: 1, g: 0.3, b: 0.1 }, 60, 1.2);
+          this.sceneManager.shake(0.8, 0.5);
+          this.battle.destroyProjectile();
+          this.battle._pendingTargetHit = false;
+          this.battle._pendingSpaceImpact = null;
+        }
+      }
+
+      this.battle.updateReplayCamera(scaledDt);
+
+      const realElapsed = (performance.now() - this._replayStartTime) / 1000;
+      if (realElapsed > C.REPLAY_DURATION) this._endReplay();
+      if (this.input.keys['Space'] || this.input._touchTapped) {
+        this.input.keys['Space'] = false;
+        this.input._touchTapped = false;
+        this._endReplay();
+      }
+
+      this.particles.update(scaledDt);
+      this.sceneManager.updateCamera(scaledDt);
+      this.sceneManager.render();
+      return;
+    }
+
     // Input during aiming
     if (this.state === State.MY_TURN) {
       const action = this.input.handleInput(dt, this.cannons[this.currentTurn], this.battle, this.ui);
@@ -662,6 +841,13 @@ export class Game {
         this.battle.fire(this.debugPerfectShot);
         this.transition(State.FIRING);
       }
+      this.battle.updateCamera();
+      this.battle.updateTrajectory();
+    }
+
+    // AI aiming animation
+    if (this.state === State.AI_AIMING) {
+      if (this.ai) this.ai.updateAiming(dt, this.cannons[this.currentTurn]);
       this.battle.updateCamera();
       this.battle.updateTrajectory();
     }
@@ -674,18 +860,18 @@ export class Game {
     }
 
     // Projectile tracking (before firing block so state changes take effect)
-    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING) {
+    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING || this.state === State.AI_FIRING) {
       this.battle.checkProjectile(dt);
     }
 
     // Follow projectile + skip/auto-advance (only if still in firing state)
-    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING) {
+    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING || this.state === State.AI_FIRING) {
       if (this.battle.projectile?.alive) {
         this.battle.followProjectile();
       }
 
       const elapsed = (performance.now() - this.battle.fireTime) / 1000;
-      if (elapsed > C.SKIP_PROMPT_DELAY && this.state === State.FIRING) {
+      if (elapsed > C.SKIP_PROMPT_DELAY && (this.state === State.FIRING || this.state === State.AI_FIRING)) {
         this.ui.setStatus(this.isTouch ? 'Tap to skip' : 'Press Space to skip');
         if (this.input.keys['Space'] || this.input._touchTapped) {
           this.input.keys['Space'] = false;
@@ -694,7 +880,7 @@ export class Game {
           this.onShotMiss();
         }
       }
-      if (elapsed > C.AUTO_MISS_TIMEOUT && (this.state === State.FIRING || this.state === State.OPPONENT_FIRING)) {
+      if (elapsed > C.AUTO_MISS_TIMEOUT && (this.state === State.FIRING || this.state === State.OPPONENT_FIRING || this.state === State.AI_FIRING)) {
         this.battle.destroyProjectile();
         this.onShotMiss();
       }

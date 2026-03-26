@@ -85,5 +85,9 @@ export const MINIMAP_RING_Y = 25;
 export const SHOT_RESOLVE_TIMEOUT = 3000;  // ms
 export const FIRE_SAFETY_TIMEOUT = 10000;  // ms
 
+// ── Replay ──────────────────────────────────────────
+export const REPLAY_TIME_SCALE = 0.25;
+export const REPLAY_DURATION = 5; // seconds (real time)
+
 // ── HP ────────────────────────────────────────────────
 export const MAX_HP = 3;

@@ -37,6 +37,13 @@ export class BattleController {
     this._pendingTargetHit = false;
     this._pendingSpaceImpact = null;
 
+    // Replay state
+    this._replayData = null;
+    this._replayTimeScale = 1;
+    this._replayPhase = null; // 'follow' | 'orbit'
+    this._replayElapsed = 0;
+    this._replayImpactPos = null;
+
     // Trajectory line
     this.trajectoryLine = null;
     this._createTrajectoryLine();
@@ -201,6 +208,9 @@ export class BattleController {
     this._impactEmitted = false;
     this.settleTimer = 0;
     this.fireTime = performance.now();
+
+    // Capture for potential replay
+    this._replayData = { firePos: pos.clone(), fireDir: dir.clone(), power, isPerfect: this._perfectShot };
 
     if (this.mode === 'online') {
       this.network.sendFire(cannon.yaw, cannon.pitch, power);
@@ -458,6 +468,73 @@ export class BattleController {
         this.sceneManager.camera.rotation.z = wave.roll * 0.5;
       }
     }
+  }
+
+  // ── Replay ──────────────────────────────────────────────
+
+  startReplay() {
+    if (!this._replayData) return false;
+    this._replayTimeScale = C.REPLAY_TIME_SCALE;
+    this._replayPhase = 'follow';
+    this._replayElapsed = 0;
+    this._replayImpactPos = null;
+
+    this.destroyProjectile();
+
+    const { firePos, fireDir, power, isPerfect } = this._replayData;
+    const velocity = fireDir.clone().multiplyScalar(power);
+    this.projectile = new Projectile(this.sceneManager, this.physicsWorld, firePos, velocity, isPerfect, this.gameMode);
+    this._setupProjectileCollision();
+    this.fireTime = performance.now();
+    this._impactEmitted = false;
+    this.settleTimer = 0;
+    return true;
+  }
+
+  updateReplayCamera(dt) {
+    this._replayElapsed += dt;
+
+    if (this._replayPhase === 'follow' && this.projectile?.alive) {
+      const pos = this.projectile.getPosition();
+      const vel = this.projectile.body.velocity;
+      const speed = this.projectile.getSpeed();
+
+      let dir;
+      if (speed > 1) {
+        dir = new THREE.Vector3(vel.x, vel.y, vel.z).normalize();
+        this._lastProjDir = dir.clone();
+      } else {
+        dir = this._lastProjDir || new THREE.Vector3(1, 0, 0);
+      }
+
+      const sideOffset = Math.sin(this._replayElapsed * 0.3) * 3;
+      const camPos = pos.clone()
+        .sub(dir.clone().multiplyScalar(10))
+        .add(new THREE.Vector3(0, 5, sideOffset));
+      this.sceneManager.setCameraPosition(camPos, pos);
+
+      if (speed > 2) {
+        this.particles.emit(pos, { x: 0, y: 0.5, z: 0 }, 1.5, this.gameMode.trailColor, 2, 0.8);
+      }
+    } else if (this._replayPhase === 'orbit' && this._replayImpactPos) {
+      const center = this._replayImpactPos;
+      const t = this._replayElapsed;
+      const radius = Math.max(5, 12 - t * 1.5);
+      const angle = t * 0.8;
+      const height = 4 + Math.sin(t * 0.5) * 2;
+      const camPos = new THREE.Vector3(
+        center.x + Math.cos(angle) * radius,
+        center.y + height,
+        center.z + Math.sin(angle) * radius
+      );
+      this.sceneManager.setCameraPosition(camPos, center);
+    }
+  }
+
+  onReplayImpact(pos) {
+    this._replayImpactPos = pos.clone();
+    this._replayPhase = 'orbit';
+    this._replayElapsed = 0;
   }
 
   // ── Fallen Blocks ─────────────────────────────────────────

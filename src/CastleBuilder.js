@@ -3,6 +3,7 @@ import { BLOCK_SIZE, BUILD_BUDGET, BLOCK_TYPES } from './constants.js';
 import { getPreset } from './Presets.js';
 import { createAllBlockGeometries } from './BlockGeometry.js';
 import { OrbitController } from './OrbitController.js';
+import { encode as encodeDesign } from './DesignCodec.js';
 
 export class CastleBuilder {
   constructor(sceneManager) {
@@ -355,7 +356,7 @@ export class CastleBuilder {
           background: rgba(52, 152, 219, 0.8); color: #fff;
           transition: background 0.2s;
           pointer-events: auto;
-        ">Export</button>
+        ">Share</button>
         <button id="builder-clear-btn" style="
           padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
           border: none; border-radius: 8px; cursor: pointer;
@@ -431,11 +432,16 @@ export class CastleBuilder {
         cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
         floor: this.customFloor || [],
       };
-      const json = JSON.stringify(data, null, 2);
-      console.log('=== BUILD EXPORT ===\n' + json);
-      navigator.clipboard.writeText(json).then(
-        () => { document.getElementById('builder-export-btn').textContent = 'Copied!'; setTimeout(() => { document.getElementById('builder-export-btn').textContent = 'Export'; }, 1500); },
-        () => { /* clipboard failed, console output is enough */ }
+      const modeId = this.modeConfig?.id || 'castle';
+      const hash = encodeDesign(data, modeId);
+      const url = `${window.location.origin}${window.location.pathname}#${hash}`;
+      navigator.clipboard.writeText(url).then(
+        () => {
+          const btn = document.getElementById('builder-export-btn');
+          btn.textContent = 'Link Copied!';
+          setTimeout(() => { btn.textContent = 'Share'; }, 1500);
+        },
+        () => { /* fallback: log to console */ console.log(url); }
       );
     });
 
@@ -596,6 +602,20 @@ export class CastleBuilder {
     }
     this.budget = Math.max(0, this.maxBudget - cost);
 
+    this.updateBudgetDisplay();
+    this.updateTargetMesh();
+    this.rebuildMeshes();
+  }
+
+  loadFromDesignData(data) {
+    this.layout = data.layout.map(b => ({ ...b }));
+    this.targetPos = { ...data.target };
+    this.customFloor = data.floor || null;
+    let cost = 0;
+    for (const block of this.layout) {
+      cost += BLOCK_TYPES[block.type]?.cost || 0;
+    }
+    this.budget = Math.max(0, this.maxBudget - cost);
     this.updateBudgetDisplay();
     this.updateTargetMesh();
     this.rebuildMeshes();

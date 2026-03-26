@@ -318,71 +318,75 @@ export class CastleBuilder {
       </div>
       <div class="builder-bottom" style="
         position: absolute;
-        bottom: 24px;
+        bottom: 12px;
         left: 50%;
         transform: translateX(-50%);
         display: flex;
-        gap: 16px;
+        flex-direction: column;
+        gap: 6px;
         align-items: center;
         pointer-events: auto;
+        width: 90%;
+        max-width: 400px;
       ">
-        <div class="preset-load">
+        <div style="display: flex; gap: 8px; justify-content: center; width: 100%;">
           <select id="builder-preset-select" style="
-            padding: 10px 16px; border: 2px solid rgba(255,255,255,0.15);
+            padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
             border-radius: 8px; background: rgba(0,0,0,0.6);
-            color: #fff; cursor: pointer; font-size: 0.95rem;
-            pointer-events: auto;
+            color: #fff; cursor: pointer; font-size: 0.85rem;
+            pointer-events: auto; flex: 1; min-width: 0;
           ">
             <option value="">Load preset...</option>
             ${(this.modeConfig?.presets || ['KEEP', 'BUNKER', 'TOWER']).map(
               p => `<option value="${p}">${p.charAt(0) + p.slice(1).toLowerCase()}</option>`
             ).join('')}
           </select>
+          <button id="builder-export-btn" style="
+            padding: 8px 14px; font-size: 0.85rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: rgba(52, 152, 219, 0.8); color: #fff;
+            pointer-events: auto;
+          ">Share</button>
+          <button id="builder-clear-btn" style="
+            padding: 8px 14px; font-size: 0.85rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: rgba(192, 57, 43, 0.8); color: #fff;
+            pointer-events: auto;
+          ">Clear</button>
         </div>
-        <button id="builder-export-btn" style="
-          padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
-          border: none; border-radius: 8px; cursor: pointer;
-          background: rgba(52, 152, 219, 0.8); color: #fff;
-          transition: background 0.2s;
-          pointer-events: auto;
-        ">Share</button>
-        <button id="builder-clear-btn" style="
-          padding: 10px 20px; font-size: 0.9rem; font-weight: 600;
-          border: none; border-radius: 8px; cursor: pointer;
-          background: rgba(192, 57, 43, 0.8); color: #fff;
-          transition: background 0.2s;
-          pointer-events: auto;
-        ">Clear All</button>
         ${this.isTouch ? `
-          <button id="builder-rotate-btn" class="builder-action-btn" style="
-            padding: 10px 14px; font-size: 0.9rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            background: rgba(255,255,255,0.15); color: #fff;
-            pointer-events: auto;
-          ">&#x21BB; Rotate</button>
-          <button id="builder-remove-btn" class="builder-action-btn" style="
-            padding: 10px 14px; font-size: 0.9rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            background: rgba(255,255,255,0.15); color: #fff;
-            pointer-events: auto;
-          ">&#x2716; Remove</button>
-          <button id="builder-undo-btn" class="builder-action-btn" disabled style="
-            padding: 10px 14px; font-size: 0.9rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            background: rgba(255,255,255,0.15); color: #fff;
-            pointer-events: auto;
-          ">&#x21A9; Undo</button>
+          <div style="display: flex; gap: 8px; justify-content: center; width: 100%;">
+            <button id="builder-rotate-btn" class="builder-action-btn" style="
+              padding: 8px 0; font-size: 0.8rem; font-weight: 600; flex: 1;
+              border: none; border-radius: 8px; cursor: pointer;
+              background: rgba(255,255,255,0.12); color: #fff;
+              pointer-events: auto;
+            ">&#x21BB; Rotate</button>
+            <button id="builder-remove-btn" class="builder-action-btn" style="
+              padding: 8px 0; font-size: 0.8rem; font-weight: 600; flex: 1;
+              border: none; border-radius: 8px; cursor: pointer;
+              background: rgba(255,255,255,0.12); color: #fff;
+              pointer-events: auto;
+            ">&#x2716; Remove</button>
+            <button id="builder-undo-btn" class="builder-action-btn" disabled style="
+              padding: 8px 0; font-size: 0.8rem; font-weight: 600; flex: 1;
+              border: none; border-radius: 8px; cursor: pointer;
+              background: rgba(255,255,255,0.12); color: #fff;
+              pointer-events: auto;
+            ">&#x21A9; Undo</button>
+          </div>
         ` : `
-          <button id="builder-undo-btn" disabled style="
-            display: flex; align-items: center; gap: 6px;
-            padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.8rem;
-            pointer-events: auto;
-          "><span style="font-size: 1rem;">&#x21A9;</span> Undo</button>
+          <div style="display: flex; gap: 8px; justify-content: center;">
+            <button id="builder-undo-btn" disabled style="
+              padding: 8px 14px; font-size: 0.85rem; font-weight: 600;
+              border: 2px solid rgba(255,255,255,0.15); border-radius: 8px;
+              background: rgba(255,255,255,0.06); color: #fff;
+              cursor: pointer; pointer-events: auto;
+            ">&#x21A9; Undo</button>
+          </div>
         `}
         <button id="builder-ready-btn" style="
-          padding: 14px 40px; font-size: 1.15rem; font-weight: 700;
+          padding: 12px 0; font-size: 1.1rem; font-weight: 700; width: 100%;
           border: none; border-radius: 8px; cursor: pointer;
           background: #27ae60; color: #fff;
           transition: background 0.2s, transform 0.1s;

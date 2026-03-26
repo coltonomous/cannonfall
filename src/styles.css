@@ -927,20 +927,19 @@ body {
   }
 
   #castle-builder-ui .builder-bottom {
-    bottom: 8px !important;
-    gap: 6px !important;
-    flex-wrap: wrap;
-    justify-content: center;
+    bottom: 6px !important;
+    gap: 4px !important;
+    width: 95% !important;
   }
 
   #castle-builder-ui .builder-bottom button,
   #castle-builder-ui .builder-bottom select {
-    padding: 6px 10px !important;
-    font-size: 0.75rem !important;
+    padding: 6px 8px !important;
+    font-size: 0.7rem !important;
   }
 
-  #castle-builder-ui .builder-action-btn {
-    padding: 6px 10px !important;
-    font-size: 0.75rem !important;
+  #castle-builder-ui .builder-bottom #builder-ready-btn {
+    padding: 10px 0 !important;
+    font-size: 0.95rem !important;
   }
 }

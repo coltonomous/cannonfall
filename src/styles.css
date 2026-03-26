@@ -512,6 +512,17 @@ body {
   color: rgba(255, 255, 255, 0.35);
 }
 
+#lobby-name-input.shake {
+  animation: shake 0.4s ease;
+  border-color: #e74c3c;
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-6px); }
+  40%, 80% { transform: translateX(6px); }
+}
+
 .lobby-actions {
   width: 100%;
 }

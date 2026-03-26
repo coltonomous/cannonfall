@@ -227,6 +227,19 @@ export class UI {
     return name;
   }
 
+  shakeNameInput() {
+    this.lobbyNameInput.classList.remove('shake');
+    // Force reflow so re-adding the class restarts the animation
+    void this.lobbyNameInput.offsetWidth;
+    this.lobbyNameInput.classList.add('shake');
+    this.lobbyNameInput.focus();
+    this.lobbyNameInput.setAttribute('placeholder', 'Enter a name first');
+    setTimeout(() => {
+      this.lobbyNameInput.classList.remove('shake');
+      this.lobbyNameInput.setAttribute('placeholder', 'Your name');
+    }, 1500);
+  }
+
   _escapeHtml(str) {
     const div = document.createElement('div');
     div.textContent = str;

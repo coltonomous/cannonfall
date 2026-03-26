@@ -164,7 +164,7 @@ export class Game {
 
     this.ui.lobbyCreateBtn.addEventListener('click', () => {
       const name = this.ui.getLobbyName();
-      if (!name) { this.ui.lobbyNameInput.focus(); return; }
+      if (!name) { this.ui.shakeNameInput(); return; }
       this.ui.lobbyCreateForm.classList.remove('hidden');
       this.ui.lobbyCreateBtn.classList.add('hidden');
     });
@@ -176,7 +176,7 @@ export class Game {
 
     this.ui.lobbyConfirmCreateBtn.addEventListener('click', () => {
       const name = this.ui.getLobbyName();
-      if (!name) return;
+      if (!name) { this.ui.shakeNameInput(); return; }
       const password = this.ui.lobbyPasswordInput.value || null;
       this.network.createLobby(name, this.gameMode.id, password);
     });
@@ -199,7 +199,7 @@ export class Game {
       const lobbyId = btn.dataset.lobbyId;
       const hasPassword = btn.dataset.hasPassword === 'true';
       const name = this.ui.getLobbyName();
-      if (!name) { this.ui.lobbyNameInput.focus(); return; }
+      if (!name) { this.ui.shakeNameInput(); return; }
 
       if (hasPassword) {
         this.ui.showPasswordPrompt(lobbyId);

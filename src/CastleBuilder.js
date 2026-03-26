@@ -131,16 +131,13 @@ export class CastleBuilder {
     this.gridPlane.position.y = this.currentLayer * BLOCK_SIZE;
     this.gridGroup.add(this.gridPlane);
 
-    // Ghost preview block
+    // Ghost preview block (uses shared geometry from _geometries)
     const ghostMat = new THREE.MeshStandardMaterial({
       color: 0x44aaff,
       transparent: true,
       opacity: 0.4,
     });
-    this.ghostMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE),
-      ghostMat
-    );
+    this.ghostMesh = new THREE.Mesh(this._geometries.CUBE, ghostMat);
     this.ghostMesh.visible = false;
     this.gridGroup.add(this.ghostMesh);
 
@@ -157,12 +154,23 @@ export class CastleBuilder {
   }
 
   clearScene() {
-    this.gridGroup.parent?.remove(this.gridGroup);
-    // Dispose geometries/materials of block meshes
+    // Dispose block mesh materials (geometries are shared via _geometries)
     for (const { mesh } of this.blockMeshes) {
-      mesh.geometry?.dispose();
       mesh.material?.dispose();
     }
+    // Dispose shared block geometries
+    if (this._geometries) {
+      for (const geo of Object.values(this._geometries)) {
+        geo.dispose();
+      }
+      this._geometries = null;
+    }
+    // Dispose gridGroup children (grid lines, layer indicator, gridPlane, ghost, target)
+    this.gridGroup.traverse(obj => {
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    });
+    this.gridGroup.parent?.remove(this.gridGroup);
     this.blockMeshes = [];
     this.floorMeshes = [];
     this.ghostMesh = null;
@@ -608,10 +616,9 @@ export class CastleBuilder {
   // === MESH MANAGEMENT ===
 
   rebuildMeshes() {
-    // Remove old meshes
+    // Remove old meshes (materials are per-mesh; geometries are shared via _geometries)
     for (const { mesh } of this.blockMeshes) {
       this.gridGroup.remove(mesh);
-      mesh.geometry?.dispose();
       mesh.material?.dispose();
     }
     this.blockMeshes = [];

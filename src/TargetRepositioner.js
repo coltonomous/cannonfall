@@ -108,6 +108,10 @@ export class TargetRepositioner {
     this.removeEventListeners();
     this.removeUI();
     if (this.group) {
+      this.group.traverse(obj => {
+        obj.geometry?.dispose();
+        obj.material?.dispose();
+      });
       this.sceneManager.scene.remove(this.group);
       this.group = null;
     }

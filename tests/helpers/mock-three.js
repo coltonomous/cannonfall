@@ -59,7 +59,7 @@ class MockObject3D {
     this.receiveShadow = false;
     this.children = [];
     this.parent = null;
-    this.material = { wireframe: false, opacity: 1, transparent: false, color: new Color() };
+    this.material = { wireframe: false, opacity: 1, transparent: false, color: new Color(), dispose: noop };
   }
   add(child) { this.children.push(child); }
   remove() {}
@@ -73,6 +73,7 @@ class MockGeometry {
   dispose() {}
   setFromPoints() { return this; }
   setAttribute() {}
+  setDrawRange() {}
   setIndex() {}
   computeVertexNormals() {}
   computeLineDistances() {}

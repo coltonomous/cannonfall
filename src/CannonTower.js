@@ -127,6 +127,10 @@ export class CannonTower {
   }
 
   destroy() {
+    this.group.traverse(obj => {
+      obj.geometry?.dispose();
+      obj.material?.dispose();
+    });
     this.scene.remove(this.group);
   }
 }

@@ -79,7 +79,14 @@ export class BattleController {
       dashSize: 0.5,
       gapSize: 0.3,
     });
+    // Pre-allocate trajectory buffers to avoid per-frame geometry allocation
+    this._trajMaxPoints = 120;
+    this._trajPositions = new Float32Array(this._trajMaxPoints * 3);
+    this._trajDistances = new Float32Array(this._trajMaxPoints);
     const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(this._trajPositions, 3));
+    geo.setAttribute('lineDistance', new THREE.BufferAttribute(this._trajDistances, 1));
+    geo.setDrawRange(0, 0);
     this.trajectoryLine = new THREE.Line(geo, mat);
     this.trajectoryLine.visible = false;
     this.sceneManager.scene.add(this.trajectoryLine);
@@ -138,13 +145,29 @@ export class BattleController {
       this.trajectoryLine.visible = true;
 
       const vel = dir.clone().multiplyScalar(this.power);
-      const points = [];
+      const positions = this._trajPositions;
+      const distances = this._trajDistances;
       const step = 0.05;
       let px = pos.x, py = pos.y, pz = pos.z;
       let vx = vel.x, vy = vel.y, vz = vel.z;
+      let count = 0;
+      let totalDist = 0;
 
-      for (let i = 0; i < 120; i++) {
-        points.push(new THREE.Vector3(px, py, pz));
+      for (let i = 0; i < this._trajMaxPoints; i++) {
+        const i3 = count * 3;
+        positions[i3] = px;
+        positions[i3 + 1] = py;
+        positions[i3 + 2] = pz;
+
+        if (count > 0) {
+          const dx = px - positions[i3 - 3];
+          const dy = py - positions[i3 - 2];
+          const dz = pz - positions[i3 - 1];
+          totalDist += Math.sqrt(dx * dx + dy * dy + dz * dz);
+        }
+        distances[count] = totalDist;
+        count++;
+
         px += vx * step;
         py += vy * step;
         pz += vz * step;
@@ -152,9 +175,10 @@ export class BattleController {
         if (py < this.gameMode.outOfBoundsY) break;
       }
 
-      this.trajectoryLine.geometry.dispose();
-      this.trajectoryLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
-      this.trajectoryLine.computeLineDistances();
+      const geo = this.trajectoryLine.geometry;
+      geo.attributes.position.needsUpdate = true;
+      geo.attributes.lineDistance.needsUpdate = true;
+      geo.setDrawRange(0, count);
     }
   }
 
@@ -163,7 +187,7 @@ export class BattleController {
   _setupProjectileCollision() {
     this._pendingTargetHit = false;
     this._pendingSpaceImpact = null;
-    this.projectile.body.addEventListener('collide', (e) => {
+    this._collisionListener = (e) => {
       if (!this.projectile || !this.projectile.alive) return;
       if (e.body.isTarget) {
         // Defer — can't remove bodies mid-physics step
@@ -173,7 +197,8 @@ export class BattleController {
       if (this.gameMode.explosiveProjectile && !this._pendingSpaceImpact) {
         this._pendingSpaceImpact = e.body;
       }
-    });
+    };
+    this.projectile.body.addEventListener('collide', this._collisionListener);
   }
 
   _handleDirectTargetHit() {
@@ -595,6 +620,10 @@ export class BattleController {
 
   destroyProjectile() {
     if (this.projectile) {
+      if (this._collisionListener) {
+        this.projectile.body.removeEventListener('collide', this._collisionListener);
+        this._collisionListener = null;
+      }
       this.projectile.destroy();
       this.projectile = null;
     }

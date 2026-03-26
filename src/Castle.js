@@ -31,8 +31,9 @@ export class Castle {
     const halfW = Math.floor(this.gridWidth / 2);
     const halfD = Math.floor(this.gridDepth / 2);
 
-    // Shared geometries for each block type (create once, reuse)
+    // Shared geometries for each block type (create once, reuse, dispose in clear())
     const geometries = createAllBlockGeometries();
+    this._sharedGeometries = geometries;
 
     // Physics shapes
     const shapes = {
@@ -286,6 +287,8 @@ export class Castle {
   removeTarget() {
     if (this.target) {
       this.sceneManager.scene.remove(this.target);
+      this.target.geometry.dispose();
+      this.target.material.dispose();
       this.target = null;
     }
     if (this.targetLight) {
@@ -311,7 +314,10 @@ export class Castle {
 
   clear() {
     for (const { mesh, body } of this.blocks) {
-      this.sceneManager.scene.remove(mesh);
+      if (mesh) {
+        this.sceneManager.scene.remove(mesh);
+        if (mesh.material) mesh.material.dispose();
+      }
       this.physicsWorld.world.removeBody(body);
     }
     // Also remove from pairs
@@ -322,8 +328,18 @@ export class Castle {
     this.blocks = [];
     this.thrusters = [];
 
+    // Dispose shared block geometries (one per block type, reused across meshes)
+    if (this._sharedGeometries) {
+      for (const geo of Object.values(this._sharedGeometries)) {
+        geo.dispose();
+      }
+      this._sharedGeometries = null;
+    }
+
     if (this.target) {
       this.sceneManager.scene.remove(this.target);
+      this.target.geometry.dispose();
+      this.target.material.dispose();
       this.target = null;
     }
     if (this.targetLight) {

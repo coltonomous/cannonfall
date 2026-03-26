@@ -1,9 +1,9 @@
 import { MIN_POWER, MAX_POWER, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET } from './constants.js';
 
 const DIFFICULTY = {
-  EASY:   { spreadRad: 0.15, powerOffset: 10, aimTime: 2.0 },
-  MEDIUM: { spreadRad: 0.08, powerOffset: 5,  aimTime: 1.5 },
-  HARD:   { spreadRad: 0.03, powerOffset: 2,  aimTime: 1.0 },
+  EASY:   { spreadRad: 0.35, powerOffset: 15, aimTime: 2.0 },
+  MEDIUM: { spreadRad: 0.18, powerOffset: 8,  aimTime: 1.5 },
+  HARD:   { spreadRad: 0.06, powerOffset: 3,  aimTime: 1.0 },
 };
 
 export class AI {

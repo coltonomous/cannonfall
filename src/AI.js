@@ -34,7 +34,8 @@ export class AI {
 
   _computeYaw(dx, dz, facing) {
     const baseAngle = facing === 1 ? Math.PI / 2 : -Math.PI / 2;
-    let yaw = Math.atan2(dz, dx) - baseAngle;
+    // Three.js Y-rotation: atan2(x, z) gives angle from +Z axis
+    let yaw = Math.atan2(dx, dz) - baseAngle;
     while (yaw > Math.PI) yaw -= 2 * Math.PI;
     while (yaw < -Math.PI) yaw += 2 * Math.PI;
     return yaw;

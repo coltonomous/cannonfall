@@ -37,7 +37,7 @@ export const State = {
 };
 
 const VALID_TRANSITIONS = {
-  [State.MENU]:                  [State.BUILD, State.MY_TURN, State.OPPONENT_TURN, State.WAITING_OPPONENT_BUILD],
+  [State.MENU]:                  [State.BUILD, State.MY_TURN, State.OPPONENT_TURN, State.WAITING_OPPONENT_BUILD, State.AI_AIMING],
   [State.BUILD]:                 [State.MENU, State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
   [State.PASS_DEVICE]:           [State.BUILD],
   [State.WAITING_OPPONENT_BUILD]:[State.MY_TURN, State.OPPONENT_TURN],

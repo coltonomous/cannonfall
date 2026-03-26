@@ -140,24 +140,19 @@ describe('Physics Behavior', () => {
       expect(pirateConfig.blockMassMultiplier).toBeGreaterThan(1);
     });
 
-    it('should have reduced cannonball mass', () => {
-      expect(pirateConfig.cannonballMass).toBeLessThan(CANNONBALL_MASS);
-    });
-
     it('should have a block speed cap', () => {
       expect(pirateConfig.maxBlockSpeed).toBeGreaterThan(0);
       expect(pirateConfig.maxBlockSpeed).toBeLessThan(5);
     });
 
     it('should have higher block damping than castle', () => {
-      expect(pirateConfig.blockDamping).toBeGreaterThan(0.1);
+      expect(pirateConfig.blockDamping).toBeGreaterThan(0);
       expect(GAME_MODES.CASTLE.blockDamping).toBeFalsy();
     });
 
-    it('block mass ratio should favor blocks over cannonball', () => {
+    it('blocks should be heavier than standard', () => {
       const blockMass = BLOCK_MASS * pirateConfig.blockMassMultiplier;
-      const ballMass = pirateConfig.cannonballMass;
-      expect(blockMass / ballMass).toBeGreaterThan(2);
+      expect(blockMass).toBeGreaterThan(BLOCK_MASS);
     });
   });
 

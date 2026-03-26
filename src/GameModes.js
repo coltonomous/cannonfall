@@ -88,10 +88,9 @@ export const GAME_MODES = {
     friction: 0.8,
     restitution: 0.1,
     explosiveProjectile: false,
-    blockMassMultiplier: 4,
-    blockDamping: 0.3,
-    cannonballMass: 2,
-    maxBlockSpeed: 1.7,
+    blockMassMultiplier: 2.5,
+    blockDamping: 0.12,
+    maxBlockSpeed: 2.5,
 
     player0Color: 0x8b6340,
     player1Color: 0x6b4226,

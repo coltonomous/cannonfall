@@ -76,7 +76,7 @@ describe('Game Modes', () => {
     it('pirate should have punch-through physics', () => {
       expect(GAME_MODES.PIRATE.blockMassMultiplier).toBeGreaterThan(1);
       expect(GAME_MODES.PIRATE.maxBlockSpeed).toBeGreaterThan(0);
-      expect(GAME_MODES.PIRATE.cannonballMass).toBeLessThan(4); // lighter than default
+      expect(GAME_MODES.PIRATE.blockDamping).toBeGreaterThan(0);
     });
 
     it('space should have zero gravity', () => {

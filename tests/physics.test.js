@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import * as CANNON from 'cannon-es';
 import { GAME_MODES } from '../src/GameModes.js';
-import { CANNONBALL_MASS, CANNONBALL_RADIUS, BLOCK_MASS, PHYSICS_STEP } from '../src/constants.js';
+import { CANNONBALL_MASS, CANNONBALL_RADIUS, BLOCK_MASS, PHYSICS_STEP, TARGET_HIT_RADIUS, EXPLOSIVE_HIT_RADIUS } from '../src/constants.js';
 
 // Minimal PhysicsWorld recreation for testing (avoids THREE.js dependency)
 function createPhysicsWorld(config) {
@@ -188,25 +188,22 @@ describe('Physics Behavior', () => {
   });
 
   describe('shield absorption', () => {
-    it('shield dampen factor should reduce blast to 20%', () => {
-      const shieldDampen = 0.2;
-      const fullBlast = GAME_MODES.SPACE.blastForce;
-      const shieldedBlast = fullBlast * shieldDampen;
-      expect(shieldedBlast).toBe(fullBlast * 0.2);
+    it('space mode should have blast radius and force configured', () => {
+      expect(GAME_MODES.SPACE.blastRadius).toBeGreaterThan(0);
+      expect(GAME_MODES.SPACE.blastForce).toBeGreaterThan(0);
+      expect(GAME_MODES.SPACE.perfectBlastRadius).toBeGreaterThan(GAME_MODES.SPACE.blastRadius);
     });
   });
 });
 
 describe('Hit Detection Thresholds', () => {
-  it('target hit distance should be 1.2 units', () => {
-    // This is hardcoded in BattleController.checkProjectile
-    const HIT_THRESHOLD = 1.2;
-    expect(HIT_THRESHOLD).toBe(1.2);
+  it('target hit radius should be reasonable', () => {
+    expect(TARGET_HIT_RADIUS).toBeGreaterThan(CANNONBALL_RADIUS);
+    expect(TARGET_HIT_RADIUS).toBeLessThan(3);
   });
 
-  it('space explosion target distance should be 2.0 units', () => {
-    const EXPLOSION_HIT_THRESHOLD = 2.0;
-    expect(EXPLOSION_HIT_THRESHOLD).toBe(2.0);
+  it('explosion radius should be larger than direct hit radius', () => {
+    expect(EXPLOSIVE_HIT_RADIUS).toBeGreaterThan(TARGET_HIT_RADIUS);
   });
 
   it('projectile should be marked as such', () => {

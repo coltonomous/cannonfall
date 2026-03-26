@@ -559,6 +559,49 @@ export class Game {
     this.transition(State.AI_FIRING);
   }
 
+  /**
+   * Wait for physics to settle (blocks stop moving) then call fn.
+   * Minimum wait: 800ms. Max wait: 4s. Checks block velocities via polling.
+   */
+  _waitForSettle(fn) {
+    const startTime = performance.now();
+    const MIN_WAIT = 800;
+    const MAX_WAIT = 4000;
+    const SPEED_THRESHOLD = 1.5;
+
+    const check = () => {
+      const elapsed = performance.now() - startTime;
+
+      // Always wait at least MIN_WAIT
+      if (elapsed < MIN_WAIT) {
+        this._schedule(check, 100, State.TURN_TRANSITION);
+        return;
+      }
+
+      // After MAX_WAIT, proceed regardless
+      if (elapsed >= MAX_WAIT) { fn(); return; }
+
+      // Check if blocks have settled
+      let maxSpeed = 0;
+      for (const castle of this.castles) {
+        if (!castle) continue;
+        for (const { body } of castle.blocks) {
+          if (body.mass === 0) continue;
+          const speed = body.velocity.length();
+          if (speed > maxSpeed) maxSpeed = speed;
+        }
+      }
+
+      if (maxSpeed < SPEED_THRESHOLD) {
+        fn();
+      } else {
+        this._schedule(check, 100, State.TURN_TRANSITION);
+      }
+    };
+
+    this._schedule(check, MIN_WAIT, State.TURN_TRANSITION);
+  }
+
   /** Schedule a delayed action that is cancelled on cleanup and guarded against stale state. */
   _schedule(fn, delay, ...validStates) {
     const id = setTimeout(() => {
@@ -605,15 +648,16 @@ export class Game {
     } else {
       this.ui.setStatus(`HIT! ${this.hp[damagedPlayer]} hit${this.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
       this.transition(State.TURN_TRANSITION);
-      if (this.mode === 'ai') {
-        this._schedule(() => this.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY, State.TURN_TRANSITION);
-      } else {
-        this._schedule(() => {
+      this._waitForSettle(() => {
+        if (this.state !== State.TURN_TRANSITION) return;
+        if (this.mode === 'ai') {
+          this.startRepositionPhase(damagedPlayer);
+        } else {
           this.transition(State.PASS_DEVICE_REPOSITION);
           this._damagedPlayer = damagedPlayer;
           this.ui.showPassDevice(damagedPlayer + 1);
-        }, C.HIT_DISPLAY_DELAY, State.TURN_TRANSITION);
-      }
+        }
+      });
     }
   }
 
@@ -621,11 +665,12 @@ export class Game {
     if (this.mode === 'local' || this.mode === 'ai') {
       this.transition(State.TURN_TRANSITION);
       this.ui.setStatus('');
-      this._schedule(() => {
+      this._waitForSettle(() => {
+        if (this.state !== State.TURN_TRANSITION) return;
         this.currentTurn = 1 - this.currentTurn;
         this.syncBattle();
         this.onTurnStart();
-      }, C.MISS_TURN_DELAY, State.TURN_TRANSITION);
+      });
     } else {
       this.network.sendShotResult(false);
       this.transition(State.OPPONENT_TURN);
@@ -706,11 +751,24 @@ export class Game {
       this.state === State.PASS_DEVICE ||
       this.state === State.PASS_DEVICE_REPOSITION ||
       this.state === State.WAITING_OPPONENT_BUILD ||
-      this.state === State.REPOSITION ||
-      this.state === State.TURN_TRANSITION
+      this.state === State.REPOSITION
     ) {
       this.input.enabled = false;
       this.input.resetTouchState();
+      this.sceneManager.render();
+      return;
+    }
+
+    // Turn transition: run physics so blocks tumble, wait for settling
+    if (this.state === State.TURN_TRANSITION) {
+      this.input.enabled = false;
+      this.input.resetTouchState();
+      this.physicsWorld.step(dt);
+      this.physicsWorld.sync();
+      this.battle.cleanupFallenBlocks();
+      this.battle.updateThrusters();
+      this.particles.update(dt);
+      this.sceneManager.updateCamera(dt);
       this.sceneManager.render();
       return;
     }

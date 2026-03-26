@@ -48,6 +48,8 @@ export class CastleBuilder {
     this._touchMode = null; // 'build' | 'orbit' | null
     this._touchGridPos = null;
     this._removeMode = false;
+    this._undoStack = []; // layout snapshots for undo
+    this._maxUndoSteps = 20;
     this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }
 
@@ -268,28 +270,44 @@ export class CastleBuilder {
           <span>Target</span>
         </button>
         ${this.isTouch ? `
-          <button id="builder-rotate-btn" style="
-            display: flex; align-items: center; justify-content: center;
-            width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 8px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 1.2rem;
-            margin-top: 4px; pointer-events: auto;
-          ">&#x21BB;</button>
-          <button id="builder-remove-btn" style="
-            display: flex; align-items: center; justify-content: center;
-            width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 8px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 1.2rem;
-            pointer-events: auto;
-          ">&#x2716;</button>
+          <div style="display: flex; gap: 4px; margin-top: 4px;">
+            <button id="builder-rotate-btn" style="
+              display: flex; align-items: center; justify-content: center;
+              width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 8px; background: rgba(255,255,255,0.06);
+              color: #fff; cursor: pointer; font-size: 1.2rem;
+              pointer-events: auto;
+            ">&#x21BB;</button>
+            <button id="builder-remove-btn" style="
+              display: flex; align-items: center; justify-content: center;
+              width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 8px; background: rgba(255,255,255,0.06);
+              color: #fff; cursor: pointer; font-size: 1.2rem;
+              pointer-events: auto;
+            ">&#x2716;</button>
+            <button id="builder-undo-btn" disabled style="
+              display: flex; align-items: center; justify-content: center;
+              width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 8px; background: rgba(255,255,255,0.06);
+              color: #fff; cursor: pointer; font-size: 1.2rem;
+              pointer-events: auto;
+            ">&#x21A9;</button>
+          </div>
           <div class="builder-info" style="
             margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
           ">
             <p>Tap: Place</p>
-            <p>Drag empty: Orbit</p>
+            <p>Drag: Orbit</p>
             <p>Pinch: Zoom</p>
           </div>
         ` : `
+          <button id="builder-undo-btn" disabled style="
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 6px; background: rgba(255,255,255,0.06);
+            color: #fff; cursor: pointer; font-size: 0.8rem;
+            margin-top: 4px; pointer-events: auto;
+          "><span style="font-size: 1rem;">&#x21A9;</span> Undo</button>
           <div class="builder-info" style="
             margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
           ">
@@ -297,6 +315,7 @@ export class CastleBuilder {
             <p>Click: Place</p>
             <p>Right-click: Remove</p>
             <p>Shift+click: Grab block</p>
+            <p>Ctrl+Z: Undo</p>
             <p>Mouse drag: Orbit</p>
             <p>Scroll: Zoom</p>
           </div>
@@ -454,6 +473,7 @@ export class CastleBuilder {
     });
 
     document.getElementById('builder-clear-btn').addEventListener('click', () => {
+      this._pushUndo();
       this.layout = [];
       this.budget = this.maxBudget;
       this.customFloor = null;
@@ -485,10 +505,13 @@ export class CastleBuilder {
     const removeBtn = document.getElementById('builder-remove-btn');
     if (removeBtn) {
       removeBtn.addEventListener('click', () => {
-        this._removeMode = !this._removeMode;
-        removeBtn.style.background = this._removeMode ? 'rgba(192,57,43,0.6)' : 'rgba(255,255,255,0.06)';
-        removeBtn.style.borderColor = this._removeMode ? '#e74c3c' : 'rgba(255,255,255,0.15)';
+        this._setRemoveMode(!this._removeMode);
       });
+    }
+    // Undo button (both touch and desktop)
+    const undoBtn = document.getElementById('builder-undo-btn');
+    if (undoBtn) {
+      undoBtn.addEventListener('click', () => this.undo());
     }
   }
 
@@ -512,6 +535,51 @@ export class CastleBuilder {
     if (el) el.textContent = layer + 1;
     // Rebuild meshes to update transparency for current layer
     this.rebuildMeshes();
+  }
+
+  // === REMOVE MODE ===
+
+  _setRemoveMode(enabled) {
+    this._removeMode = enabled;
+    const removeBtn = document.getElementById('builder-remove-btn');
+    if (removeBtn) {
+      removeBtn.style.background = enabled ? 'rgba(192,57,43,0.6)' : 'rgba(255,255,255,0.06)';
+      removeBtn.style.borderColor = enabled ? '#e74c3c' : 'rgba(255,255,255,0.15)';
+    }
+    // Update ghost color to signal mode
+    if (this.ghostMesh) {
+      this.ghostMesh.material.color.set(enabled ? 0xff4444 : 0x44aaff);
+      this.ghostMesh.material.opacity = enabled ? 0.3 : 0.4;
+    }
+  }
+
+  // === UNDO ===
+
+  _pushUndo() {
+    this._undoStack.push({
+      layout: this.layout.map(b => ({ ...b })),
+      targetPos: { ...this.targetPos },
+      budget: this.budget,
+    });
+    if (this._undoStack.length > this._maxUndoSteps) this._undoStack.shift();
+    this._updateUndoBtn();
+  }
+
+  undo() {
+    const snapshot = this._undoStack.pop();
+    if (!snapshot) return;
+    this.layout = snapshot.layout;
+    this.targetPos = snapshot.targetPos;
+    this.budget = snapshot.budget;
+    this.updateBudgetDisplay();
+    this.updateTargetMesh();
+    this.rebuildMeshes();
+    this._updateUndoBtn();
+  }
+
+  _updateUndoBtn() {
+    const btn = document.getElementById('builder-undo-btn');
+    if (btn) btn.disabled = this._undoStack.length === 0;
   }
 
   // === BLOCK PLACEMENT ===
@@ -545,6 +613,7 @@ export class CastleBuilder {
     const cost = BLOCK_TYPES[this.selectedType].cost;
     if (this.budget < cost) return;
 
+    this._pushUndo();
     this.layout.push({
       x, y, z,
       type: this.selectedType,
@@ -561,6 +630,7 @@ export class CastleBuilder {
     const idx = this.layout.findIndex(b => b.x === x && b.y === y && b.z === z);
     if (idx === -1) return;
 
+    this._pushUndo();
     // Also remove any blocks above this one (cascade)
     const toRemove = [idx];
     const checkAbove = (bx, by, bz) => {
@@ -589,6 +659,7 @@ export class CastleBuilder {
   placeTarget(x, z) {
     // Don't allow placing target inside a block
     if (this.hasBlockAt(x, 0, z)) return;
+    this._pushUndo();
     this.targetPos = { x, y: 0, z };
     this.updateTargetMesh();
   }
@@ -600,6 +671,7 @@ export class CastleBuilder {
   }
 
   loadFromDesignData(data) {
+    this._pushUndo();
     this.layout = data.layout.map(b => ({ ...b }));
     this.targetPos = { ...data.target };
     this.customFloor = data.floor || null;
@@ -762,9 +834,15 @@ export class CastleBuilder {
     );
     this._applySelectedRotation(this.ghostMesh);
 
-    const canPlace = this.canPlace(gridPos.x, this.currentLayer, gridPos.z);
-    this.ghostMesh.material.color.set(canPlace ? 0x44aaff : 0xff4444);
-    this.ghostMesh.material.opacity = canPlace ? 0.4 : 0.25;
+    if (this._removeMode) {
+      const hasBlock = this.hasBlockAt(gridPos.x, this.currentLayer, gridPos.z);
+      this.ghostMesh.material.color.set(0xff4444);
+      this.ghostMesh.material.opacity = hasBlock ? 0.5 : 0.15;
+    } else {
+      const canPlace = this.canPlace(gridPos.x, this.currentLayer, gridPos.z);
+      this.ghostMesh.material.color.set(canPlace ? 0x44aaff : 0xff4444);
+      this.ghostMesh.material.opacity = canPlace ? 0.4 : 0.25;
+    }
     this.ghostMesh.visible = true;
   }
 
@@ -801,6 +879,7 @@ export class CastleBuilder {
     }
     if (!block) return;
 
+    this._pushUndo();
     // Remove it from layout (refund cost) — only remove this block, not cascade
     const idx = this.layout.indexOf(block);
     if (idx >= 0) {
@@ -912,6 +991,7 @@ export class CastleBuilder {
       const gridPos = this._touchGridPos;
       if (this._removeMode) {
         this.removeBlock(gridPos.x, this.currentLayer, gridPos.z);
+        this._setRemoveMode(false); // one-shot: return to place mode
       } else if (this.placingTarget) {
         this.placeTarget(gridPos.x, gridPos.z);
       } else {
@@ -926,6 +1006,11 @@ export class CastleBuilder {
   }
 
   _handleKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.code === 'KeyZ') {
+      e.preventDefault();
+      this.undo();
+      return;
+    }
     if (e.code === 'KeyR') {
       this.selectedRotation = (this.selectedRotation + 1) % 4;
       if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);

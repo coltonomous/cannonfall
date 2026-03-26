@@ -855,6 +855,10 @@ body {
     -webkit-overflow-scrolling: touch;
   }
 
+  #castle-builder-ui button:disabled {
+    opacity: 0.25 !important;
+  }
+
   #castle-builder-ui .builder-left .block-btn {
     padding: 4px 8px !important;
     font-size: 0.7rem !important;

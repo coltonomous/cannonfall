@@ -270,35 +270,32 @@ export class CastleBuilder {
           <span>Target</span>
         </button>
         ${this.isTouch ? `
-          <div style="display: flex; gap: 4px; margin-top: 4px;">
-            <button id="builder-rotate-btn" style="
-              display: flex; align-items: center; justify-content: center;
-              width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 8px; background: rgba(255,255,255,0.06);
-              color: #fff; cursor: pointer; font-size: 1.2rem;
-              pointer-events: auto;
-            ">&#x21BB;</button>
-            <button id="builder-remove-btn" style="
-              display: flex; align-items: center; justify-content: center;
-              width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 8px; background: rgba(255,255,255,0.06);
-              color: #fff; cursor: pointer; font-size: 1.2rem;
-              pointer-events: auto;
-            ">&#x2716;</button>
-            <button id="builder-undo-btn" disabled style="
-              display: flex; align-items: center; justify-content: center;
-              width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 8px; background: rgba(255,255,255,0.06);
-              color: #fff; cursor: pointer; font-size: 1.2rem;
-              pointer-events: auto;
-            ">&#x21A9;</button>
-          </div>
-          <div class="builder-info" style="
-            margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
+          <div class="builder-actions" style="
+            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+            display: flex; flex-direction: column; gap: 6px;
+            pointer-events: auto;
           ">
-            <p>Tap: Place</p>
-            <p>Drag: Orbit</p>
-            <p>Pinch: Zoom</p>
+            <button id="builder-rotate-btn" class="builder-action-btn" style="
+              display: flex; align-items: center; gap: 6px;
+              padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 8px; background: rgba(0,0,0,0.5);
+              color: #fff; cursor: pointer; font-size: 0.8rem;
+              pointer-events: auto;
+            "><span style="font-size: 1.1rem;">&#x21BB;</span> Rotate</button>
+            <button id="builder-remove-btn" class="builder-action-btn" style="
+              display: flex; align-items: center; gap: 6px;
+              padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 8px; background: rgba(0,0,0,0.5);
+              color: #fff; cursor: pointer; font-size: 0.8rem;
+              pointer-events: auto;
+            "><span style="font-size: 1.1rem;">&#x2716;</span> Remove</button>
+            <button id="builder-undo-btn" class="builder-action-btn" disabled style="
+              display: flex; align-items: center; gap: 6px;
+              padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
+              border-radius: 8px; background: rgba(0,0,0,0.5);
+              color: #fff; cursor: pointer; font-size: 0.8rem;
+              pointer-events: auto;
+            "><span style="font-size: 1.1rem;">&#x21A9;</span> Undo</button>
           </div>
         ` : `
           <button id="builder-undo-btn" disabled style="

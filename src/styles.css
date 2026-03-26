@@ -883,10 +883,12 @@ body {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
-  /* Builder palette: compact on mobile */
+  /* Builder: compact mobile layout */
   #castle-builder-ui .builder-left {
     left: 4px !important;
-    max-height: 70vh;
+    top: 45px !important;
+    transform: none !important;
+    max-height: 50vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -895,29 +897,51 @@ body {
     opacity: 0.25 !important;
   }
 
-  #castle-builder-ui .builder-left .block-btn {
-    padding: 4px 8px !important;
+  #castle-builder-ui .builder-left h3 {
     font-size: 0.7rem !important;
+    margin: 0 0 2px 0 !important;
   }
 
-  #castle-builder-ui .builder-left h3 {
+  #castle-builder-ui .builder-left .block-btn {
+    padding: 4px 6px !important;
+    font-size: 0.65rem !important;
+    gap: 4px !important;
+  }
+
+  #castle-builder-ui .builder-left .target-btn {
+    padding: 5px 10px !important;
     font-size: 0.75rem !important;
   }
 
   #castle-builder-ui .builder-top {
-    padding: 6px 12px !important;
-    font-size: 0.8rem !important;
+    top: 6px !important;
+    left: 50% !important;
+    padding: 5px 16px !important;
+    font-size: 0.75rem !important;
+    gap: 12px !important;
+    width: auto;
+    max-width: 90vw;
   }
 
   #castle-builder-ui .builder-bottom {
-    gap: 8px !important;
+    bottom: 12px !important;
+    gap: 6px !important;
     flex-wrap: wrap;
     justify-content: center;
   }
 
   #castle-builder-ui .builder-bottom button,
   #castle-builder-ui .builder-bottom select {
-    padding: 8px 14px !important;
-    font-size: 0.85rem !important;
+    padding: 8px 12px !important;
+    font-size: 0.8rem !important;
+  }
+
+  #castle-builder-ui .builder-actions {
+    right: 4px !important;
+  }
+
+  #castle-builder-ui .builder-action-btn {
+    padding: 6px 10px !important;
+    font-size: 0.7rem !important;
   }
 }

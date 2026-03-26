@@ -390,18 +390,21 @@ describe('Integration: Turn Flow', () => {
   });
 
   it('onTargetHit should reduce HP', () => {
+    game.state = 'firing';
     game.battle._perfectShot = false;
     game.onTargetHit();
     expect(game.hp[1]).toBe(C.MAX_HP - 1);
   });
 
   it('perfect hit should deal double damage', () => {
+    game.state = 'firing';
     game.battle._perfectShot = true;
     game.onTargetHit();
     expect(game.hp[1]).toBe(C.MAX_HP - 2);
   });
 
   it('lethal hit should end game', () => {
+    game.state = 'firing';
     game.hp[1] = 1;
     game.battle._perfectShot = false;
     game.onTargetHit();

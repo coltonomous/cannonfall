@@ -47,7 +47,7 @@ const VALID_TRANSITIONS = {
   [State.OPPONENT_FIRING]:       [State.GAME_OVER, State.REPLAY, State.REPOSITION, State.MY_TURN, State.OPPONENT_TURN, State.TURN_TRANSITION],
   [State.REPOSITION]:            [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
   [State.PASS_DEVICE_REPOSITION]:[State.REPOSITION],
-  [State.TURN_TRANSITION]:       [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
+  [State.TURN_TRANSITION]:       [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING, State.REPOSITION, State.PASS_DEVICE_REPOSITION],
   [State.AI_AIMING]:             [State.AI_FIRING, State.GAME_OVER, State.MENU],
   [State.AI_FIRING]:             [State.GAME_OVER, State.REPLAY, State.TURN_TRANSITION, State.MY_TURN, State.REPOSITION],
   [State.REPLAY]:                [State.GAME_OVER],
@@ -81,6 +81,7 @@ export class Game {
     this.castleBuilds = {}; // per-mode prebuild storage: { CASTLE: data, PIRATE: data, ... }
 
     this.hp = [C.MAX_HP, C.MAX_HP];
+    this._pendingTimers = []; // tracked timeouts, cancelled on cleanup
 
     // Castle builder & repositioner
     this.builder = new CastleBuilder(this.sceneManager);
@@ -558,6 +559,22 @@ export class Game {
     this.transition(State.AI_FIRING);
   }
 
+  /** Schedule a delayed action that is cancelled on cleanup and guarded against stale state. */
+  _schedule(fn, delay, ...validStates) {
+    const id = setTimeout(() => {
+      this._pendingTimers = this._pendingTimers.filter(t => t !== id);
+      if (validStates.length > 0 && !validStates.includes(this.state)) return;
+      fn();
+    }, delay);
+    this._pendingTimers.push(id);
+    return id;
+  }
+
+  _cancelPendingTimers() {
+    for (const id of this._pendingTimers) clearTimeout(id);
+    this._pendingTimers = [];
+  }
+
   // ── Hit / Miss Handlers ──────────────────────────────────
 
   // Local/AI mode — online hits resolved by server via shot-resolved
@@ -587,14 +604,15 @@ export class Game {
       }
     } else {
       this.ui.setStatus(`HIT! ${this.hp[damagedPlayer]} hit${this.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
+      this.transition(State.TURN_TRANSITION);
       if (this.mode === 'ai') {
-        setTimeout(() => this.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY);
+        this._schedule(() => this.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY, State.TURN_TRANSITION);
       } else {
-        setTimeout(() => {
+        this._schedule(() => {
           this.transition(State.PASS_DEVICE_REPOSITION);
           this._damagedPlayer = damagedPlayer;
           this.ui.showPassDevice(damagedPlayer + 1);
-        }, C.HIT_DISPLAY_DELAY);
+        }, C.HIT_DISPLAY_DELAY, State.TURN_TRANSITION);
       }
     }
   }
@@ -603,11 +621,11 @@ export class Game {
     if (this.mode === 'local' || this.mode === 'ai') {
       this.transition(State.TURN_TRANSITION);
       this.ui.setStatus('');
-      setTimeout(() => {
+      this._schedule(() => {
         this.currentTurn = 1 - this.currentTurn;
         this.syncBattle();
         this.onTurnStart();
-      }, C.MISS_TURN_DELAY);
+      }, C.MISS_TURN_DELAY, State.TURN_TRANSITION);
     } else {
       this.network.sendShotResult(false);
       this.transition(State.OPPONENT_TURN);
@@ -816,6 +834,7 @@ export class Game {
   // ── Cleanup ──────────────────────────────────────────────
 
   cleanup() {
+    this._cancelPendingTimers();
     this.castles.forEach((c) => { if (c) c.clear(); });
     this.cannons.forEach((c) => { if (c) c.destroy(); });
     this.battle.reset();

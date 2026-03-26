@@ -592,11 +592,12 @@ export class BattleController {
           body.allowSleep = false;
         }
 
-        // Shield fade: shields lose opacity when knocked around, removed when invisible
+        // Shield fade: mark as hit when knocked, then fade out steadily
         if (body.isShield && mesh && body.mass > 0) {
           const speed = body.velocity.length();
-          if (speed > 1) {
-            mesh.material.opacity = Math.max(0, mesh.material.opacity - speed * 0.008);
+          if (speed > 0.5) body._shieldHit = true;
+          if (body._shieldHit) {
+            mesh.material.opacity = Math.max(0, mesh.material.opacity - 0.03);
             mesh.material.transparent = true;
             if (mesh.material.opacity <= 0) {
               castle.sceneManager.scene.remove(mesh);

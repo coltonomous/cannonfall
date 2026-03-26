@@ -94,7 +94,7 @@ describe('DesignCodec', () => {
       expect(result.castleData.layout[0].type).toBe('SHIELD');
     });
 
-    it('should roundtrip an empty layout', () => {
+    it('should reject an empty layout', () => {
       const data = {
         layout: [],
         target: { x: 4, y: 0, z: 4 },
@@ -102,7 +102,7 @@ describe('DesignCodec', () => {
         floor: null,
       };
       const result = decode(encode(data, CASTLE_MODE));
-      expect(result.castleData.layout).toEqual([]);
+      expect(result).toBeNull();
     });
   });
 
@@ -136,6 +136,59 @@ describe('DesignCodec', () => {
 
     it('should return null for missing mode prefix', () => {
       expect(decode('somethingelse')).toBeNull();
+    });
+  });
+
+  describe('input sanitization', () => {
+    it('should reject blocks with out-of-bounds coordinates', () => {
+      const data = {
+        layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }, { x: 999, y: 0, z: 0, type: 'CUBE' }],
+        target: { x: 0, y: 0, z: 0 },
+        cannonPos: { x: 8, z: 4 },
+      };
+      const result = decode(encode(data, CASTLE_MODE));
+      expect(result.castleData.layout).toHaveLength(1);
+    });
+
+    it('should reject blocks with unknown types', () => {
+      const data = {
+        layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }, { x: 1, y: 0, z: 0, type: 'EVIL_BLOCK' }],
+        target: { x: 0, y: 0, z: 0 },
+        cannonPos: { x: 8, z: 4 },
+      };
+      const result = decode(encode(data, CASTLE_MODE));
+      expect(result.castleData.layout).toHaveLength(1);
+      expect(result.castleData.layout[0].type).toBe('CUBE');
+    });
+
+    it('should reject NaN/Infinity coordinates', () => {
+      const data = {
+        layout: [{ x: NaN, y: 0, z: 0, type: 'CUBE' }, { x: 0, y: Infinity, z: 0, type: 'CUBE' }],
+        target: { x: 0, y: 0, z: 0 },
+        cannonPos: { x: 8, z: 4 },
+      };
+      const result = decode(encode(data, CASTLE_MODE));
+      expect(result).toBeNull(); // all blocks invalid → empty layout → rejected
+    });
+
+    it('should reject target with out-of-bounds coordinates', () => {
+      const data = {
+        layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }],
+        target: { x: -5, z: 100 },
+        cannonPos: { x: 8, z: 4 },
+      };
+      const result = decode(encode(data, CASTLE_MODE));
+      expect(result).toBeNull();
+    });
+
+    it('should clamp rotation values', () => {
+      const data = {
+        layout: [{ x: 0, y: 0, z: 0, type: 'CUBE', rotation: 7 }],
+        target: { x: 0, y: 0, z: 0 },
+        cannonPos: { x: 8, z: 4 },
+      };
+      const result = decode(encode(data, CASTLE_MODE));
+      expect(result.castleData.layout[0].rotation).toBe(3); // 7 % 4
     });
   });
 });

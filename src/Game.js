@@ -480,6 +480,10 @@ export class Game {
 
   onTurnStart() {
     this.debugLog('Turn:', this.currentTurn, 'State:', this.state);
+    // Clear stale input from previous turn
+    this.input.keys['Space'] = false;
+    this.input.resetTouchState();
+
     if (this.mode === 'ai') {
       if (this.currentTurn === 0) {
         this.transition(State.MY_TURN);
@@ -774,7 +778,8 @@ export class Game {
       }
 
       const elapsed = (performance.now() - this.battle.fireTime) / 1000;
-      if (elapsed > C.SKIP_PROMPT_DELAY && (this.state === State.FIRING || this.state === State.AI_FIRING)) {
+      // Skip prompt — only for the player's own shot, not AI
+      if (elapsed > C.SKIP_PROMPT_DELAY && this.state === State.FIRING) {
         this.ui.setStatus(this.isTouch ? 'Tap to skip' : 'Press Space to skip');
         if (this.input.keys['Space'] || this.input._touchTapped) {
           this.input.keys['Space'] = false;

@@ -269,42 +269,7 @@ export class CastleBuilder {
           <span style="font-size: 1.2rem; color: #ff4444;">&#9679;</span>
           <span>Target</span>
         </button>
-        ${this.isTouch ? `
-          <div class="builder-actions" style="
-            position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
-            display: flex; flex-direction: column; gap: 6px;
-            pointer-events: auto;
-          ">
-            <button id="builder-rotate-btn" class="builder-action-btn" style="
-              display: flex; align-items: center; gap: 6px;
-              padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 8px; background: rgba(0,0,0,0.5);
-              color: #fff; cursor: pointer; font-size: 0.8rem;
-              pointer-events: auto;
-            "><span style="font-size: 1.1rem;">&#x21BB;</span> Rotate</button>
-            <button id="builder-remove-btn" class="builder-action-btn" style="
-              display: flex; align-items: center; gap: 6px;
-              padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 8px; background: rgba(0,0,0,0.5);
-              color: #fff; cursor: pointer; font-size: 0.8rem;
-              pointer-events: auto;
-            "><span style="font-size: 1.1rem;">&#x2716;</span> Remove</button>
-            <button id="builder-undo-btn" class="builder-action-btn" disabled style="
-              display: flex; align-items: center; gap: 6px;
-              padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 8px; background: rgba(0,0,0,0.5);
-              color: #fff; cursor: pointer; font-size: 0.8rem;
-              pointer-events: auto;
-            "><span style="font-size: 1.1rem;">&#x21A9;</span> Undo</button>
-          </div>
-        ` : `
-          <button id="builder-undo-btn" disabled style="
-            display: flex; align-items: center; gap: 6px;
-            padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 6px; background: rgba(255,255,255,0.06);
-            color: #fff; cursor: pointer; font-size: 0.8rem;
-            margin-top: 4px; pointer-events: auto;
-          "><span style="font-size: 1rem;">&#x21A9;</span> Undo</button>
+        ${this.isTouch ? `` : `
           <div class="builder-info" style="
             margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
           ">
@@ -388,6 +353,34 @@ export class CastleBuilder {
           transition: background 0.2s;
           pointer-events: auto;
         ">Clear All</button>
+        ${this.isTouch ? `
+          <button id="builder-rotate-btn" class="builder-action-btn" style="
+            padding: 10px 14px; font-size: 0.9rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: rgba(255,255,255,0.15); color: #fff;
+            pointer-events: auto;
+          ">&#x21BB; Rotate</button>
+          <button id="builder-remove-btn" class="builder-action-btn" style="
+            padding: 10px 14px; font-size: 0.9rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: rgba(255,255,255,0.15); color: #fff;
+            pointer-events: auto;
+          ">&#x2716; Remove</button>
+          <button id="builder-undo-btn" class="builder-action-btn" disabled style="
+            padding: 10px 14px; font-size: 0.9rem; font-weight: 600;
+            border: none; border-radius: 8px; cursor: pointer;
+            background: rgba(255,255,255,0.15); color: #fff;
+            pointer-events: auto;
+          ">&#x21A9; Undo</button>
+        ` : `
+          <button id="builder-undo-btn" disabled style="
+            display: flex; align-items: center; gap: 6px;
+            padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 6px; background: rgba(255,255,255,0.06);
+            color: #fff; cursor: pointer; font-size: 0.8rem;
+            pointer-events: auto;
+          "><span style="font-size: 1rem;">&#x21A9;</span> Undo</button>
+        `}
         <button id="builder-ready-btn" style="
           padding: 14px 40px; font-size: 1.15rem; font-weight: 700;
           border: none; border-radius: 8px; cursor: pointer;

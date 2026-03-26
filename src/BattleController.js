@@ -579,6 +579,24 @@ export class BattleController {
           body.allowSleep = false;
         }
 
+        // Shield fade: shields lose opacity when knocked around, removed when invisible
+        if (body.isShield && mesh && body.mass > 0) {
+          const speed = body.velocity.length();
+          if (speed > 1) {
+            mesh.material.opacity = Math.max(0, mesh.material.opacity - speed * 0.008);
+            mesh.material.transparent = true;
+            if (mesh.material.opacity <= 0) {
+              castle.sceneManager.scene.remove(mesh);
+              mesh.material.dispose();
+              castle.physicsWorld.world.removeBody(body);
+              const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
+              if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
+              castle.blocks.splice(i, 1);
+              continue;
+            }
+          }
+        }
+
         if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > boundsX || Math.abs(body.position.z) > boundsZ) {
           if (mesh) castle.sceneManager.scene.remove(mesh);
           castle.physicsWorld.world.removeBody(body);

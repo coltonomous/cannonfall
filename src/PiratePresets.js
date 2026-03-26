@@ -224,56 +224,46 @@ function fortressPreset() {
   fillHull(L, hullRows, 0, 'CUBE', 'RAMP', 'z');
   buildKeel(F, hullRows, 1);
 
-  // Heavy perimeter walls (y=1-2)
-  for (let y = 1; y <= 2; y++) {
-    for (let z = 1; z <= 8; z++) {
-      place(L, 0, y, z, 'CUBE');
-      place(L, 6, y, z, 'CUBE');
-    }
-    fillRowX(L, 1, 5, 0, y, 'CUBE');
-    fillRowX(L, 1, 5, 9, y, 'CUBE');
-  }
-
-  // Crenellations (y=3)
+  // Perimeter walls — single height with half-slab lip
   for (let z = 1; z <= 8; z++) {
-    if (z % 2 === 0) { place(L, 0, 3, z, 'HALF_SLAB'); place(L, 6, 3, z, 'HALF_SLAB'); }
+    place(L, 0, 1, z, 'WALL', 1);
+    place(L, 6, 1, z, 'WALL', 1);
   }
-  for (let x = 1; x <= 5; x++) {
-    if (x % 2 === 0) { place(L, x, 3, 0, 'HALF_SLAB'); place(L, x, 3, 9, 'HALF_SLAB'); }
+  fillRowX(L, 1, 5, 0, 1, 'WALL', 0);
+  fillRowX(L, 1, 5, 9, 1, 'WALL', 0);
+
+  // Crenellations (y=2)
+  for (let z = 1; z <= 8; z += 2) {
+    place(L, 0, 2, z, 'HALF_SLAB');
+    place(L, 6, 2, z, 'HALF_SLAB');
   }
 
-  // Corner turrets (y=1-3)
+  // Corner posts (y=1-2)
   for (const [x, z] of [[0, 1], [0, 8], [6, 1], [6, 8]]) {
-    place(L, x, 3, z, 'CUBE');
-    place(L, x, 4, z, 'HALF_SLAB');
+    place(L, x, 2, z, 'CUBE');
   }
 
   // Central watchtower with mast
   place(L, 3, 1, 5, 'CYLINDER');
-  place(L, 3, 2, 5, 'CYLINDER');
-  place(L, 3, 3, 5, 'LATTICE');
-  buildMast(L, 3, 5, 4);
+  place(L, 3, 2, 5, 'LATTICE');
+  buildMast(L, 3, 5, 3);
   place(L, 3, 3, 5, 'PLANK', 1);
 
   // Bow reinforcement
   placeMany(L, [
-    [2,1,10,'RAMP',3], [3,1,10,'RAMP',3], [4,1,10,'RAMP',3],
+    [2,1,10,'RAMP',3], [4,1,10,'RAMP',3],
   ]);
 
-  // Interior structures — ammunition stores and cross-bracing
-  place(L, 2, 1, 3, 'CUBE');
-  place(L, 4, 1, 3, 'CUBE');
-  place(L, 2, 1, 7, 'CUBE');
-  place(L, 4, 1, 7, 'CUBE');
-  place(L, 3, 1, 3, 'LATTICE');
-  place(L, 3, 1, 7, 'LATTICE');
+  // Interior supports
+  place(L, 2, 1, 3, 'COLUMN');
+  place(L, 4, 1, 3, 'COLUMN');
+  place(L, 2, 1, 7, 'COLUMN');
+  place(L, 4, 1, 7, 'COLUMN');
 
   // Ammunition barrels
   placeMany(L, [
-    [1,1,2,'BARREL'], [5,1,2,'BARREL'],
-    [1,1,4,'BARREL'], [5,1,4,'BARREL'],
+    [1,1,3,'BARREL'], [5,1,3,'BARREL'],
     [1,1,6,'BARREL'], [5,1,6,'BARREL'],
-    [1,1,7,'BARREL'], [5,1,7,'BARREL'],
   ]);
 
   return { layout: L, target: { x: 3, y: 1, z: 3 }, cannonPos: { x: 6, z: 5 }, floor: F };

@@ -4,6 +4,7 @@ import { getPreset } from './Presets.js';
 import { createAllBlockGeometries } from './BlockGeometry.js';
 import { OrbitController } from './OrbitController.js';
 import { encode as encodeDesign } from './DesignCodec.js';
+import { BuilderUI } from './BuilderUI.js';
 
 export class CastleBuilder {
   constructor(sceneManager) {
@@ -51,6 +52,9 @@ export class CastleBuilder {
     this._undoStack = []; // layout snapshots for undo
     this._maxUndoSteps = 20;
     this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+    // UI (created on start)
+    this.ui = null;
   }
 
   // === LIFECYCLE ===
@@ -77,14 +81,91 @@ export class CastleBuilder {
     this.setupScene();
     this.setupEventListeners();
     this.orbit.updateCamera();
-    this.createBuildUI();
+    this._createUI();
     this.rebuildMeshes();
   }
 
   stop() {
     this.removeEventListeners();
     this.clearScene();
-    this.removeBuildUI();
+    if (this.ui) {
+      this.ui.destroy();
+      this.ui = null;
+    }
+  }
+
+  // === UI (delegated to BuilderUI) ===
+
+  _createUI() {
+    this.ui = new BuilderUI(
+      {
+        maxBudget: this.maxBudget,
+        maxLayers: this.maxLayers,
+        isTouch: this.isTouch,
+        modeConfig: this.modeConfig,
+      },
+      {
+        onBlockSelected: (type) => {
+          this.selectedType = type;
+          this.placingTarget = false;
+          this.updateGhostGeometry();
+        },
+        onTargetMode: () => {
+          this.placingTarget = true;
+        },
+        onLayerUp: () => this.setLayer(Math.min(this.maxLayers - 1, this.currentLayer + 1)),
+        onLayerDown: () => this.setLayer(Math.max(0, this.currentLayer - 1)),
+        onPresetLoad: (name) => this.loadPreset(name),
+        onExport: () => this._exportDesign(),
+        onClear: () => this._clearAll(),
+        onReady: () => this._onReadyClick(),
+        onRotate: () => {
+          this.selectedRotation = (this.selectedRotation + 1) % 4;
+          if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);
+        },
+        onRemoveToggle: () => this._setRemoveMode(!this._removeMode),
+        onUndo: () => this.undo(),
+      }
+    );
+    this.ui.create(this.budget, this.currentLayer);
+  }
+
+  _exportDesign() {
+    const data = {
+      layout: this.layout,
+      target: this.targetPos,
+      cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
+      floor: this.customFloor || [],
+    };
+    const modeId = this.modeConfig?.id || 'castle';
+    const hash = encodeDesign(data, modeId);
+    const url = `${window.location.origin}${window.location.pathname}#${hash}`;
+    navigator.clipboard.writeText(url).then(
+      () => this.ui?.setShareFeedback('Link Copied!', 'Share', 1500),
+      () => console.log(url)
+    );
+  }
+
+  _clearAll() {
+    this._pushUndo();
+    this.layout = [];
+    this.budget = this.maxBudget;
+    this.customFloor = null;
+    this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
+    this.ui?.updateBudget(0);
+    this.updateTargetMesh();
+    this.rebuildMeshes();
+  }
+
+  _onReadyClick() {
+    if (this.onReady) {
+      this.onReady({
+        layout: [...this.layout],
+        target: { ...this.targetPos },
+        cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
+        floor: this.customFloor || null,
+      });
+    }
   }
 
   // === SCENE SETUP ===
@@ -180,353 +261,13 @@ export class CastleBuilder {
     this.gridGroup = new THREE.Group();
   }
 
-  // === BUILD UI (HTML overlay) ===
-
-  createBuildUI() {
-    // Remove existing
-    this.removeBuildUI();
-
-    const container = document.createElement('div');
-    container.id = 'castle-builder-ui';
-    container.style.cssText = `
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      pointer-events: none;
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      color: #fff;
-    `;
-    container.innerHTML = `
-      <div class="builder-left" style="
-        position: absolute;
-        left: 16px;
-        top: 50%;
-        transform: translateY(-50%);
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        pointer-events: auto;
-      ">
-        <h3 style="margin: 0 0 4px 0; font-size: 0.9rem; opacity: 0.7; text-transform: uppercase; letter-spacing: 1px;">Blocks</h3>
-        <div class="block-palette" style="display: flex; flex-direction: column; gap: 2px;">
-          ${[
-            { type: '_label', label: 'Basic' },
-            { type: 'CUBE', icon: '■', label: 'Cube' },
-            { type: 'HALF_SLAB', icon: '▬', label: 'Slab' },
-            { type: 'WALL', icon: '▮', label: 'Wall' },
-            { type: 'PLANK', icon: '═', label: 'Plank' },
-            { type: '_label', label: 'Shapes' },
-            { type: 'RAMP', icon: '◢', label: 'Ramp' },
-            { type: 'COLUMN', icon: '╽', label: 'Column' },
-            { type: 'CYLINDER', icon: '◯', label: 'Cylinder' },
-            { type: 'BARREL', icon: '•', label: 'Barrel' },
-            { type: '_label', label: 'Decorative' },
-            { type: 'QUARTER_DOME', icon: '◠', label: 'Qtr Dome' },
-            { type: 'BULLNOSE', icon: '⬬', label: 'Bullnose' },
-            { type: 'HALF_BULLNOSE', icon: '⬭', label: '½ Bull' },
-            { type: 'LATTICE', icon: '▦', label: 'Lattice' },
-            { type: '_label', label: 'Special' },
-            { type: 'THRUSTER', icon: '⊳', label: 'Thruster' },
-            { type: 'SHIELD', icon: '◇', label: 'Shield' },
-          ].filter((b, i, arr) => {
-            if (b.type === '_label') {
-              // Hide label if all following blocks (until next label) are excluded
-              const excluded = this.modeConfig?.excludeBlocks || [];
-              for (let j = i + 1; j < arr.length && arr[j].type !== '_label'; j++) {
-                if (!excluded.includes(arr[j].type)) return true;
-              }
-              return false;
-            }
-            return !(this.modeConfig?.excludeBlocks || []).includes(b.type);
-          })
-          .map((b, i) => {
-            if (b.type === '_label') {
-              return `<div style="font-size:0.65rem; opacity:0.4; text-transform:uppercase; letter-spacing:1px; margin:4px 0 1px 2px;">${b.label}</div>`;
-            }
-            const isFirst = i === 1; // first actual block (after first label)
-            return `<button class="block-btn${isFirst ? ' selected' : ''}" data-type="${b.type}" style="
-              display: flex; align-items: center; gap: 6px;
-              padding: 6px 10px; border: 2px solid rgba(255,255,255,0.15);
-              border-radius: 6px; background: rgba(255,255,255,${isFirst ? '0.1' : '0.06'});
-              color: #fff; cursor: pointer; font-size: 0.8rem;
-              transition: background 0.15s, border-color 0.15s;
-              pointer-events: auto; min-width: 0;
-            ">
-              <span style="font-size: 1rem;">${b.icon}</span>
-              <span>${b.label} <small>(${BLOCK_TYPES[b.type]?.cost ?? ''})</small></span>
-            </button>`;
-          }).join('')}
-        </div>
-        <button class="block-btn target-btn" id="builder-target-btn" style="
-          display: flex; align-items: center; gap: 8px;
-          padding: 8px 14px; border: 2px solid rgba(255,255,255,0.15);
-          border-radius: 6px; background: rgba(255,255,255,0.06);
-          color: #fff; cursor: pointer; font-size: 0.9rem;
-          margin-top: 4px;
-          transition: background 0.15s, border-color 0.15s;
-          pointer-events: auto;
-        ">
-          <span style="font-size: 1.2rem; color: #ff4444;">&#9679;</span>
-          <span>Target</span>
-        </button>
-        ${this.isTouch ? `` : `
-          <div class="builder-info" style="
-            margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
-          ">
-            <p>R/T/F: Rotate Y/X/Z</p>
-            <p>Click: Place</p>
-            <p>Right-click: Remove</p>
-            <p>Shift+click: Grab block</p>
-            <p>Ctrl+Z: Undo</p>
-            <p>Mouse drag: Orbit</p>
-            <p>Scroll: Zoom</p>
-          </div>
-        `}
-      </div>
-      <div class="builder-top" style="
-        position: absolute;
-        top: 16px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        gap: 24px;
-        align-items: center;
-        padding: 10px 24px;
-        border-radius: 20px;
-        background: rgba(0,0,0,0.6);
-        pointer-events: auto;
-      ">
-        <div class="budget-display" style="font-size: 1rem; font-weight: 700;">
-          <span id="builder-budget">${this.maxBudget - this.budget}</span>
-          <span> / ${this.maxBudget}</span>
-        </div>
-        <div class="layer-display" style="display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700;">
-          Layer: <span id="builder-layer">${this.currentLayer + 1}</span> / ${this.maxLayers}
-          <button id="builder-layer-up" style="
-            padding: 4px 10px; border: none; border-radius: 4px;
-            background: rgba(255,255,255,0.15); color: #fff;
-            cursor: pointer; font-size: 0.85rem;
-            pointer-events: auto;
-          ">&#9650;</button>
-          <button id="builder-layer-down" style="
-            padding: 4px 10px; border: none; border-radius: 4px;
-            background: rgba(255,255,255,0.15); color: #fff;
-            cursor: pointer; font-size: 0.85rem;
-            pointer-events: auto;
-          ">&#9660;</button>
-        </div>
-      </div>
-      <div class="builder-bottom" style="
-        position: absolute;
-        bottom: 12px;
-        left: 50%;
-        transform: translateX(-50%);
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        align-items: center;
-        pointer-events: auto;
-        width: 90%;
-        max-width: 400px;
-      ">
-        <div style="display: flex; gap: 8px; justify-content: center; width: 100%;">
-          <select id="builder-preset-select" style="
-            padding: 8px 12px; border: 2px solid rgba(255,255,255,0.15);
-            border-radius: 8px; background: rgba(0,0,0,0.6);
-            color: #fff; cursor: pointer; font-size: 0.85rem;
-            pointer-events: auto; flex: 1; min-width: 0;
-          ">
-            <option value="">Load preset...</option>
-            ${(this.modeConfig?.presets || ['KEEP', 'BUNKER', 'TOWER']).map(
-              p => `<option value="${p}">${p.charAt(0) + p.slice(1).toLowerCase()}</option>`
-            ).join('')}
-          </select>
-          <button id="builder-export-btn" style="
-            padding: 8px 14px; font-size: 0.85rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            background: rgba(52, 152, 219, 0.8); color: #fff;
-            pointer-events: auto;
-          ">Share</button>
-          <button id="builder-clear-btn" style="
-            padding: 8px 14px; font-size: 0.85rem; font-weight: 600;
-            border: none; border-radius: 8px; cursor: pointer;
-            background: rgba(192, 57, 43, 0.8); color: #fff;
-            pointer-events: auto;
-          ">Clear</button>
-        </div>
-        ${this.isTouch ? `
-          <div style="display: flex; gap: 8px; justify-content: center; width: 100%;">
-            <button id="builder-rotate-btn" class="builder-action-btn" style="
-              padding: 8px 0; font-size: 0.8rem; font-weight: 600; flex: 1;
-              border: none; border-radius: 8px; cursor: pointer;
-              background: rgba(255,255,255,0.12); color: #fff;
-              pointer-events: auto;
-            ">&#x21BB; Rotate</button>
-            <button id="builder-remove-btn" class="builder-action-btn" style="
-              padding: 8px 0; font-size: 0.8rem; font-weight: 600; flex: 1;
-              border: none; border-radius: 8px; cursor: pointer;
-              background: rgba(255,255,255,0.12); color: #fff;
-              pointer-events: auto;
-            ">&#x2716; Remove</button>
-            <button id="builder-undo-btn" class="builder-action-btn" disabled style="
-              padding: 8px 0; font-size: 0.8rem; font-weight: 600; flex: 1;
-              border: none; border-radius: 8px; cursor: pointer;
-              background: rgba(255,255,255,0.12); color: #fff;
-              pointer-events: auto;
-            ">&#x21A9; Undo</button>
-          </div>
-        ` : `
-          <div style="display: flex; gap: 8px; justify-content: center;">
-            <button id="builder-undo-btn" disabled style="
-              padding: 8px 14px; font-size: 0.85rem; font-weight: 600;
-              border: 2px solid rgba(255,255,255,0.15); border-radius: 8px;
-              background: rgba(255,255,255,0.06); color: #fff;
-              cursor: pointer; pointer-events: auto;
-            ">&#x21A9; Undo</button>
-          </div>
-        `}
-        <button id="builder-ready-btn" style="
-          padding: 12px 0; font-size: 1.1rem; font-weight: 700; width: 100%;
-          border: none; border-radius: 8px; cursor: pointer;
-          background: #27ae60; color: #fff;
-          transition: background 0.2s, transform 0.1s;
-          pointer-events: auto;
-        ">Ready</button>
-      </div>
-    `;
-    document.body.appendChild(container);
-
-    // Wire up block palette buttons
-    const allBlockBtns = container.querySelectorAll('.block-btn[data-type]');
-    const targetBtn = document.getElementById('builder-target-btn');
-
-    const clearSelection = () => {
-      allBlockBtns.forEach(b => {
-        b.style.background = 'rgba(255,255,255,0.06)';
-        b.style.borderColor = 'rgba(255,255,255,0.15)';
-      });
-      targetBtn.style.background = 'rgba(255,255,255,0.06)';
-      targetBtn.style.borderColor = 'rgba(255,255,255,0.15)';
-    };
-
-    const selectBtn = (btn) => {
-      clearSelection();
-      btn.style.background = 'rgba(255,255,255,0.2)';
-      btn.style.borderColor = '#e67e22';
-    };
-
-    allBlockBtns.forEach(btn => {
-      btn.addEventListener('click', () => {
-        selectBtn(btn);
-        this.selectedType = btn.dataset.type;
-        this.placingTarget = false;
-        this.updateGhostGeometry();
-      });
-    });
-
-    // Select CUBE by default
-    selectBtn(allBlockBtns[0]);
-
-    targetBtn.addEventListener('click', () => {
-      selectBtn(targetBtn);
-      this.placingTarget = true;
-    });
-
-    document.getElementById('builder-layer-up').addEventListener('click', () => {
-      this.setLayer(Math.min(this.maxLayers - 1, this.currentLayer + 1));
-    });
-    document.getElementById('builder-layer-down').addEventListener('click', () => {
-      this.setLayer(Math.max(0, this.currentLayer - 1));
-    });
-
-    document.getElementById('builder-preset-select').addEventListener('change', (e) => {
-      if (e.target.value) {
-        this.loadPreset(e.target.value);
-        e.target.value = '';
-      }
-    });
-
-    document.getElementById('builder-export-btn').addEventListener('click', () => {
-      const data = {
-        layout: this.layout,
-        target: this.targetPos,
-        cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
-        floor: this.customFloor || [],
-      };
-      const modeId = this.modeConfig?.id || 'castle';
-      const hash = encodeDesign(data, modeId);
-      const url = `${window.location.origin}${window.location.pathname}#${hash}`;
-      navigator.clipboard.writeText(url).then(
-        () => {
-          const btn = document.getElementById('builder-export-btn');
-          btn.textContent = 'Link Copied!';
-          setTimeout(() => { btn.textContent = 'Share'; }, 1500);
-        },
-        () => { /* fallback: log to console */ console.log(url); }
-      );
-    });
-
-    document.getElementById('builder-clear-btn').addEventListener('click', () => {
-      this._pushUndo();
-      this.layout = [];
-      this.budget = this.maxBudget;
-      this.customFloor = null;
-      this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
-      this.updateBudgetDisplay();
-      this.updateTargetMesh();
-      this.rebuildMeshes();
-    });
-
-    document.getElementById('builder-ready-btn').addEventListener('click', () => {
-      if (this.onReady) {
-        this.onReady({
-          layout: [...this.layout],
-          target: { ...this.targetPos },
-          cannonPos: { x: this.gridW - 1, z: Math.floor(this.gridD / 2) },
-          floor: this.customFloor || null,
-        });
-      }
-    });
-
-    // Touch-only buttons
-    const rotateBtn = document.getElementById('builder-rotate-btn');
-    if (rotateBtn) {
-      rotateBtn.addEventListener('click', () => {
-        this.selectedRotation = (this.selectedRotation + 1) % 4;
-        if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);
-      });
-    }
-    const removeBtn = document.getElementById('builder-remove-btn');
-    if (removeBtn) {
-      removeBtn.addEventListener('click', () => {
-        this._setRemoveMode(!this._removeMode);
-      });
-    }
-    // Undo button (both touch and desktop)
-    const undoBtn = document.getElementById('builder-undo-btn');
-    if (undoBtn) {
-      undoBtn.addEventListener('click', () => this.undo());
-    }
-  }
-
-  removeBuildUI() {
-    const el = document.getElementById('castle-builder-ui');
-    if (el) el.remove();
-  }
-
-  updateBudgetDisplay() {
-    const el = document.getElementById('builder-budget');
-    if (el) el.textContent = this.maxBudget - this.budget;
-  }
-
   // === LAYER MANAGEMENT ===
 
   setLayer(layer) {
     this.currentLayer = layer;
     this.layerGrid.position.y = layer * BLOCK_SIZE;
     this.gridPlane.position.y = layer * BLOCK_SIZE;
-    const el = document.getElementById('builder-layer');
-    if (el) el.textContent = layer + 1;
+    this.ui?.updateLayer(layer);
     // Rebuild meshes to update transparency for current layer
     this.rebuildMeshes();
   }
@@ -535,11 +276,7 @@ export class CastleBuilder {
 
   _setRemoveMode(enabled) {
     this._removeMode = enabled;
-    const removeBtn = document.getElementById('builder-remove-btn');
-    if (removeBtn) {
-      removeBtn.style.background = enabled ? 'rgba(192,57,43,0.6)' : 'rgba(255,255,255,0.06)';
-      removeBtn.style.borderColor = enabled ? '#e74c3c' : 'rgba(255,255,255,0.15)';
-    }
+    this.ui?.setRemoveMode(enabled);
     // Update ghost color to signal mode
     if (this.ghostMesh) {
       this.ghostMesh.material.color.set(enabled ? 0xff4444 : 0x44aaff);
@@ -556,7 +293,7 @@ export class CastleBuilder {
       budget: this.budget,
     });
     if (this._undoStack.length > this._maxUndoSteps) this._undoStack.shift();
-    this._updateUndoBtn();
+    this.ui?.updateUndoState(this._undoStack.length > 0);
   }
 
   undo() {
@@ -565,15 +302,10 @@ export class CastleBuilder {
     this.layout = snapshot.layout;
     this.targetPos = snapshot.targetPos;
     this.budget = snapshot.budget;
-    this.updateBudgetDisplay();
+    this.ui?.updateBudget(this.maxBudget - this.budget);
     this.updateTargetMesh();
     this.rebuildMeshes();
-    this._updateUndoBtn();
-  }
-
-  _updateUndoBtn() {
-    const btn = document.getElementById('builder-undo-btn');
-    if (btn) btn.disabled = this._undoStack.length === 0;
+    this.ui?.updateUndoState(this._undoStack.length > 0);
   }
 
   // === BLOCK PLACEMENT ===
@@ -616,7 +348,7 @@ export class CastleBuilder {
       rotZ: this.selectedRotZ || 0,
     });
     this.budget -= cost;
-    this.updateBudgetDisplay();
+    this.ui?.updateBudget(this.maxBudget - this.budget);
     this.rebuildMeshes();
   }
 
@@ -646,7 +378,7 @@ export class CastleBuilder {
       this.layout.splice(i, 1);
     }
     this.budget += refund;
-    this.updateBudgetDisplay();
+    this.ui?.updateBudget(this.maxBudget - this.budget);
     this.rebuildMeshes();
   }
 
@@ -674,7 +406,7 @@ export class CastleBuilder {
       cost += BLOCK_TYPES[block.type]?.cost || 0;
     }
     this.budget = Math.max(0, this.maxBudget - cost);
-    this.updateBudgetDisplay();
+    this.ui?.updateBudget(cost);
     this.updateTargetMesh();
     this.rebuildMeshes();
   }
@@ -763,8 +495,6 @@ export class CastleBuilder {
     this.ghostMesh.geometry = this._geometries[this.selectedType] || this._geometries.CUBE;
     this._applySelectedRotation(this.ghostMesh);
   }
-
-  // === CAMERA (delegated to OrbitController) ===
 
   // === EVENT HANDLERS ===
 
@@ -879,7 +609,7 @@ export class CastleBuilder {
     if (idx >= 0) {
       this.layout.splice(idx, 1);
       this.budget += BLOCK_TYPES[block.type]?.cost || 0;
-      this.updateBudgetDisplay();
+      this.ui?.updateBudget(this.maxBudget - this.budget);
     }
 
     // Set as current selection
@@ -890,21 +620,7 @@ export class CastleBuilder {
     this.placingTarget = false;
 
     // Update palette highlight
-    const allBtns = document.querySelectorAll('#castle-builder-ui .block-btn[data-type]');
-    const targetBtn = document.getElementById('builder-target-btn');
-    allBtns.forEach(b => {
-      b.style.background = 'rgba(255,255,255,0.06)';
-      b.style.borderColor = 'rgba(255,255,255,0.15)';
-    });
-    if (targetBtn) {
-      targetBtn.style.background = 'rgba(255,255,255,0.06)';
-      targetBtn.style.borderColor = 'rgba(255,255,255,0.15)';
-    }
-    const match = document.querySelector(`#castle-builder-ui .block-btn[data-type="${block.type}"]`);
-    if (match) {
-      match.style.background = 'rgba(255,255,255,0.2)';
-      match.style.borderColor = '#e67e22';
-    }
+    this.ui?.selectBlockType(block.type);
 
     this.updateGhostGeometry();
     this.rebuildMeshes();

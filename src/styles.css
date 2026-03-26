@@ -810,6 +810,237 @@ body {
   z-index: 100;
 }
 
+/* ── Castle Builder Overlay ───────────────────────── */
+.builder-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: #fff;
+}
+
+.builder-overlay .builder-left {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: auto;
+}
+
+.builder-section-title {
+  margin: 0 0 4px 0;
+  font-size: 0.9rem;
+  opacity: 0.7;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.block-palette {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.block-label {
+  font-size: 0.65rem;
+  opacity: 0.4;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin: 4px 0 1px 2px;
+}
+
+.builder-overlay .block-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 6px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.15s, border-color 0.15s;
+  pointer-events: auto;
+  min-width: 0;
+}
+
+.builder-overlay .block-btn.selected {
+  background: rgba(255,255,255,0.2);
+  border-color: #e67e22;
+}
+
+.builder-overlay .block-btn:hover {
+  background: rgba(255,255,255,0.12);
+}
+
+.block-icon {
+  font-size: 1rem;
+}
+
+.target-icon {
+  font-size: 1.2rem;
+  color: #ff4444;
+}
+
+.builder-overlay .target-btn {
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 0.9rem;
+  margin-top: 4px;
+}
+
+.builder-info {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  opacity: 0.5;
+  line-height: 1.6;
+}
+
+.builder-info p {
+  margin: 0;
+}
+
+.builder-overlay .builder-top {
+  position: absolute;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 10px 24px;
+  border-radius: 20px;
+  background: rgba(0,0,0,0.6);
+  pointer-events: auto;
+}
+
+.budget-display,
+.layer-display {
+  font-size: 1rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.layer-btn {
+  padding: 4px 10px;
+  border: none;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  pointer-events: auto;
+}
+
+.layer-btn:hover {
+  background: rgba(255,255,255,0.25);
+}
+
+.builder-overlay .builder-bottom {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  pointer-events: auto;
+  width: 90%;
+  max-width: 400px;
+}
+
+.builder-row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  width: 100%;
+}
+
+.builder-select {
+  padding: 8px 12px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  background: rgba(0,0,0,0.6);
+  color: #fff;
+  cursor: pointer;
+  font-size: 0.85rem;
+  pointer-events: auto;
+  flex: 1;
+  min-width: 0;
+}
+
+.builder-btn {
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  color: #fff;
+  pointer-events: auto;
+}
+
+.builder-btn-share {
+  background: rgba(52, 152, 219, 0.8);
+}
+
+.builder-btn-share:hover {
+  background: rgba(52, 152, 219, 1);
+}
+
+.builder-btn-danger {
+  background: rgba(192, 57, 43, 0.8);
+}
+
+.builder-btn-danger:hover {
+  background: rgba(192, 57, 43, 1);
+}
+
+.builder-btn-ready {
+  padding: 12px 0;
+  font-size: 1.1rem;
+  font-weight: 700;
+  width: 100%;
+  background: #27ae60;
+  transition: background 0.2s, transform 0.1s;
+}
+
+.builder-btn-ready:hover {
+  background: #219a52;
+  transform: scale(1.02);
+}
+
+.builder-action-btn {
+  padding: 8px 14px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-radius: 8px;
+  background: rgba(255,255,255,0.06);
+  color: #fff;
+  cursor: pointer;
+  pointer-events: auto;
+  flex: 1;
+}
+
+.builder-action-btn.active {
+  background: rgba(192,57,43,0.6);
+  border-color: #e74c3c;
+}
+
+.builder-action-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ── Mobile ───────────────────────────────────────── */
 @media (max-width: 768px) {
   .title { font-size: 2.5rem; }

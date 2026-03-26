@@ -17,10 +17,10 @@ const EVENTS = [
 ];
 
 function getSessionId() {
-  let id = sessionStorage.getItem('cannonfall-session');
+  let id = localStorage.getItem('cannonfall-session');
   if (!id) {
     id = crypto.randomUUID();
-    sessionStorage.setItem('cannonfall-session', id);
+    localStorage.setItem('cannonfall-session', id);
   }
   return id;
 }
@@ -107,7 +107,18 @@ export class Network {
   }
 
   on(event, callback) {
+    if (this.handlers[event]) {
+      console.warn(`[Network] Overwriting handler for "${event}"`);
+    }
     this.handlers[event] = callback;
+  }
+
+  off(event) {
+    delete this.handlers[event];
+  }
+
+  removeAllHandlers() {
+    this.handlers = {};
   }
 
   disconnect() {

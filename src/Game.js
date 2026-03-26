@@ -448,6 +448,15 @@ export class Game {
     this.hp = [C.MAX_HP, C.MAX_HP];
     this.ui.updateHP(this.hp[0], this.hp[1]);
     this.ui.showGame();
+
+    // Hide debug menu during online play
+    const debugSection = document.getElementById('debug-section');
+    if (debugSection) debugSection.classList.toggle('hidden', this.mode === 'online');
+    if (this.mode === 'online') {
+      this.debugPhysics = false;
+      this.debugPerfectShot = false;
+    }
+
     this.syncBattle();
     this.onTurnStart();
   }

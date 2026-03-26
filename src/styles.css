@@ -915,17 +915,18 @@ body {
   }
 
   #castle-builder-ui .builder-top {
-    top: 6px !important;
+    top: 4px !important;
     left: 50% !important;
-    padding: 5px 16px !important;
-    font-size: 0.75rem !important;
-    gap: 12px !important;
+    padding: 4px 10px !important;
+    font-size: 0.65rem !important;
+    gap: 8px !important;
     width: auto;
-    max-width: 90vw;
+    max-width: 95vw;
+    white-space: nowrap;
   }
 
   #castle-builder-ui .builder-bottom {
-    bottom: 12px !important;
+    bottom: 8px !important;
     gap: 6px !important;
     flex-wrap: wrap;
     justify-content: center;
@@ -933,16 +934,19 @@ body {
 
   #castle-builder-ui .builder-bottom button,
   #castle-builder-ui .builder-bottom select {
-    padding: 8px 12px !important;
-    font-size: 0.8rem !important;
+    padding: 6px 10px !important;
+    font-size: 0.75rem !important;
   }
 
   #castle-builder-ui .builder-actions {
     right: 4px !important;
+    top: 40px !important;
+    transform: none !important;
   }
 
   #castle-builder-ui .builder-action-btn {
-    padding: 6px 10px !important;
-    font-size: 0.7rem !important;
+    padding: 5px 8px !important;
+    font-size: 0.65rem !important;
+    gap: 4px !important;
   }
 }

@@ -32,24 +32,23 @@ export class AI {
     return this._gravityAim(dx, dy, dz, horizDist, g, facing);
   }
 
-  _zeroGAim(dx, dy, dz, dist, facing) {
+  _computeYaw(dx, dz, facing) {
     const baseAngle = facing === 1 ? Math.PI / 2 : -Math.PI / 2;
-    const targetAngle = Math.atan2(dz, dx);
-    let yaw = targetAngle - baseAngle;
+    let yaw = Math.atan2(dz, dx) - baseAngle;
     while (yaw > Math.PI) yaw -= 2 * Math.PI;
     while (yaw < -Math.PI) yaw += 2 * Math.PI;
+    return yaw;
+  }
 
+  _zeroGAim(dx, dy, dz, dist, facing) {
+    const yaw = this._computeYaw(dx, dz, facing);
     const pitch = Math.asin(Math.max(-1, Math.min(1, dy / dist)));
     const power = Math.min(MAX_POWER, Math.max(MIN_POWER, dist * 1.2));
     return { yaw, pitch, power };
   }
 
   _gravityAim(dx, dy, dz, horizDist, g, facing) {
-    const baseAngle = facing === 1 ? Math.PI / 2 : -Math.PI / 2;
-    const targetAngle = Math.atan2(dz, dx);
-    let yaw = targetAngle - baseAngle;
-    while (yaw > Math.PI) yaw -= 2 * Math.PI;
-    while (yaw < -Math.PI) yaw += 2 * Math.PI;
+    const yaw = this._computeYaw(dx, dz, facing);
 
     // Solve ballistic equation for pitch given power
     // h = d*tan(θ) - g*d²/(2*p²*cos²(θ))

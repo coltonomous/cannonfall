@@ -588,23 +588,7 @@ export class CastleBuilder {
   // === PRESET LOADING ===
 
   loadPreset(name) {
-    const preset = getPreset(name, this.modeConfig?.id || 'castle');
-
-    // Load ALL preset blocks — presets are pre-designed and load fully
-    this.layout = preset.layout.map(b => ({ ...b }));
-    this.targetPos = { ...preset.target };
-    this.customFloor = preset.floor || null;
-
-    // Compute remaining budget (can be 0 if preset uses everything)
-    let cost = 0;
-    for (const block of this.layout) {
-      cost += BLOCK_TYPES[block.type]?.cost || 0;
-    }
-    this.budget = Math.max(0, this.maxBudget - cost);
-
-    this.updateBudgetDisplay();
-    this.updateTargetMesh();
-    this.rebuildMeshes();
+    this.loadFromDesignData(getPreset(name, this.modeConfig?.id || 'castle'));
   }
 
   loadFromDesignData(data) {

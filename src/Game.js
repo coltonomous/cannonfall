@@ -105,8 +105,12 @@ export class Game {
 
     this.setupUIListeners();
     this.setupNetworkListeners();
-    this.attemptReconnect();
-    this._checkShareHash();
+    // Share hash takes priority over reconnecting to an old session
+    if (location.hash && location.hash.includes('d=')) {
+      this._checkShareHash();
+    } else {
+      this.attemptReconnect();
+    }
 
     this.clock = new THREE.Clock();
     this._importedDesign = null;
@@ -336,7 +340,7 @@ export class Game {
           if (this.battle._replayData && this.battle.startReplay()) {
             this.transition(State.REPLAY);
             this._replayStartTime = performance.now();
-            this._replayWonOnline = won;
+            this._replayResult = { local: false, won };
             this.ui.setStatus('REPLAY');
           } else {
             this.transition(State.GAME_OVER);
@@ -471,16 +475,19 @@ export class Game {
     this.playerIndex = 0;
     this.ai = new AI(this.aiDifficulty);
     if (this.castleData[0]) {
-      // Already built — go straight to battle
-      const presets = this.gameMode.presets;
-      const presetName = presets[Math.floor(Math.random() * presets.length)];
-      this.castleData[1] = getPreset(presetName, this.gameMode.id);
-      this.buildBothCastles(this.castleData[0], this.castleData[1]);
-      this.currentTurn = Math.random() < 0.5 ? 0 : 1;
-      this.startBattle();
+      this._startAIBattle();
     } else {
       this.startBuildPhase(true);
     }
+  }
+
+  _startAIBattle() {
+    const presets = this.gameMode.presets;
+    const presetName = presets[Math.floor(Math.random() * presets.length)];
+    this.castleData[1] = getPreset(presetName, this.gameMode.id);
+    this.buildBothCastles(this.castleData[0], this.castleData[1]);
+    this.currentTurn = Math.random() < 0.5 ? 0 : 1;
+    this.startBattle();
   }
 
   // ── Online Mode ──────────────────────────────────────────
@@ -546,13 +553,7 @@ export class Game {
     }
 
     if (this.mode === 'ai') {
-      // Player built; AI gets a random preset
-      const presets = this.gameMode.presets;
-      const presetName = presets[Math.floor(Math.random() * presets.length)];
-      this.castleData[1] = getPreset(presetName, this.gameMode.id);
-      this.buildBothCastles(this.castleData[0], this.castleData[1]);
-      this.currentTurn = Math.random() < 0.5 ? 0 : 1;
-      this.startBattle();
+      this._startAIBattle();
     } else if (this.mode === 'local') {
       if (this.playerIndex === 0) {
         this.playerIndex = 1;
@@ -742,8 +743,9 @@ export class Game {
       if (this.battle._replayData && this.battle.startReplay()) {
         this.transition(State.REPLAY);
         this._replayStartTime = performance.now();
-        this._replayWinnerLocal = this.currentTurn + 1;
-        this._replayWonOnline = this.currentTurn === 0;
+        this._replayResult = this.mode === 'local'
+          ? { local: true, winner: this.currentTurn + 1 }
+          : { local: false, won: this.currentTurn === 0 };
         this.ui.setStatus('REPLAY');
       } else {
         this.transition(State.GAME_OVER);
@@ -788,12 +790,11 @@ export class Game {
     this.battle._replayTimeScale = 1;
     this.battle._replayPhase = null;
     this.transition(State.GAME_OVER);
-    if (this.mode === 'ai') {
-      this.ui.showResult(this._replayWonOnline);
-    } else if (this.mode === 'local') {
-      this.ui.showLocalResult(this._replayWinnerLocal);
+    const r = this._replayResult;
+    if (r?.local) {
+      this.ui.showLocalResult(r.winner);
     } else {
-      this.ui.showResult(this._replayWonOnline);
+      this.ui.showResult(r?.won);
     }
   }
 

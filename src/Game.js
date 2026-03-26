@@ -36,7 +36,7 @@ const State = {
 
 const VALID_TRANSITIONS = {
   [State.MENU]:                  [State.BUILD, State.MY_TURN, State.OPPONENT_TURN, State.WAITING_OPPONENT_BUILD],
-  [State.BUILD]:                 [State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
+  [State.BUILD]:                 [State.MENU, State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
   [State.PASS_DEVICE]:           [State.BUILD],
   [State.WAITING_OPPONENT_BUILD]:[State.MY_TURN, State.OPPONENT_TURN],
   [State.MY_TURN]:               [State.FIRING, State.GAME_OVER, State.MENU],
@@ -127,8 +127,8 @@ export class Game {
     this._importedDesign = result.castleData;
     history.replaceState(null, '', window.location.pathname);
 
-    // Auto-start AI match so the user lands in the builder with the design loaded
-    this.startAIMatch();
+    // Open builder with the shared design loaded
+    this.buildFromMenu();
   }
 
   attemptReconnect() {
@@ -163,6 +163,7 @@ export class Game {
       });
     });
 
+    document.getElementById('build-castle-btn')?.addEventListener('click', () => this.buildFromMenu());
     this.ui.localMatchBtn.addEventListener('click', () => this.startLocal());
     document.getElementById('ai-match-btn')?.addEventListener('click', () => this.startAIMatch());
     document.querySelectorAll('.diff-btn').forEach(btn => {
@@ -277,13 +278,23 @@ export class Game {
     this.network.on('matched', (data) => {
       this.playerIndex = data.playerIndex;
       this.currentTurn = data.firstTurn;
-      // Server is authoritative on game mode for online matches
       if (data.gameMode) {
         const modeKey = data.gameMode.toUpperCase();
         if (GAME_MODES[modeKey]) this.gameMode = GAME_MODES[modeKey];
       }
       this.applyGameMode();
-      this.startBuildPhase(true);
+
+      if (this.castleData[0]) {
+        // Already built — send immediately, wait for opponent
+        this.network.sendBuildReady(this.castleData[0]);
+        this.transition(State.WAITING_OPPONENT_BUILD);
+        this.ui.overlay.classList.remove('hidden');
+        document.getElementById('build-screen').classList.remove('hidden');
+        document.getElementById('build-screen').innerHTML =
+          '<h2>Waiting for opponent...</h2><div class="spinner"></div>';
+      } else {
+        this.startBuildPhase(true);
+      }
     });
 
     this.network.on('lobby:list', (lobbies) => {
@@ -411,13 +422,45 @@ export class Game {
     this.battle.physicsWorld = this.physicsWorld;
   }
 
+  // ── Build from Menu ──────────────────────────────────────
+
+  buildFromMenu() {
+    this.applyGameMode();
+    this.mode = null;
+    this.playerIndex = 0;
+    this._prebuild = true;
+    this.startBuildPhase(true);
+  }
+
+  _showCastleReady() {
+    const label = document.getElementById('castle-ready-label');
+    const btn = document.getElementById('build-castle-btn');
+    if (label) label.classList.remove('hidden');
+    if (btn) btn.textContent = 'Edit Castle';
+  }
+
+  _hideCastleReady() {
+    const label = document.getElementById('castle-ready-label');
+    const btn = document.getElementById('build-castle-btn');
+    if (label) label.classList.add('hidden');
+    if (btn) btn.textContent = 'Build Your Castle';
+  }
+
   // ── Local Mode ───────────────────────────────────────────
 
   startLocal() {
     this.applyGameMode();
     this.mode = 'local';
     this.playerIndex = 0;
-    this.startBuildPhase(true);
+    if (this.castleData[0]) {
+      // P1 already built — skip to P2
+      this.playerIndex = 1;
+      this.transition(State.BUILD);
+      this.transition(State.PASS_DEVICE);
+      this.ui.showPassDevice(2);
+    } else {
+      this.startBuildPhase(true);
+    }
   }
 
   // ── AI Mode ──────────────────────────────────────────────
@@ -427,7 +470,17 @@ export class Game {
     this.mode = 'ai';
     this.playerIndex = 0;
     this.ai = new AI(this.aiDifficulty);
-    this.startBuildPhase(true);
+    if (this.castleData[0]) {
+      // Already built — go straight to battle
+      const presets = this.gameMode.presets;
+      const presetName = presets[Math.floor(Math.random() * presets.length)];
+      this.castleData[1] = getPreset(presetName, this.gameMode.id);
+      this.buildBothCastles(this.castleData[0], this.castleData[1]);
+      this.currentTurn = Math.random() < 0.5 ? 0 : 1;
+      this.startBattle();
+    } else {
+      this.startBuildPhase(true);
+    }
   }
 
   // ── Online Mode ──────────────────────────────────────────
@@ -482,6 +535,15 @@ export class Game {
   onBuildComplete(castleData) {
     this.builder.stop();
     this.castleData[this.playerIndex] = castleData;
+
+    // Prebuild from menu: save castle and return to menu
+    if (this._prebuild) {
+      this._prebuild = false;
+      this.transition(State.MENU);
+      this.ui.showMenu();
+      this._showCastleReady();
+      return;
+    }
 
     if (this.mode === 'ai') {
       // Player built; AI gets a random preset
@@ -929,6 +991,7 @@ export class Game {
     if (debugOverlay) debugOverlay.remove();
     this.ui.menuPanel.classList.add('hidden');
     this.ui.hideDisconnectBanner();
+    this._hideCastleReady();
 
     if (this.network.socket) {
       this.network.leaveLobby();

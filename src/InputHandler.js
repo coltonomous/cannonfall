@@ -37,19 +37,19 @@ export class InputHandler {
 
   setupFireButton(btn) {
     this._fireBtn = btn;
-    btn.addEventListener('pointerdown', (e) => {
+    const down = (e) => {
       e.preventDefault();
       if (this.enabled) this._fireButtonDown = true;
-    });
-    btn.addEventListener('pointerup', () => {
-      this._fireButtonDown = false;
-    });
-    btn.addEventListener('pointercancel', () => {
-      this._fireButtonDown = false;
-    });
-    btn.addEventListener('pointerleave', () => {
-      this._fireButtonDown = false;
-    });
+    };
+    const up = () => { this._fireButtonDown = false; };
+    // Use both pointer and touch events for cross-browser mobile support
+    btn.addEventListener('pointerdown', down);
+    btn.addEventListener('pointerup', up);
+    btn.addEventListener('pointercancel', up);
+    btn.addEventListener('pointerleave', up);
+    btn.addEventListener('touchstart', down, { passive: false });
+    btn.addEventListener('touchend', up);
+    btn.addEventListener('touchcancel', up);
   }
 
   _handleTouchStart(e) {

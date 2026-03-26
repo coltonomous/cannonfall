@@ -2,8 +2,13 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
   <title>Cannonfall</title>
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 </head>
 <body>
   <canvas id="game-canvas"></canvas>
@@ -56,6 +61,7 @@
       <div id="lobby-password-prompt" class="hidden">
         <p>This game requires a password:</p>
         <input type="password" id="lobby-join-password" placeholder="Enter password" maxlength="30" autocomplete="off" />
+        <p id="lobby-password-error" class="hidden" style="color: #e74c3c; font-size: 0.85rem; margin: 4px 0 0;"></p>
         <div class="lobby-prompt-actions">
           <button id="lobby-join-confirm-btn">Join</button>
           <button id="lobby-join-cancel-btn" class="lobby-btn-secondary">Cancel</button>

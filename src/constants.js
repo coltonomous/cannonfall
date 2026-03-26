@@ -25,6 +25,7 @@ export const DEFAULT_POWER = 30;
 
 // ── Input Speeds ───────────────────────────────────────
 export const AIM_SPEED = 0.012;
+export const TOUCH_AIM_SENSITIVITY = 0.004;
 export const CHARGE_FREQ = Math.PI * 1.5; // angular speed — one full swing ~2.1s
 export const PERFECT_MIN = 0.80; // sweet spot: 80-88% of power range
 export const PERFECT_MAX = 0.88;

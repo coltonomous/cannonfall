@@ -428,7 +428,7 @@ export class BattleController {
 
   // ── Camera ────────────────────────────────────────────────
 
-  updateCamera() {
+  updateCamera(snap = false) {
     const cannon = this.cannons[this.currentTurn];
     if (!cannon) return;
 
@@ -444,7 +444,11 @@ export class BattleController {
     halfPitchDir.normalize();
     const lookAt = camPos.clone().add(halfPitchDir.multiplyScalar(60));
 
-    this.sceneManager.setCameraPosition(camPos, lookAt);
+    if (snap) {
+      this.sceneManager.snapCamera(camPos, lookAt);
+    } else {
+      this.sceneManager.setCameraPosition(camPos, lookAt);
+    }
 
     // Rock camera with the ship in water mode
     if (this.physicsWorld.waterSurface && this.physicsWorld._shipWaveCache) {

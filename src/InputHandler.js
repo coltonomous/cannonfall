@@ -10,6 +10,61 @@ export class InputHandler {
     window.addEventListener('keyup', (e) => {
       this.keys[e.code] = false;
     });
+
+    // Touch state
+    this._touchActive = false;
+    this._touchStart = null;
+    this._touchLast = null;
+    this._touchAimDelta = { yaw: 0, pitch: 0 };
+    this._touchTapped = false;
+    this._canvas = null;
+  }
+
+  setupTouchListeners(canvas) {
+    this._canvas = canvas;
+    this._onTouchStart = this._handleTouchStart.bind(this);
+    this._onTouchMove = this._handleTouchMove.bind(this);
+    this._onTouchEnd = this._handleTouchEnd.bind(this);
+    canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', this._onTouchEnd, { passive: false });
+  }
+
+  _handleTouchStart(e) {
+    if (e.touches.length !== 1) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    this._touchActive = true;
+    this._touchTapped = false;
+    this._touchStart = { x: t.clientX, y: t.clientY };
+    this._touchLast = { x: t.clientX, y: t.clientY };
+  }
+
+  _handleTouchMove(e) {
+    if (!this._touchActive || e.touches.length !== 1) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const dx = t.clientX - this._touchLast.x;
+    const dy = t.clientY - this._touchLast.y;
+    this._touchAimDelta.yaw += dx * C.TOUCH_AIM_SENSITIVITY;
+    this._touchAimDelta.pitch += dy * -C.TOUCH_AIM_SENSITIVITY;
+    this._touchLast = { x: t.clientX, y: t.clientY };
+  }
+
+  _handleTouchEnd(e) {
+    if (!this._touchActive) return;
+    e.preventDefault();
+    this._touchActive = false;
+    this._touchTapped = true;
+  }
+
+  resetTouchState() {
+    this._touchActive = false;
+    this._touchStart = null;
+    this._touchLast = null;
+    this._touchAimDelta = { yaw: 0, pitch: 0 };
+    this._touchTapped = false;
   }
 
   /**
@@ -29,8 +84,17 @@ export class InputHandler {
     if (this.keys['ArrowUp'] || this.keys['KeyW']) cannon.adjustPitch(C.AIM_SPEED);
     if (this.keys['ArrowDown'] || this.keys['KeyS']) cannon.adjustPitch(-C.AIM_SPEED);
 
-    // Power charge: hold Space to charge, release to fire
-    if (this.keys['Space'] && !chargeState.charging) {
+    // Touch aim deltas
+    if (this._touchAimDelta.yaw !== 0 || this._touchAimDelta.pitch !== 0) {
+      cannon.adjustYaw(this._touchAimDelta.yaw);
+      cannon.adjustPitch(this._touchAimDelta.pitch);
+      this._touchAimDelta.yaw = 0;
+      this._touchAimDelta.pitch = 0;
+    }
+
+    // Power charge: hold Space (or touch) to charge, release to fire
+    const holding = this.keys['Space'] || this._touchActive;
+    if (holding && !chargeState.charging) {
       chargeState.charging = true;
       chargeState.chargeTime = 0;
       chargeState.power = C.MIN_POWER;
@@ -42,7 +106,7 @@ export class InputHandler {
       chargeState.power = C.MIN_POWER + (C.MAX_POWER - C.MIN_POWER) * (0.5 - 0.5 * Math.cos(t));
       ui.updatePower(chargeState.power, C.MIN_POWER, C.MAX_POWER);
 
-      if (!this.keys['Space']) {
+      if (!holding) {
         chargeState.charging = false;
         return 'fire';
       }

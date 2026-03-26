@@ -32,6 +32,14 @@ export class TargetRepositioner {
     this._onClick = this._handleClick.bind(this);
     this._onContextMenu = (e) => e.preventDefault();
     this._onKeyDown = this._handleKeyDown.bind(this);
+
+    // Touch handlers
+    this._onTouchStart = this._handleTouchStart.bind(this);
+    this._onTouchMove = this._handleTouchMove.bind(this);
+    this._onTouchEnd = this._handleTouchEnd.bind(this);
+    this._touchMode = null;
+    this._touchGridPos = null;
+    this._touchStartPos = null;
   }
 
   start(castle, damagedPlayerIndex, onConfirm, maxLayers) {
@@ -254,6 +262,10 @@ export class TargetRepositioner {
     canvas.addEventListener('click', this._onClick);
     canvas.addEventListener('contextmenu', this._onContextMenu);
     window.addEventListener('keydown', this._onKeyDown);
+    canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', this._onTouchEnd, { passive: false });
   }
 
   removeEventListeners() {
@@ -262,6 +274,10 @@ export class TargetRepositioner {
     window.removeEventListener('keydown', this._onKeyDown);
     canvas.removeEventListener('click', this._onClick);
     canvas.removeEventListener('contextmenu', this._onContextMenu);
+    canvas.removeEventListener('touchstart', this._onTouchStart);
+    canvas.removeEventListener('touchmove', this._onTouchMove);
+    canvas.removeEventListener('touchend', this._onTouchEnd);
+    canvas.removeEventListener('touchcancel', this._onTouchEnd);
   }
 
   _raycastGrid(e) {
@@ -341,6 +357,95 @@ export class TargetRepositioner {
       );
       this.ghostTarget.visible = true;
     }
+  }
+
+  // ── Touch handlers ────────────────────────────────────
+
+  _getTouchPinchDist(e) {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+  }
+
+  _handleTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      this._touchMode = 'pinch';
+      this.orbit.startPinch(this._getTouchPinchDist(e));
+      return;
+    }
+    if (e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    // Raycast to determine context
+    this.orbit.updateTouchMouse(touch);
+    this.orbit.raycaster.setFromCamera(this.orbit.mouse, this.orbit.camera);
+
+    // Try castle blocks first, then floor plane
+    const gridPos = this._raycastGrid({ clientX: touch.clientX, clientY: touch.clientY });
+    if (gridPos) {
+      this._touchMode = 'build';
+      this._touchGridPos = gridPos;
+      this._touchStartPos = { x: touch.clientX, y: touch.clientY };
+      return;
+    }
+    // Off grid — orbit
+    this._touchMode = 'orbit';
+    this.orbit.startTouchOrbit(touch.clientX, touch.clientY);
+  }
+
+  _handleTouchMove(e) {
+    e.preventDefault();
+    if (this._touchMode === 'pinch' && e.touches.length === 2) {
+      this.orbit.updatePinch(this._getTouchPinchDist(e));
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+
+    if (this._touchMode === 'orbit') {
+      this.orbit.updateTouchOrbit(touch.clientX, touch.clientY);
+    } else if (this._touchMode === 'build') {
+      const dx = touch.clientX - this._touchStartPos.x;
+      const dy = touch.clientY - this._touchStartPos.y;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        this._touchMode = 'orbit';
+        this.orbit.startTouchOrbit(touch.clientX, touch.clientY);
+      }
+    }
+  }
+
+  _handleTouchEnd(e) {
+    e.preventDefault();
+    if (this._touchMode === 'pinch') {
+      this.orbit.endPinch();
+      this._touchMode = null;
+      return;
+    }
+    if (this._touchMode === 'build' && this._touchGridPos) {
+      // Place target using same logic as click handler
+      const gridPos = this._touchGridPos;
+      const hitY = gridPos.hitY || (this._floorOffset + 0.5);
+      const gridY = Math.max(0, Math.round((hitY - BLOCK_SIZE - 0.5) / BLOCK_SIZE));
+      this.targetPos = { x: gridPos.x, y: gridY, z: gridPos.z };
+      if (this.castle) {
+        this.castle.repositionTarget(this.targetPos);
+      }
+      if (this.ghostTarget) {
+        const halfW = Math.floor(this.castleGridW / 2);
+        const halfD = Math.floor(this.castleGridD / 2);
+        this.ghostTarget.position.set(
+          this.centerX + (gridPos.x - halfW) * BLOCK_SIZE,
+          hitY,
+          (gridPos.z - halfD) * BLOCK_SIZE
+        );
+        this.ghostTarget.visible = true;
+      }
+    }
+    if (this._touchMode === 'orbit') {
+      this.orbit.endTouchOrbit();
+    }
+    this._touchMode = null;
+    this._touchGridPos = null;
   }
 
   _handleKeyDown(e) {

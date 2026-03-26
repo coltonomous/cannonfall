@@ -29,6 +29,11 @@ export class OrbitController {
     this.minDistance = 8;
     this.maxDistance = 30;
 
+    // Touch state (managed externally by CastleBuilder/TargetRepositioner)
+    this._touchOrbitLast = null;
+    this._touchDragStart = null;
+    this._pinchStartDist = null;
+
     // Bound handlers
     this._onMouseDown = this._handleMouseDown.bind(this);
     this._onMouseUp = this._handleMouseUp.bind(this);
@@ -129,5 +134,68 @@ export class OrbitController {
     e.preventDefault();
     this.orbitDistance = Math.max(this.minDistance, Math.min(this.maxDistance, this.orbitDistance + e.deltaY * 0.02));
     this.updateCamera();
+  }
+
+  // ── Touch orbit/zoom (called by CastleBuilder / TargetRepositioner) ──
+
+  startTouchOrbit(x, y) {
+    this._touchOrbitLast = { x, y };
+    this._touchDragStart = { x, y };
+    this.isDragging = false;
+  }
+
+  updateTouchOrbit(x, y) {
+    if (!this._touchOrbitLast) return;
+    // Promote to drag after threshold
+    if (!this.isDragging && this._touchDragStart) {
+      const dx = x - this._touchDragStart.x;
+      const dy = y - this._touchDragStart.y;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        this.isDragging = true;
+      }
+    }
+    if (this.isDragging) {
+      const dx = x - this._touchOrbitLast.x;
+      const dy = y - this._touchOrbitLast.y;
+      this.orbitAngle -= dx * 0.008;
+      this.orbitPitch = Math.max(0.1, Math.min(Math.PI / 2.5, this.orbitPitch + dy * 0.008));
+      this.updateCamera();
+    }
+    this._touchOrbitLast = { x, y };
+  }
+
+  endTouchOrbit() {
+    this._touchOrbitLast = null;
+    this._touchDragStart = null;
+    this.isDragging = false;
+  }
+
+  wasTouchDrag() {
+    if (!this._touchDragStart || !this._touchOrbitLast) return this.isDragging;
+    const dx = this._touchOrbitLast.x - this._touchDragStart.x;
+    const dy = this._touchOrbitLast.y - this._touchDragStart.y;
+    return Math.abs(dx) > 10 || Math.abs(dy) > 10;
+  }
+
+  startPinch(dist) {
+    this._pinchStartDist = dist;
+  }
+
+  updatePinch(dist) {
+    if (!this._pinchStartDist) return;
+    const ratio = this._pinchStartDist / dist;
+    this.orbitDistance = Math.max(this.minDistance, Math.min(this.maxDistance, this.orbitDistance * ratio));
+    this._pinchStartDist = dist;
+    this.updateCamera();
+  }
+
+  endPinch() {
+    this._pinchStartDist = null;
+  }
+
+  updateTouchMouse(touch) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+    this.mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
   }
 }

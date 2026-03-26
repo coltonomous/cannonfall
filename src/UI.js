@@ -48,6 +48,7 @@ export class UI {
     this.lobbyJoinConfirmBtn = document.getElementById('lobby-join-confirm-btn');
     this.lobbyJoinCancelBtn = document.getElementById('lobby-join-cancel-btn');
     this.lobbyBackBtn = document.getElementById('lobby-back-btn');
+    this.lobbyPasswordError = document.getElementById('lobby-password-error');
     this._pendingJoinLobbyId = null;
   }
 
@@ -133,6 +134,16 @@ export class UI {
     this.statusText.textContent = text || '';
   }
 
+  setControlsHint(isTouch) {
+    const el = document.getElementById('controls-hint');
+    if (!el) return;
+    if (isTouch) {
+      el.innerHTML = '<span>Swipe: Aim</span><span>Hold &amp; Release: Fire</span>';
+    } else {
+      el.innerHTML = '<span>WASD/Arrows: Aim</span><span>Hold Space: Charge &amp; Release to Fire</span>';
+    }
+  }
+
   // ── Lobby ───────────────────────────────────────────
 
   showLobby() {
@@ -186,12 +197,28 @@ export class UI {
   showPasswordPrompt(lobbyId) {
     this._pendingJoinLobbyId = lobbyId;
     this.lobbyJoinPassword.value = '';
+    if (this.lobbyPasswordError) this.lobbyPasswordError.classList.add('hidden');
     this.lobbyPasswordPrompt.classList.remove('hidden');
+    this.lobbyJoinPassword.focus();
   }
 
   hidePasswordPrompt() {
     this._pendingJoinLobbyId = null;
     this.lobbyPasswordPrompt.classList.add('hidden');
+    if (this.lobbyPasswordError) this.lobbyPasswordError.classList.add('hidden');
+  }
+
+  isPasswordPromptVisible() {
+    return this._pendingJoinLobbyId !== null && !this.lobbyPasswordPrompt.classList.contains('hidden');
+  }
+
+  showPasswordError(message) {
+    if (this.lobbyPasswordError) {
+      this.lobbyPasswordError.textContent = message;
+      this.lobbyPasswordError.classList.remove('hidden');
+    }
+    this.lobbyJoinPassword.value = '';
+    this.lobbyJoinPassword.focus();
   }
 
   getLobbyName() {

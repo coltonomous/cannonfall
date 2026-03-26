@@ -50,6 +50,8 @@ export class Game {
     this.network = new Network();
     this.ui = new UI();
     this.input = new InputHandler();
+    this.input.setupTouchListeners(canvas);
+    this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     this.particles = new ParticleManager(this.sceneManager.scene);
 
     this.state = State.MENU;
@@ -244,8 +246,12 @@ export class Game {
     });
 
     this.network.on('lobby:error', ({ message }) => {
-      this.ui.hidePasswordPrompt();
-      this.ui.setStatus(message);
+      if (this.ui.isPasswordPromptVisible()) {
+        this.ui.showPasswordError(message);
+      } else {
+        this.ui.hidePasswordPrompt();
+        this.ui.setStatus(message);
+      }
     });
 
     this.network.on('build-complete', (data) => {
@@ -484,10 +490,12 @@ export class Game {
 
     if (this.state === State.MY_TURN) {
       this.cannons[this.currentTurn].resetAim();
+      this.input.resetTouchState();
+      this.ui.setControlsHint(this.isTouch);
     }
 
     this.syncBattle();
-    this.battle.updateCamera();
+    this.battle.updateCamera(true);
   }
 
   // ── Hit / Miss Handlers ──────────────────────────────────
@@ -613,9 +621,10 @@ export class Game {
 
       const elapsed = (performance.now() - this.battle.fireTime) / 1000;
       if (elapsed > C.SKIP_PROMPT_DELAY && this.state === State.FIRING) {
-        this.ui.setStatus('Press Space to skip');
-        if (this.input.keys['Space']) {
+        this.ui.setStatus(this.isTouch ? 'Tap to skip' : 'Press Space to skip');
+        if (this.input.keys['Space'] || this.input._touchTapped) {
           this.input.keys['Space'] = false;
+          this.input._touchTapped = false;
           this.battle.destroyProjectile();
           this.onShotMiss();
         }

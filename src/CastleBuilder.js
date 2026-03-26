@@ -39,6 +39,15 @@ export class CastleBuilder {
     this._onClick = this._handleClick.bind(this);
     this._onContextMenu = this._handleContextMenu.bind(this);
     this._onKeyDown = this._handleKeyDown.bind(this);
+
+    // Touch state
+    this._onTouchStart = this._handleTouchStart.bind(this);
+    this._onTouchMove = this._handleTouchMove.bind(this);
+    this._onTouchEnd = this._handleTouchEnd.bind(this);
+    this._touchMode = null; // 'build' | 'orbit' | null
+    this._touchGridPos = null;
+    this._removeMode = false;
+    this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   }
 
   // === LIFECYCLE ===
@@ -249,16 +258,40 @@ export class CastleBuilder {
           <span style="font-size: 1.2rem; color: #ff4444;">&#9679;</span>
           <span>Target</span>
         </button>
-        <div class="builder-info" style="
-          margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
-        ">
-          <p>R/T/F: Rotate Y/X/Z</p>
-          <p>Click: Place</p>
-          <p>Right-click: Remove</p>
-          <p>Shift+click: Grab block</p>
-          <p>Mouse drag: Orbit</p>
-          <p>Scroll: Zoom</p>
-        </div>
+        ${this.isTouch ? `
+          <button id="builder-rotate-btn" style="
+            display: flex; align-items: center; justify-content: center;
+            width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 8px; background: rgba(255,255,255,0.06);
+            color: #fff; cursor: pointer; font-size: 1.2rem;
+            margin-top: 4px; pointer-events: auto;
+          ">&#x21BB;</button>
+          <button id="builder-remove-btn" style="
+            display: flex; align-items: center; justify-content: center;
+            width: 44px; height: 44px; border: 2px solid rgba(255,255,255,0.15);
+            border-radius: 8px; background: rgba(255,255,255,0.06);
+            color: #fff; cursor: pointer; font-size: 1.2rem;
+            pointer-events: auto;
+          ">&#x2716;</button>
+          <div class="builder-info" style="
+            margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
+          ">
+            <p>Tap: Place</p>
+            <p>Drag empty: Orbit</p>
+            <p>Pinch: Zoom</p>
+          </div>
+        ` : `
+          <div class="builder-info" style="
+            margin-top: 8px; font-size: 0.75rem; opacity: 0.5; line-height: 1.6;
+          ">
+            <p>R/T/F: Rotate Y/X/Z</p>
+            <p>Click: Place</p>
+            <p>Right-click: Remove</p>
+            <p>Shift+click: Grab block</p>
+            <p>Mouse drag: Orbit</p>
+            <p>Scroll: Zoom</p>
+          </div>
+        `}
       </div>
       <div class="builder-top" style="
         position: absolute;
@@ -426,6 +459,23 @@ export class CastleBuilder {
         });
       }
     });
+
+    // Touch-only buttons
+    const rotateBtn = document.getElementById('builder-rotate-btn');
+    if (rotateBtn) {
+      rotateBtn.addEventListener('click', () => {
+        this.selectedRotation = (this.selectedRotation + 1) % 4;
+        if (this.ghostMesh) this._applySelectedRotation(this.ghostMesh);
+      });
+    }
+    const removeBtn = document.getElementById('builder-remove-btn');
+    if (removeBtn) {
+      removeBtn.addEventListener('click', () => {
+        this._removeMode = !this._removeMode;
+        removeBtn.style.background = this._removeMode ? 'rgba(192,57,43,0.6)' : 'rgba(255,255,255,0.06)';
+        removeBtn.style.borderColor = this._removeMode ? '#e74c3c' : 'rgba(255,255,255,0.15)';
+      });
+    }
   }
 
   removeBuildUI() {
@@ -648,6 +698,10 @@ export class CastleBuilder {
     canvas.addEventListener('auxclick', this._onClick); // middle-click
     canvas.addEventListener('contextmenu', this._onContextMenu);
     window.addEventListener('keydown', this._onKeyDown);
+    canvas.addEventListener('touchstart', this._onTouchStart, { passive: false });
+    canvas.addEventListener('touchmove', this._onTouchMove, { passive: false });
+    canvas.addEventListener('touchend', this._onTouchEnd, { passive: false });
+    canvas.addEventListener('touchcancel', this._onTouchEnd, { passive: false });
   }
 
   removeEventListeners() {
@@ -657,6 +711,10 @@ export class CastleBuilder {
     canvas.removeEventListener('auxclick', this._onClick);
     canvas.removeEventListener('contextmenu', this._onContextMenu);
     window.removeEventListener('keydown', this._onKeyDown);
+    canvas.removeEventListener('touchstart', this._onTouchStart);
+    canvas.removeEventListener('touchmove', this._onTouchMove);
+    canvas.removeEventListener('touchend', this._onTouchEnd);
+    canvas.removeEventListener('touchcancel', this._onTouchEnd);
   }
 
   _getHoveredGridPos(e) {
@@ -773,6 +831,87 @@ export class CastleBuilder {
     const gridPos = this._getHoveredGridPos(e);
     if (!gridPos) return;
     this.removeBlock(gridPos.x, this.currentLayer, gridPos.z);
+  }
+
+  // ── Touch handlers ────────────────────────────────────
+
+  _getTouchPinchDist(e) {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    return Math.hypot(t1.clientX - t0.clientX, t1.clientY - t0.clientY);
+  }
+
+  _handleTouchStart(e) {
+    e.preventDefault();
+    if (e.touches.length === 2) {
+      this._touchMode = 'pinch';
+      this.orbit.startPinch(this._getTouchPinchDist(e));
+      return;
+    }
+    if (e.touches.length !== 1) return;
+
+    const touch = e.touches[0];
+    // Raycast to determine context
+    this.orbit.updateTouchMouse(touch);
+    this.orbit.raycaster.setFromCamera(this.orbit.mouse, this.orbit.camera);
+    const hits = this.orbit.raycaster.intersectObject(this.gridPlane);
+    if (hits.length > 0) {
+      const gridPos = this.getGridPos(hits[0].point);
+      if (gridPos) {
+        this._touchMode = 'build';
+        this._touchGridPos = gridPos;
+        this._touchStartPos = { x: touch.clientX, y: touch.clientY };
+        return;
+      }
+    }
+    // Off grid — orbit
+    this._touchMode = 'orbit';
+    this.orbit.startTouchOrbit(touch.clientX, touch.clientY);
+  }
+
+  _handleTouchMove(e) {
+    e.preventDefault();
+    if (this._touchMode === 'pinch' && e.touches.length === 2) {
+      this.orbit.updatePinch(this._getTouchPinchDist(e));
+      return;
+    }
+    if (e.touches.length !== 1) return;
+    const touch = e.touches[0];
+
+    if (this._touchMode === 'orbit') {
+      this.orbit.updateTouchOrbit(touch.clientX, touch.clientY);
+    } else if (this._touchMode === 'build') {
+      // Promote to orbit if dragged far enough
+      const dx = touch.clientX - this._touchStartPos.x;
+      const dy = touch.clientY - this._touchStartPos.y;
+      if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
+        this._touchMode = 'orbit';
+        this.orbit.startTouchOrbit(touch.clientX, touch.clientY);
+      }
+    }
+  }
+
+  _handleTouchEnd(e) {
+    e.preventDefault();
+    if (this._touchMode === 'pinch') {
+      this.orbit.endPinch();
+      this._touchMode = null;
+      return;
+    }
+    if (this._touchMode === 'build' && this._touchGridPos) {
+      const gridPos = this._touchGridPos;
+      if (this._removeMode) {
+        this.removeBlock(gridPos.x, this.currentLayer, gridPos.z);
+      } else if (this.placingTarget) {
+        this.placeTarget(gridPos.x, gridPos.z);
+      } else {
+        this.placeBlock(gridPos.x, this.currentLayer, gridPos.z);
+      }
+    }
+    if (this._touchMode === 'orbit') {
+      this.orbit.endTouchOrbit();
+    }
+    this._touchMode = null;
+    this._touchGridPos = null;
   }
 
   _handleKeyDown(e) {

@@ -336,8 +336,20 @@ export class Game {
 
   // ── Build Phase ──────────────────────────────────────────
 
+  requestFullscreen() {
+    // Android Chrome: request fullscreen on first match start (not needed for PWA/iOS)
+    if (!this._fullscreenRequested
+        && this.isTouch
+        && document.documentElement.requestFullscreen
+        && !window.matchMedia('(display-mode: standalone)').matches) {
+      this._fullscreenRequested = true;
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }
+
   startBuildPhase(fromMenu = false) {
     if (fromMenu) {
+      this.requestFullscreen();
       this.transition(State.BUILD);
     } else {
       // Coming from PASS_DEVICE — already validated

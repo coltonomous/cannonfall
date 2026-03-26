@@ -10,6 +10,7 @@ body {
   background: #000;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   color: #fff;
+  touch-action: manipulation; /* prevent double-tap zoom */
 }
 
 #game-canvas {
@@ -408,12 +409,12 @@ body {
   justify-content: flex-end;
 }
 
-/* Sweet spot zone — golden band at 75-90% height */
+/* Sweet spot zone — golden band at 62-70% height */
 #power-sweet-spot {
   position: absolute;
   left: 0;
   width: 100%;
-  bottom: 80%;
+  bottom: 62%;
   height: 8%;
   background: rgba(255, 215, 0, 0.3);
   border-top: 2px solid rgba(255, 215, 0, 0.7);
@@ -822,5 +823,39 @@ body {
 
   #game-ui {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+
+  /* Builder palette: compact on mobile */
+  #castle-builder-ui .builder-left {
+    left: 4px !important;
+    max-height: 70vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #castle-builder-ui .builder-left .block-btn {
+    padding: 4px 8px !important;
+    font-size: 0.7rem !important;
+  }
+
+  #castle-builder-ui .builder-left h3 {
+    font-size: 0.75rem !important;
+  }
+
+  #castle-builder-ui .builder-top {
+    padding: 6px 12px !important;
+    font-size: 0.8rem !important;
+  }
+
+  #castle-builder-ui .builder-bottom {
+    gap: 8px !important;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  #castle-builder-ui .builder-bottom button,
+  #castle-builder-ui .builder-bottom select {
+    padding: 8px 14px !important;
+    font-size: 0.85rem !important;
   }
 }

@@ -130,10 +130,15 @@ export class BattleController {
       this.trajectoryLine.visible = false;
       this.reticle.visible = true;
 
-      // Lerp reticle to aim point for smooth feel
+      // Lerp reticle to aim point for smooth feel; snap on first frame
       const reticleDist = 40;
       const target = pos.clone().add(dir.clone().multiplyScalar(reticleDist));
-      this.reticle.position.lerp(target, 0.15);
+      if (!this._reticleInitialized) {
+        this.reticle.position.copy(target);
+        this._reticleInitialized = true;
+      } else {
+        this.reticle.position.lerp(target, 0.15);
+      }
       this.reticle.lookAt(this.sceneManager.camera.position);
 
       // Gentle pulse
@@ -226,7 +231,8 @@ export class BattleController {
     const cannon = this.cannons[this.currentTurn];
     const pos = cannon.getFirePosition();
     const dir = cannon.getFireDirection();
-    const power = this.power;
+    // Perfect shots guarantee max power — the reward for hitting the sweet spot
+    const power = this._perfectShot ? C.MAX_POWER : this.power;
 
     this.trajectoryLine.visible = false;
     this.reticle.visible = false;
@@ -490,7 +496,7 @@ export class BattleController {
       const myCastleX = this.castles[this.currentTurn]?.centerX;
       const wave = this.physicsWorld._shipWaveCache.get(myCastleX);
       if (wave) {
-        this.sceneManager.camera.rotation.z = wave.roll * 0.5;
+        this.sceneManager.camera.rotation.z = wave.roll * 1.2;
       }
     }
   }
@@ -660,5 +666,6 @@ export class BattleController {
     this._impactEmitted = false;
     this._pendingTargetHit = false;
     this._pendingSpaceImpact = null;
+    this._reticleInitialized = false;
   }
 }

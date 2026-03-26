@@ -27,8 +27,8 @@ export const DEFAULT_POWER = 30;
 export const AIM_SPEED = 0.012;
 export const TOUCH_AIM_SENSITIVITY = 0.004;
 export const CHARGE_FREQ = Math.PI * 1.5; // angular speed — one full swing ~2.1s
-export const PERFECT_MIN = 0.80; // sweet spot: 80-88% of power range
-export const PERFECT_MAX = 0.88;
+export const PERFECT_MIN = 0.62; // sweet spot: 62-70% of power range — risk/reward: stop early for max power
+export const PERFECT_MAX = 0.70;
 
 // ── Physics ────────────────────────────────────────────
 export const PHYSICS_STEP = 1 / 60;

@@ -43,6 +43,10 @@ export class SceneManager {
     this.setupGround();
 
     window.addEventListener('resize', () => this.onResize());
+    // Some mobile browsers fire orientationchange but not resize
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => this.onResize(), 100);
+    });
   }
 
   setupLighting() {
@@ -115,7 +119,7 @@ export class SceneManager {
         });
         this.ground = new THREE.Mesh(geo, mat);
         this.ground.rotation.x = -Math.PI / 2;
-        this.ground.position.y = 0.25; // water sits at deck level
+        this.ground.position.y = 0.6; // water sits above keel, ships appear partially submerged
         this.ground.receiveShadow = true;
         this.scene.add(this.ground);
         this._waterGeo = geo;
@@ -250,23 +254,26 @@ export class SceneManager {
     this.renderer.setScissorTest(false);
     this.renderer.render(this.scene, this.camera);
 
-    // Minimap render (small viewport, bottom-right)
+    // Minimap render — read position/size from CSS frame element
     if (this.minimapEnabled) {
-      const mmSize = 160;
-      const mmPad = 16;
-      const mmBottom = 60;
-      const mmX = width - mmSize - mmPad;
-      const mmY = mmBottom;
+      const frame = document.getElementById('minimap-frame');
+      if (frame) {
+        const rect = frame.getBoundingClientRect();
+        const mmX = rect.left;
+        const mmY = height - rect.bottom;
+        const mmW = rect.width;
+        const mmH = rect.height;
 
-      this.renderer.autoClear = false;
-      this.renderer.setScissorTest(true);
-      this.renderer.setViewport(mmX, mmY, mmSize, mmSize);
-      this.renderer.setScissor(mmX, mmY, mmSize, mmSize);
-      this.renderer.clear(true, true, true);
-      this.renderer.render(this.scene, this.minimapCamera);
-      this.renderer.setScissorTest(false);
-      this.renderer.setViewport(0, 0, width, height);
-      this.renderer.autoClear = true;
+        this.renderer.autoClear = false;
+        this.renderer.setScissorTest(true);
+        this.renderer.setViewport(mmX, mmY, mmW, mmH);
+        this.renderer.setScissor(mmX, mmY, mmW, mmH);
+        this.renderer.clear(true, true, true);
+        this.renderer.render(this.scene, this.minimapCamera);
+        this.renderer.setScissorTest(false);
+        this.renderer.setViewport(0, 0, width, height);
+        this.renderer.autoClear = true;
+      }
     }
   }
 }

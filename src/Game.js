@@ -811,6 +811,17 @@ export class Game {
 
   // ── Debug ────────────────────────────────────────────────
 
+  toggleAxesHelper(enabled) {
+    if (enabled && !this._axesHelper) {
+      this._axesHelper = new THREE.AxesHelper(10);
+      this.sceneManager.scene.add(this._axesHelper);
+    } else if (!enabled && this._axesHelper) {
+      this.sceneManager.scene.remove(this._axesHelper);
+      this._axesHelper.dispose();
+      this._axesHelper = null;
+    }
+  }
+
   updatePhysicsDebug() {
     for (const castle of this.castles) {
       if (!castle) continue;

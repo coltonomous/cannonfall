@@ -47,7 +47,7 @@ export class InputHandler {
     const t = e.touches[0];
     const dx = t.clientX - this._touchLast.x;
     const dy = t.clientY - this._touchLast.y;
-    this._touchAimDelta.yaw += dx * C.TOUCH_AIM_SENSITIVITY;
+    this._touchAimDelta.yaw += dx * -C.TOUCH_AIM_SENSITIVITY;
     this._touchAimDelta.pitch += dy * -C.TOUCH_AIM_SENSITIVITY;
     this._touchLast = { x: t.clientX, y: t.clientY };
   }

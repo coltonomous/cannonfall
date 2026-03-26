@@ -52,7 +52,7 @@ describe('Game Flow Rules', () => {
 
   describe('perfect shot detection', () => {
     it('should detect power in sweet spot range', () => {
-      const testPower = C.MIN_POWER + (C.MAX_POWER - C.MIN_POWER) * 0.84;
+      const testPower = C.MIN_POWER + (C.MAX_POWER - C.MIN_POWER) * 0.66;
       const powerFrac = (testPower - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
       expect(powerFrac).toBeGreaterThanOrEqual(C.PERFECT_MIN);
       expect(powerFrac).toBeLessThanOrEqual(C.PERFECT_MAX);

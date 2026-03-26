@@ -71,6 +71,10 @@ export function setupUIListeners(game, State) {
     game.debugLogsEnabled = e.target.checked;
   });
 
+  document.getElementById('debug-axes')?.addEventListener('change', (e) => {
+    game.toggleAxesHelper(e.target.checked);
+  });
+
   // ── Lobby UI ──────────────────────────────────────────
 
   ui.lobbyCreateBtn.addEventListener('click', () => {

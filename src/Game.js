@@ -126,6 +126,9 @@ export class Game {
     }
     this._importedDesign = result.castleData;
     history.replaceState(null, '', window.location.pathname);
+
+    // Auto-start AI match so the user lands in the builder with the design loaded
+    this.startAIMatch();
   }
 
   attemptReconnect() {

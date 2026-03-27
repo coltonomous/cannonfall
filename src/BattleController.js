@@ -37,6 +37,9 @@ export class BattleController {
     this._pendingTargetHit = false;
     this._pendingSpaceImpact = null;
 
+    // Tracked timers (cancelled on reset)
+    this._pendingTimers = [];
+
     // Replay state
     this._replayData = null;
     this._replayTimeScale = 1;
@@ -370,7 +373,7 @@ export class BattleController {
       this.ui.setStatus('PERFECT!');
       this.sceneManager.shake(0.2, 0.3);
       this.particles.emit(pos, { x: 0, y: 3, z: 0 }, 3, { r: 1, g: 0.9, b: 0.3 }, 25, 0.5);
-      setTimeout(() => launchProjectile(), C.PERFECT_FIRE_DELAY);
+      this._scheduleTimer(() => launchProjectile(), C.PERFECT_FIRE_DELAY);
     } else {
       this.ui.setStatus('Firing...');
       launchProjectile();
@@ -705,7 +708,10 @@ export class BattleController {
         }
 
         if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > boundsX || Math.abs(body.position.z) > boundsZ) {
-          if (mesh) castle.sceneManager.scene.remove(mesh);
+          if (mesh) {
+            castle.sceneManager.scene.remove(mesh);
+            mesh.material?.dispose();
+          }
           castle.physicsWorld.world.removeBody(body);
           const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
           if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
@@ -743,6 +749,20 @@ export class BattleController {
 
   // ── Helpers ───────────────────────────────────────────────
 
+  _scheduleTimer(fn, delay) {
+    const id = setTimeout(() => {
+      this._pendingTimers = this._pendingTimers.filter(t => t !== id);
+      fn();
+    }, delay);
+    this._pendingTimers.push(id);
+    return id;
+  }
+
+  _cancelTimers() {
+    for (const id of this._pendingTimers) clearTimeout(id);
+    this._pendingTimers = [];
+  }
+
   destroyProjectile() {
     if (this.projectile) {
       if (this._collisionListener) {
@@ -755,6 +775,7 @@ export class BattleController {
   }
 
   reset() {
+    this._cancelTimers();
     this.destroyProjectile();
     this.trajectoryLine.visible = false;
     this.reticle.visible = false;

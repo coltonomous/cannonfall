@@ -808,6 +808,7 @@ export class Game {
       if (action === 'fire') {
         this.battle.fire(this.debugPerfectShot);
         this.transition(State.FIRING);
+        this.input.resetTouchState(); // Clear stale tap from aiming so it doesn't trigger skip
       } else {
         this.battle.updateCamera();
         this.battle.updateTrajectory();

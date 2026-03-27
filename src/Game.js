@@ -905,6 +905,19 @@ export class Game {
     if (debugOverlay) debugOverlay.remove();
     this.ui.menuPanel.classList.add('hidden');
     this.ui.hideDisconnectBanner();
+
+    // Reset debug state and checkboxes
+    this.debugPhysics = false;
+    this.debugPerfectShot = false;
+    this.debugLogsEnabled = false;
+    if (this.ui.debugPhysics) this.ui.debugPhysics.checked = false;
+    if (this.ui.debugPerfect) this.ui.debugPerfect.checked = false;
+    if (this.ui.debugLogs) this.ui.debugLogs.checked = false;
+    const debugAxes = document.getElementById('debug-axes');
+    if (debugAxes) debugAxes.checked = false;
+    const debugNextShot = document.getElementById('debug-nextshotwins');
+    if (debugNextShot) debugNextShot.checked = false;
+
     this.onModeChanged();
 
     if (this.network.socket) {

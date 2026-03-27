@@ -253,6 +253,7 @@ body {
   background: rgba(0, 0, 0, 0.6);
   color: #fff;
   font-size: 1.4rem;
+  line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;

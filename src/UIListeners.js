@@ -55,8 +55,17 @@ export function setupUIListeners(game, State) {
 
   ui.passReadyBtn.addEventListener('click', () => game.onPassDeviceReady());
 
-  ui.hamburgerBtn.addEventListener('click', () => {
+  ui.hamburgerBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
     ui.menuPanel.classList.toggle('hidden');
+  });
+
+  // Close debug menu when tapping outside
+  document.addEventListener('click', (e) => {
+    if (!ui.menuPanel.classList.contains('hidden') &&
+        !e.target.closest('#hamburger-menu')) {
+      ui.menuPanel.classList.add('hidden');
+    }
   });
 
   ui.menuQuitBtn.addEventListener('click', () => {

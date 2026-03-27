@@ -5,7 +5,16 @@ import { randomUUID, createHash } from 'crypto';
 
 const app = express();
 const http = createServer(app);
-const io = new Server(http, { cors: { origin: '*' } });
+
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : null;
+const corsConfig = allowedOrigins
+  ? { origin: allowedOrigins }
+  : process.env.NODE_ENV === 'production'
+    ? { origin: false }           // same-origin only in production
+    : { origin: '*' };            // permissive in development
+const io = new Server(http, { cors: corsConfig });
 
 app.use(express.static('dist'));
 app.get('/health', (req, res) => res.send('ok'));
@@ -22,6 +31,29 @@ const lobbies = new Map();      // lobbyId → { id, hostSessionId, hostName, ga
 const lobbyClients = new Set(); // sessionIds currently viewing the lobby
 
 const RECONNECT_GRACE = 30;
+const MAX_LOBBIES = 100;
+const MAX_GAMES = 200;
+
+// ── Rate Limiting ────────────────────────────────────
+
+const rateLimitCounters = new Map(); // sessionId → { count, resetAt }
+const RATE_LIMIT_WINDOW = 2000; // ms
+const RATE_LIMIT_MAX = 30;      // max events per window
+
+function rateLimit(sessionId) {
+  const now = Date.now();
+  let entry = rateLimitCounters.get(sessionId);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW };
+    rateLimitCounters.set(sessionId, entry);
+  }
+  entry.count++;
+  return entry.count > RATE_LIMIT_MAX;
+}
+
+function cleanupRateLimit(sessionId) {
+  rateLimitCounters.delete(sessionId);
+}
 
 // ── Input Validation ──────────────────────────────────
 
@@ -106,6 +138,7 @@ function removeLobbyByHost(sessionId) {
 // ── Matchmaking ───────────────────────────────────────
 
 function matchPlayers(s1, s2, gameMode) {
+  if (games.size >= MAX_GAMES) return;
   const gameId = randomUUID();
   const currentTurn = Math.random() < 0.5 ? 0 : 1;
 
@@ -208,6 +241,14 @@ io.on('connection', (socket) => {
   liveSockets.set(sessionId, socket);
   socket.sessionId = sessionId;
 
+  // Rate-limit wrapper — drop events from abusive clients
+  socket.use(([event], next) => {
+    if (rateLimit(sessionId)) {
+      return; // silently drop
+    }
+    next();
+  });
+
   // Check for active game to reconnect to
   const playerInfo = players.get(sessionId);
   if (playerInfo) {
@@ -260,6 +301,7 @@ io.on('connection', (socket) => {
     if (password && (typeof password !== 'string' || password.length > 30)) return;
 
     removeLobbyByHost(sessionId);
+    if (lobbies.size >= MAX_LOBBIES) return;
 
     const lobbyId = randomUUID();
     lobbies.set(lobbyId, {
@@ -396,6 +438,11 @@ io.on('connection', (socket) => {
     const game = games.get(socket.gameId);
     if (!game || game.phase !== 'reposition') return;
 
+    // Track repositioned target for reconnection state
+    if (game.castles[socket.playerIndex]) {
+      game.castles[socket.playerIndex].target = { ...targetPos };
+    }
+
     game.phase = 'battle';
     game.currentTurn = 1 - game.currentTurn;
 
@@ -411,6 +458,7 @@ io.on('connection', (socket) => {
     liveSockets.delete(sessionId);
     lobbyClients.delete(sessionId);
     removeLobbyByHost(sessionId);
+    cleanupRateLimit(sessionId);
 
     if (!socket.gameId) return;
 

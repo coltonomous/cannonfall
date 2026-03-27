@@ -1,9 +1,33 @@
 import { MIN_POWER, MAX_POWER, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET } from './constants.js';
 
 const DIFFICULTY = {
-  EASY:   { spreadRad: 0.18, powerOffset: 8,  aimTime: 2.0, repositionStrategy: 'random' },
-  MEDIUM: { spreadRad: 0.10, powerOffset: 5,  aimTime: 1.5, repositionStrategy: 'covered' },
-  HARD:   { spreadRad: 0.04, powerOffset: 2,  aimTime: 1.0, repositionStrategy: 'optimal' },
+  EASY: {
+    spreadRad: 0.18,
+    powerOffset: 8,
+    aimTime: 2.5,
+    repositionStrategy: 'random',
+    preferHighArc: true,      // takes lobbing shots — easier to dodge/read
+    powerStrategy: 'random',  // picks random power, doesn't optimize
+    hesitation: 0.6,          // extra pause before firing (seconds)
+  },
+  MEDIUM: {
+    spreadRad: 0.10,
+    powerOffset: 5,
+    aimTime: 1.5,
+    repositionStrategy: 'covered',
+    preferHighArc: false,
+    powerStrategy: 'balanced', // tries to optimize but not perfectly
+    hesitation: 0.3,
+  },
+  HARD: {
+    spreadRad: 0.04,
+    powerOffset: 2,
+    aimTime: 0.8,
+    repositionStrategy: 'optimal',
+    preferHighArc: false,
+    powerStrategy: 'optimal',  // picks the best power for the trajectory
+    hesitation: 0.0,
+  },
 };
 
 export class AI {
@@ -44,7 +68,19 @@ export class AI {
   _zeroGAim(dx, dy, dz, dist, facing) {
     const yaw = this._computeYaw(dx, dz, facing);
     const pitch = Math.asin(Math.max(-1, Math.min(1, dy / dist)));
-    const power = Math.min(MAX_POWER, Math.max(MIN_POWER, dist * 1.2));
+
+    let power;
+    if (this.difficulty.powerStrategy === 'random') {
+      power = MIN_POWER + Math.random() * (MAX_POWER - MIN_POWER);
+    } else if (this.difficulty.powerStrategy === 'optimal') {
+      power = Math.min(MAX_POWER, Math.max(MIN_POWER, dist * 1.2));
+    } else {
+      // balanced: aim near the right power but with some variance
+      const ideal = Math.min(MAX_POWER, Math.max(MIN_POWER, dist * 1.2));
+      power = ideal + (Math.random() - 0.5) * 10;
+      power = Math.max(MIN_POWER, Math.min(MAX_POWER, power));
+    }
+
     return { yaw, pitch, power };
   }
 
@@ -53,11 +89,31 @@ export class AI {
 
     // Solve ballistic equation for pitch given power
     // h = d*tan(θ) - g*d²/(2*p²*cos²(θ))
-    // Rearranges to quadratic in tan(θ)
     let bestPitch = Math.PI / 4;
     let bestPower = (MIN_POWER + MAX_POWER) / 2;
+    const preferHigh = this.difficulty.preferHighArc;
 
-    for (let p = MAX_POWER; p >= MIN_POWER; p -= 2) {
+    // Power search strategy varies by difficulty
+    let powerStart, powerEnd, powerStep;
+    if (this.difficulty.powerStrategy === 'optimal') {
+      // Hard: sweep from max down, find first valid solution
+      powerStart = MAX_POWER;
+      powerEnd = MIN_POWER;
+      powerStep = -2;
+    } else if (this.difficulty.powerStrategy === 'random') {
+      // Easy: pick a random starting power, only search a narrow band
+      const randomCenter = MIN_POWER + Math.random() * (MAX_POWER - MIN_POWER);
+      powerStart = Math.min(MAX_POWER, randomCenter + 10);
+      powerEnd = Math.max(MIN_POWER, randomCenter - 10);
+      powerStep = -2;
+    } else {
+      // Balanced: sweep from max down like hard but with more variance later
+      powerStart = MAX_POWER;
+      powerEnd = MIN_POWER;
+      powerStep = -2;
+    }
+
+    for (let p = powerStart; powerStep < 0 ? p >= powerEnd : p <= powerEnd; p += powerStep) {
       const d = horizDist;
       const h = dy;
       const a = (g * d * d) / (2 * p * p);
@@ -65,36 +121,49 @@ export class AI {
       const disc = d * d - 4 * a * (h + a);
       if (disc < 0) continue;
 
-      // Low arc (prefer aggressive trajectory)
-      const tanTheta = (d - Math.sqrt(disc)) / (2 * a);
-      const pitch = Math.atan(tanTheta);
-      if (pitch >= MIN_PITCH && pitch <= MAX_PITCH) {
-        bestPitch = pitch;
+      // Low arc: (d - sqrt(disc)) / (2a), High arc: (d + sqrt(disc)) / (2a)
+      const tanLow = (d - Math.sqrt(disc)) / (2 * a);
+      const tanHigh = (d + Math.sqrt(disc)) / (2 * a);
+      const pitchLow = Math.atan(tanLow);
+      const pitchHigh = Math.atan(tanHigh);
+
+      // Easy AI prefers high arc (lobbing shots), others prefer low arc (aggressive)
+      const primary = preferHigh ? pitchHigh : pitchLow;
+      const fallback = preferHigh ? pitchLow : pitchHigh;
+
+      if (primary >= MIN_PITCH && primary <= MAX_PITCH) {
+        bestPitch = primary;
         bestPower = p;
         break;
       }
-
-      // High arc fallback
-      const tanTheta2 = (d + Math.sqrt(disc)) / (2 * a);
-      const pitch2 = Math.atan(tanTheta2);
-      if (pitch2 >= MIN_PITCH && pitch2 <= MAX_PITCH) {
-        bestPitch = pitch2;
+      if (fallback >= MIN_PITCH && fallback <= MAX_PITCH) {
+        bestPitch = fallback;
         bestPower = p;
         break;
       }
     }
 
-    // Vary power occasionally — don't always fire at max
-    const powerVariation = (Math.random() - 0.3) * 8; // slight bias toward lower power
-    bestPower = Math.max(MIN_POWER, Math.min(MAX_POWER, bestPower + powerVariation));
+    // Power variance by difficulty
+    if (this.difficulty.powerStrategy === 'random') {
+      // Easy: large random offset, often suboptimal
+      bestPower += (Math.random() - 0.3) * 16;
+    } else if (this.difficulty.powerStrategy === 'balanced') {
+      // Medium: moderate variance
+      bestPower += (Math.random() - 0.3) * 8;
+    }
+    // Hard: no additional variance — fire at computed optimal
+
+    bestPower = Math.max(MIN_POWER, Math.min(MAX_POWER, bestPower));
 
     // Recompute pitch for the varied power
     const a2 = (g * horizDist * horizDist) / (2 * bestPower * bestPower);
     if (a2 > 0) {
       const disc2 = horizDist * horizDist - 4 * a2 * (dy + a2);
       if (disc2 >= 0) {
-        const tanT = (horizDist - Math.sqrt(disc2)) / (2 * a2);
-        const p2 = Math.atan(tanT);
+        const tanPrimary = preferHigh
+          ? (horizDist + Math.sqrt(disc2)) / (2 * a2)
+          : (horizDist - Math.sqrt(disc2)) / (2 * a2);
+        const p2 = Math.atan(tanPrimary);
         if (p2 >= MIN_PITCH && p2 <= MAX_PITCH) bestPitch = p2;
       }
     }
@@ -137,13 +206,18 @@ export class AI {
         const shielding = layout.filter(b =>
           b.x < x && Math.abs(b.z - z) <= 1
         ).length;
-        scores.push({ x, z, cover: shielding });
+        // Also reward height variety — blocks stacked above offer vertical cover
+        const verticalCover = layout.filter(b =>
+          b.x === x && b.z === z && b.y > 0
+        ).length;
+        scores.push({ x, z, cover: shielding + verticalCover });
       }
     }
 
     if (strategy === 'optimal') {
       scores.sort((a, b) => b.cover - a.cover);
-      const top = scores.slice(0, Math.max(3, Math.floor(scores.length * 0.1)));
+      // Hard AI picks from top 3 positions (near-optimal with slight variance)
+      const top = scores.slice(0, 3);
       const pick = top[Math.floor(Math.random() * top.length)];
       return { x: pick.x, y: 0, z: pick.z };
     }

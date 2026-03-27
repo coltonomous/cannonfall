@@ -140,6 +140,26 @@ function handleReconnect(game, State, data) {
   game.buildBothCastles(castles[0], castles[1]);
   game.hp = [...hp];
   game.ui.updateHP(game.hp[0], game.hp[1]);
+
+  if (phase === 'reposition') {
+    // We reconnected during reposition — if it's our turn to reposition, start it
+    // The damaged player is the current turn holder during reposition
+    const damagedPlayer = data.game.currentTurn;
+    if (damagedPlayer === game.playerIndex) {
+      game.ui.showGame();
+      game.syncBattle();
+      game.startRepositionPhase(damagedPlayer);
+    } else {
+      // Opponent is repositioning — wait
+      game.ui.showGame();
+      game.syncBattle();
+      game.transition(State.OPPONENT_TURN);
+      game.ui.setStatus('Opponent repositioning...');
+    }
+    return;
+  }
+
+  // Default: battle phase — resume normal turn flow
   game.ui.showGame();
   game.syncBattle();
   game.onTurnStart();

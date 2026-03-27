@@ -550,7 +550,8 @@ export class Game {
     await this.ai.startAiming(aiCannon, aim);
     if (this.state !== State.AI_AIMING) return; // game was quit
 
-    await new Promise(r => setTimeout(r, 300));
+    const hesitation = Math.max(200, (this.ai.difficulty.hesitation || 0.3) * 1000);
+    await new Promise(r => { this._schedule(r, hesitation, State.AI_AIMING); });
     if (this.state !== State.AI_AIMING) return;
 
     this.battle.power = aim.power;
@@ -992,7 +993,7 @@ export class Game {
     line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
     container.prepend(line);
     while (container.children.length > 15) container.lastChild.remove();
-    setTimeout(() => { line.style.opacity = '0'; line.style.transition = 'opacity 1s'; }, 5000);
-    setTimeout(() => line.remove(), 6000);
+    this._schedule(() => { line.style.opacity = '0'; line.style.transition = 'opacity 1s'; }, 5000);
+    this._schedule(() => line.remove(), 6000);
   }
 }

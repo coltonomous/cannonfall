@@ -43,9 +43,6 @@ export class PhysicsWorld {
     // Per-mode block speed cap (0 = no cap)
     this._maxBlockSpeed = config?.maxBlockSpeed || 0;
 
-    // Exposed for camera rocking
-    this.currentShipRoll = 0;
-
     // Mesh-body pairs for syncing
     this.pairs = [];
 
@@ -131,7 +128,7 @@ export class PhysicsWorld {
 
         const roll  = Math.atan2(hStbd - hPort, sampleDist * 2) * 3.5;
         const pitch = Math.atan2(hBow - hStern, sampleDist * 2) * 2.5;
-        const heave = hCenter * 1.0;
+        const heave = hCenter;
 
         this._shipWaveCache.set(castleCenterX, { roll, pitch, heave });
       }

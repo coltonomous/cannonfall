@@ -137,7 +137,6 @@ export class SceneManager {
       const starCount = 2000;
       const positions = new Float32Array(starCount * 3);
       const colors = new Float32Array(starCount * 3);
-      const sizes = new Float32Array(starCount);
       for (let i = 0; i < starCount; i++) {
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
@@ -150,12 +149,10 @@ export class SceneManager {
         colors[i * 3] = 0.6 + brightness * 0.4;
         colors[i * 3 + 1] = 0.6 + brightness * 0.4;
         colors[i * 3 + 2] = 0.7 + brightness * 0.3; // slight blue tint
-        sizes[i] = 0.15 + brightness * 0.6;
       }
       const geo = new THREE.BufferGeometry();
       geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
       geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
-      geo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
       const mat = new THREE.PointsMaterial({ vertexColors: true, size: 0.4, sizeAttenuation: true });
       this.starfield = new THREE.Points(geo, mat);
       this.scene.add(this.starfield);

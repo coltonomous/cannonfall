@@ -1,39 +1,39 @@
-// ── Dimensions ─────────────────────────────────────────
+// Dimensions
 export const BLOCK_SIZE = 1;
 export const CASTLE_OFFSET_X = 20;
 
-// ── Cannon ─────────────────────────────────────────────
+// Cannon
 export const CANNON_HEIGHT = 10;
 export const CANNON_BARREL_LENGTH = 2;
 
-// ── Cannonball ─────────────────────────────────────────
+// Cannonball
 export const CANNONBALL_RADIUS = 0.4;
 export const CANNONBALL_MASS = 4;
 
-// ── Block Physics ──────────────────────────────────────
+// Block Physics
 export const BLOCK_MASS = 2;
 
-// ── Aim Limits ─────────────────────────────────────────
+// Aim Limits
 export const MIN_PITCH = -0.15; // allows aiming slightly below horizontal
 export const MAX_PITCH = Math.PI / 3;
 export const MAX_YAW_OFFSET = Math.PI / 4;
 
-// ── Power ──────────────────────────────────────────────
+// Power
 export const MIN_POWER = 10;
 export const MAX_POWER = 50;
 export const DEFAULT_POWER = 30;
 
-// ── Input Speeds ───────────────────────────────────────
+// Input Speeds
 export const AIM_SPEED = 0.012;
 export const TOUCH_AIM_SENSITIVITY = 0.004;
 export const CHARGE_FREQ = Math.PI * 1.5; // angular speed — one full swing ~2.1s
 export const PERFECT_MIN = 0.62; // sweet spot: 62-70% of power range — risk/reward: stop early for max power
 export const PERFECT_MAX = 0.70;
 
-// ── Physics ────────────────────────────────────────────
+// Physics
 export const PHYSICS_STEP = 1 / 60;
 
-// ── Building ───────────────────────────────────────────
+// Building
 export const BUILD_BUDGET = 500;
 
 export const BLOCK_TYPES = {
@@ -56,16 +56,16 @@ export const BLOCK_TYPES = {
   BARREL:      { cost: 1, size: [0.5, 0.5, 0.5] },    // vol ~0.05
 };
 
-// ── Hit Detection ─────────────────────────────────────
+// Hit Detection
 export const TARGET_HIT_RADIUS = 1.2;
 export const EXPLOSIVE_HIT_RADIUS = 2.0;
 
-// ── Projectile Settling ───────────────────────────────
+// Projectile Settling
 export const SETTLE_SPEED = 0.5;
 export const SETTLE_TIME = 1.5;
 export const IMPACT_SPEED_RATIO = 0.5;
 
-// ── Timing (seconds) ─────────────────────────────────
+// Timing (seconds)
 export const SKIP_PROMPT_DELAY = 2;
 export const AUTO_MISS_TIMEOUT = 6;
 export const MISS_TURN_DELAY = 1000;       // ms
@@ -73,21 +73,21 @@ export const HIT_DISPLAY_DELAY = 1500;     // ms
 export const PERFECT_FIRE_DELAY = 350;     // ms
 export const EXPLOSION_SETTLE_DELAY = 2500;// ms
 
-// ── Cannon Placement ──────────────────────────────────
+// Cannon Placement
 export const CANNON_OFFSET_FROM_CASTLE = 4;
 
-// ── Minimap ───────────────────────────────────────────
+// Minimap
 export const MINIMAP_RING_INNER = 0.6;
 export const MINIMAP_RING_OUTER = 0.9;
 export const MINIMAP_RING_Y = 25;
 
-// ── Network Timeouts (server) ─────────────────────────
+// Network Timeouts (server)
 export const SHOT_RESOLVE_TIMEOUT = 3000;  // ms
 export const FIRE_SAFETY_TIMEOUT = 10000;  // ms
 
-// ── Replay ──────────────────────────────────────────
+// Replay
 export const REPLAY_TIME_SCALE = 0.25;
 export const REPLAY_DURATION = 5; // seconds (real time)
 
-// ── HP ────────────────────────────────────────────────
+// HP
 export const MAX_HP = 3;

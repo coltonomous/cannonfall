@@ -3,11 +3,6 @@ import * as CANNON from 'cannon-es';
 import { Projectile } from './Projectile.js';
 import * as C from './constants.js';
 
-// Collision group flags for projectile-target detection
-const COL_DEFAULT = 1;
-const COL_TARGET = 2;
-const COL_PROJECTILE = 4;
-
 export class BattleController {
   constructor({ sceneManager, physicsWorld, particles, ui, network }) {
     this.sceneManager = sceneManager;
@@ -77,7 +72,7 @@ export class BattleController {
     if (gameMode) this.gameMode = gameMode;
   }
 
-  // ── Trajectory ────────────────────────────────────────────
+  // --- Trajectory ---
 
   _createTrajectoryLine() {
     const mat = new THREE.LineDashedMaterial({
@@ -183,8 +178,7 @@ export class BattleController {
     let vx = vel.x, vy = vel.y, vz = vel.z;
     let prevX = px, prevY = py, prevZ = pz;
 
-    const groundY = this.gameMode.waterSurface ? 0 : 0;
-    const ray = new CANNON.Ray();
+    const groundY = 0;
 
     for (let i = 0; i < this._trajMaxPoints; i++) {
       prevX = px; prevY = py; prevZ = pz;
@@ -203,7 +197,7 @@ export class BattleController {
           { skipBackfaces: true, collisionFilterMask: -1 },
           result
         );
-        if (hit && result.hasHit) {
+        if (hit) {
           const hp = result.hitPointWorld;
           // Skip ground plane hits — we handle ground intersection via the arc math
           if (result.body !== this.physicsWorld.groundBody &&
@@ -289,7 +283,7 @@ export class BattleController {
     }
   }
 
-  // ── Projectile Collision Setup ───────────────────────────
+  // --- Projectile Collision Setup ---
 
   _setupProjectileCollision() {
     this._pendingTargetHit = false;
@@ -323,7 +317,7 @@ export class BattleController {
     }
   }
 
-  // ── Firing ────────────────────────────────────────────────
+  // --- Firing ---
 
   fire(debugPerfectShot) {
     const powerFrac = (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
@@ -404,7 +398,7 @@ export class BattleController {
       5, this.gameMode.muzzleColor, 30, 0.6);
   }
 
-  // ── Projectile Tracking ───────────────────────────────────
+  // --- Projectile Tracking ---
 
   checkProjectile(dt) {
     if (!this.projectile || !this.projectile.alive) return false;
@@ -483,7 +477,7 @@ export class BattleController {
     this.sceneManager.setCameraPosition(camPos, pos);
   }
 
-  // ── Space Explosion ───────────────────────────────────────
+  // --- Space Explosion ---
 
   _handleSpaceImpact(hitBody) {
     if (!this.projectile || !this.projectile.alive) return;
@@ -570,7 +564,7 @@ export class BattleController {
     this._onShotMiss();
   }
 
-  // ── Camera ────────────────────────────────────────────────
+  // --- Camera ---
 
   updateCamera(snap = false) {
     const cannon = this.cannons[this.currentTurn];
@@ -604,7 +598,7 @@ export class BattleController {
     }
   }
 
-  // ── Replay ──────────────────────────────────────────────
+  // --- Replay ---
 
   startReplay() {
     if (!this._replayData) return false;
@@ -671,7 +665,7 @@ export class BattleController {
     this._replayElapsed = 0;
   }
 
-  // ── Fallen Blocks ─────────────────────────────────────────
+  // --- Fallen Blocks ---
 
   cleanupFallenBlocks() {
     const debrisField = this.gameMode.debrisField;
@@ -721,7 +715,7 @@ export class BattleController {
     }
   }
 
-  // ── Thruster Exhaust ────────────────────────────────────
+  // --- Thruster Exhaust ---
 
   updateThrusters() {
     for (const castle of this.castles) {
@@ -747,7 +741,7 @@ export class BattleController {
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────
+  // --- Helpers ---
 
   _scheduleTimer(fn, delay) {
     const id = setTimeout(() => {

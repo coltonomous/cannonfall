@@ -57,7 +57,6 @@ export class TargetRepositioner {
     this.orbit.orbitAngle = damagedPlayerIndex === 0 ? -Math.PI / 2 : Math.PI / 2;
     this.orbit.orbitPitch = Math.PI / 4;
     this.currentLayer = 0;
-    this._savedMaterials = [];
 
     this.group = new THREE.Group();
     this.sceneManager.scene.add(this.group);
@@ -255,11 +254,6 @@ export class TargetRepositioner {
     const gz = Math.round(point.z / BLOCK_SIZE + halfD);
     if (gx < 0 || gx >= this.castleGridW || gz < 0 || gz >= this.castleGridD) return null;
     return { x: gx, z: gz };
-  }
-
-  getHitY(point) {
-    // Returns the Y position to place the target — on top of whatever was hit
-    return Math.max(this._floorOffset + 0.5, point.y + 0.5);
   }
 
   // === EVENT HANDLERS ===

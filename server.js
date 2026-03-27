@@ -283,7 +283,7 @@ io.on('connection', (socket) => {
     }
   }
 
-  // ── Lobby ───────────────────────────────────────────
+  // Lobby
 
   socket.on('lobby:enter', () => {
     lobbyClients.add(sessionId);
@@ -356,7 +356,7 @@ io.on('connection', (socket) => {
     removeLobbyByHost(sessionId);
   });
 
-  // ── Build phase ─────────────────────────────────────
+  // Build phase
 
   socket.on('build-ready', ({ castleData }) => {
     if (!socket.gameId) return;
@@ -379,7 +379,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── Battle phase ────────────────────────────────────
+  // Battle phase
 
   socket.on('fire', ({ yaw, pitch, power }) => {
     if (!socket.gameId) return;
@@ -407,7 +407,7 @@ io.on('connection', (socket) => {
     }, FIRE_SAFETY_TIMEOUT));
   });
 
-  // ── Shot result ─────────────────────────────────────
+  // Shot result
 
   socket.on('shot-result', ({ hit, perfect }) => {
     if (!socket.gameId) return;
@@ -429,7 +429,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── Reposition ──────────────────────────────────────
+  // Reposition
 
   socket.on('reposition-complete', (data) => {
     if (!socket.gameId) return;
@@ -452,7 +452,7 @@ io.on('connection', (socket) => {
     }
   });
 
-  // ── Disconnect ──────────────────────────────────────
+  // Disconnect
 
   socket.on('disconnect', () => {
     liveSockets.delete(sessionId);

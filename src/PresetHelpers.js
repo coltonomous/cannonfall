@@ -92,14 +92,6 @@ export function fillHull(out, rows, y, fillType = 'CUBE', edgeType = 'RAMP', axi
     const key = axis === 'x' ? row.x : row.z;
     const min = axis === 'x' ? row.zMin : row.xMin;
     const max = axis === 'x' ? row.zMax : row.xMax;
-    const span = max - min;
-
-    // Check if this row is narrower than its neighbors (meaning it's a tapering end)
-    const prevRow = rowMap.get(key - 1);
-    const nextRow = rowMap.get(key + 1);
-    const isStartEnd = !prevRow || (prevRow && prevRow.min > min) || (prevRow && prevRow.max < max);
-    const isEndEnd = !nextRow || (nextRow && nextRow.min > min) || (nextRow && nextRow.max < max);
-
     for (let v = min; v <= max; v++) {
       const atMinV = v === min;
       const atMaxV = v === max;

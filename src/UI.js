@@ -144,7 +144,7 @@ export class UI {
     }
   }
 
-  // ── Disconnect Banner ────────────────────────────────
+  // Disconnect Banner
 
   showDisconnectBanner() {
     let banner = document.getElementById('disconnect-banner');
@@ -162,7 +162,7 @@ export class UI {
     if (banner) banner.classList.add('hidden');
   }
 
-  // ── Lobby ───────────────────────────────────────────
+  // Lobby
 
   showLobby() {
     this.overlay.classList.remove('hidden');

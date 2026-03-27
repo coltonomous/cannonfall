@@ -102,7 +102,7 @@ export function setupUIListeners(game, State) {
     }
   });
 
-  // ── Lobby UI ──────────────────────────────────────────
+  // Lobby UI
 
   ui.lobbyCreateBtn.addEventListener('click', () => {
     const name = ui.getLobbyName();

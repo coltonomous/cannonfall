@@ -136,7 +136,7 @@ export class OrbitController {
     this.updateCamera();
   }
 
-  // ── Touch orbit/zoom (called by CastleBuilder / TargetRepositioner) ──
+  // Touch orbit/zoom (called by CastleBuilder / TargetRepositioner)
 
   startTouchOrbit(x, y) {
     this._touchOrbitLast = { x, y };
@@ -168,13 +168,6 @@ export class OrbitController {
     this._touchOrbitLast = null;
     this._touchDragStart = null;
     this.isDragging = false;
-  }
-
-  wasTouchDrag() {
-    if (!this._touchDragStart || !this._touchOrbitLast) return this.isDragging;
-    const dx = this._touchOrbitLast.x - this._touchDragStart.x;
-    const dy = this._touchOrbitLast.y - this._touchDragStart.y;
-    return Math.abs(dx) > 10 || Math.abs(dy) > 10;
   }
 
   startPinch(dist) {

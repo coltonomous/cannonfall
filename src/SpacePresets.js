@@ -15,12 +15,6 @@ export function getSpacePreset(name) {
 // 7×13 grid (x=0-6, z=0-12). Broadside combat.
 // x = beam (faces opponent), z = keel (ship length). z=0 stern, z=12 bow.
 
-const HULL_Z = [
-  { z: 0,  xMin: 2, xMax: 4 },
-  { z: 1,  xMin: 1, xMax: 5 },
-  { z: 2,  xMin: 2, xMax: 4 },
-];
-
 function corvettePreset() {
   // Sleek fighter: narrow spine, swept wings, big engines, cockpit dome.
   const hullRows = [

@@ -506,11 +506,13 @@ body {
 .hp-icon.full {
   color: #e74c3c;
   text-shadow: 0 0 6px rgba(231, 76, 60, 0.5);
+  opacity: 1;
 }
 
 .hp-icon.empty {
   color: rgba(255, 255, 255, 0.15);
   text-shadow: none;
+  opacity: 0.15;
 }
 
 /* ── Lobby Screen ──────────────────────────────────── */

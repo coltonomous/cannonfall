@@ -44,9 +44,12 @@ export class BattleController {
     this._replayElapsed = 0;
     this._replayImpactPos = null;
 
-    // Trajectory line
+    // Trajectory / aiming visuals
     this.trajectoryLine = null;
+    this.impactBeam = null;
+    this.impactRing = null;
     this._createTrajectoryLine();
+    this._createImpactBeam();
 
     // Callbacks into Game (set via setCallbacks)
     this._onHitLocal = null;
@@ -119,6 +122,111 @@ export class BattleController {
     this.sceneManager.scene.add(this.reticle);
   }
 
+  _createImpactBeam() {
+    const beamHeight = 8;
+    const beamGeo = new THREE.CylinderGeometry(0.06, 0.06, beamHeight, 8);
+    const beamMat = new THREE.MeshBasicMaterial({
+      color: 0xff2222,
+      transparent: true,
+      opacity: 0.4,
+      depthWrite: false,
+    });
+    this.impactBeam = new THREE.Mesh(beamGeo, beamMat);
+    this.impactBeam.visible = false;
+    this.sceneManager.scene.add(this.impactBeam);
+
+    // Outer glow cylinder — wider, more transparent
+    const glowGeo = new THREE.CylinderGeometry(0.2, 0.2, beamHeight, 8);
+    const glowMat = new THREE.MeshBasicMaterial({
+      color: 0xff0000,
+      transparent: true,
+      opacity: 0.12,
+      depthWrite: false,
+    });
+    this.impactBeamGlow = new THREE.Mesh(glowGeo, glowMat);
+    this.impactBeam.add(this.impactBeamGlow);
+
+    // Base ring
+    const ringGeo = new THREE.RingGeometry(0.4, 0.7, 24);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0xff2222,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.impactRing = new THREE.Mesh(ringGeo, ringMat);
+    this.impactRing.rotation.x = -Math.PI / 2;
+    this.impactRing.visible = false;
+    this.sceneManager.scene.add(this.impactRing);
+
+    // Inner dot
+    const dotGeo = new THREE.RingGeometry(0, 0.15, 12);
+    const dotMat = new THREE.MeshBasicMaterial({
+      color: 0xff4444,
+      transparent: true,
+      opacity: 0.6,
+      side: THREE.DoubleSide,
+      depthWrite: false,
+    });
+    this.impactDot = new THREE.Mesh(dotGeo, dotMat);
+    this.impactDot.rotation.x = -Math.PI / 2;
+    this.impactRing.add(this.impactDot);
+  }
+
+  _findArcImpact(pos, vel, g) {
+    const step = 0.05;
+    let px = pos.x, py = pos.y, pz = pos.z;
+    let vx = vel.x, vy = vel.y, vz = vel.z;
+    let prevX = px, prevY = py, prevZ = pz;
+
+    const groundY = this.gameMode.waterSurface ? 0 : 0;
+    const ray = new CANNON.Ray();
+
+    for (let i = 0; i < this._trajMaxPoints; i++) {
+      prevX = px; prevY = py; prevZ = pz;
+      px += vx * step;
+      py += vy * step;
+      pz += vz * step;
+      vy -= g * step;
+
+      // Check for block collision via physics raycast between arc segments
+      if (i > 0) {
+        const from = new CANNON.Vec3(prevX, prevY, prevZ);
+        const to = new CANNON.Vec3(px, py, pz);
+        const result = new CANNON.RaycastResult();
+        const hit = this.physicsWorld.world.raycastClosest(
+          from, to,
+          { skipBackfaces: true, collisionFilterMask: -1 },
+          result
+        );
+        if (hit && result.hasHit) {
+          const hp = result.hitPointWorld;
+          // Skip ground plane hits — we handle ground intersection via the arc math
+          if (result.body !== this.physicsWorld.groundBody &&
+              !result.body.isTarget) {
+            return { x: hp.x, y: hp.y, z: hp.z };
+          }
+        }
+      }
+
+      // Ground intersection
+      if (py <= groundY) {
+        // Interpolate exact ground hit
+        const t = (prevY - groundY) / (prevY - py);
+        return {
+          x: prevX + (px - prevX) * t,
+          y: groundY,
+          z: prevZ + (pz - prevZ) * t,
+        };
+      }
+
+      if (py < this.gameMode.outOfBoundsY) break;
+    }
+
+    return null; // no impact found (shot goes out of bounds or too far)
+  }
+
   updateTrajectory() {
     const cannon = this.cannons[this.currentTurn];
     const pos = cannon.getFirePosition();
@@ -145,45 +253,36 @@ export class BattleController {
       const pulse = 1.0 + 0.15 * Math.sin(performance.now() * 0.004);
       this.reticle.scale.setScalar(pulse);
     } else {
-      // Normal gravity: show trajectory arc
+      // Normal gravity: show impact beam at predicted landing point
       this.reticle.visible = false;
-      this.trajectoryLine.visible = true;
+      this.trajectoryLine.visible = false;
 
       const vel = dir.clone().multiplyScalar(this.power);
-      const positions = this._trajPositions;
-      const distances = this._trajDistances;
-      const step = 0.05;
-      let px = pos.x, py = pos.y, pz = pos.z;
-      let vx = vel.x, vy = vel.y, vz = vel.z;
-      let count = 0;
-      let totalDist = 0;
+      const impact = this._findArcImpact(pos, vel, g);
 
-      for (let i = 0; i < this._trajMaxPoints; i++) {
-        const i3 = count * 3;
-        positions[i3] = px;
-        positions[i3 + 1] = py;
-        positions[i3 + 2] = pz;
+      if (impact) {
+        const beamHeight = 8;
+        this.impactBeam.position.set(impact.x, impact.y + beamHeight / 2, impact.z);
+        this.impactBeam.visible = true;
 
-        if (count > 0) {
-          const dx = px - positions[i3 - 3];
-          const dy = py - positions[i3 - 2];
-          const dz = pz - positions[i3 - 1];
-          totalDist += Math.sqrt(dx * dx + dy * dy + dz * dz);
-        }
-        distances[count] = totalDist;
-        count++;
+        this.impactRing.position.set(impact.x, impact.y + 0.05, impact.z);
+        this.impactRing.visible = true;
 
-        px += vx * step;
-        py += vy * step;
-        pz += vz * step;
-        vy -= g * step;
-        if (py < this.gameMode.outOfBoundsY) break;
+        // Pulse
+        const t = performance.now() * 0.005;
+        const pulse = 0.3 + 0.15 * Math.sin(t);
+        this.impactBeam.material.opacity = pulse;
+        this.impactBeamGlow.material.opacity = pulse * 0.3;
+        this.impactRing.material.opacity = pulse + 0.15;
+        this.impactDot.material.opacity = pulse + 0.25;
+
+        // Ring pulse scale
+        const ringPulse = 1.0 + 0.1 * Math.sin(t * 1.5);
+        this.impactRing.scale.setScalar(ringPulse);
+      } else {
+        this.impactBeam.visible = false;
+        this.impactRing.visible = false;
       }
-
-      const geo = this.trajectoryLine.geometry;
-      geo.attributes.position.needsUpdate = true;
-      geo.attributes.lineDistance.needsUpdate = true;
-      geo.setDrawRange(0, count);
     }
   }
 
@@ -236,6 +335,8 @@ export class BattleController {
 
     this.trajectoryLine.visible = false;
     this.reticle.visible = false;
+    if (this.impactBeam) this.impactBeam.visible = false;
+    if (this.impactRing) this.impactRing.visible = false;
     this._reticleInitialized = false;
     this._impactEmitted = false;
     this.settleTimer = 0;
@@ -657,6 +758,8 @@ export class BattleController {
     this.destroyProjectile();
     this.trajectoryLine.visible = false;
     this.reticle.visible = false;
+    if (this.impactBeam) this.impactBeam.visible = false;
+    if (this.impactRing) this.impactRing.visible = false;
     this.power = C.DEFAULT_POWER;
     this.charging = false;
     this.chargeTime = 0;

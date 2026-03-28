@@ -18,6 +18,10 @@ read-only: `src/constants.js`, `src/GameModes.js`, `src/Presets.js`,
 `src/PhysicsShapes.js`, and `src/AI.js` — ensuring the training env's
 physics and opponent behaviour stay in sync with the real game.
 
+The trained model is served as a static asset from `public/models/` and
+loaded in the browser via onnxruntime-web. Players can fight the RL agent
+by selecting "RL Agent" in the difficulty picker.
+
 ## Setup
 
 ```bash
@@ -38,18 +42,32 @@ pip install -r requirements.txt
 # Default: Castle mode, 200k steps, mixed layouts, heuristic opponent
 python train.py
 
-# With curriculum learning (simple → complex castles)
-python train.py --config configs/curriculum.json
+# Parallel envs (8 physics sims across CPU cores — ~4-6x faster)
+python train.py --n-envs 8
 
-# Custom config
-python train.py --config configs/default.json
+# With curriculum learning (simple → complex castles)
+python train.py --config configs/curriculum.json --n-envs 8
+
+# Quick iteration (simple walls, no opponent, 10k steps)
+python train.py --config configs/fast.json
 
 # Override mode and steps
 python train.py --mode SPACE --steps 500000
 
-# Resume from checkpoint
-python train.py --resume models/ppo_castle/checkpoint_100000_steps
+# Resume from checkpoint with harder settings
+python train.py --resume models/ppo_castle_final --config configs/curriculum.json --n-envs 8
 ```
+
+### Parallel Environments
+
+The bottleneck is the physics simulation (each shot runs ~600 cannon-es
+timesteps). `--n-envs N` spawns N independent bridge.js processes via
+`SubprocVecEnv`, running physics in parallel across CPU cores.
+
+Recommended values:
+- MacBook M4: `--n-envs 8` (uses efficiency + performance cores)
+- 4-core machine: `--n-envs 4`
+- CI / testing: `--n-envs 1` (default, simplest)
 
 ### Self-Play Training
 
@@ -58,6 +76,23 @@ Train against copies of the agent itself, with periodic opponent swaps:
 ```bash
 python train_selfplay.py
 python train_selfplay.py --steps 500000 --swap-freq 20000
+```
+
+### End-to-End: Train → Export → Play
+
+```bash
+# 1. Train (curriculum, 8 parallel envs)
+python train.py --config configs/curriculum.json --n-envs 8 --steps 100000
+
+# 2. Export to ONNX
+python export_onnx.py models/ppo_castle_final --output models/cannonfall_agent.onnx
+
+# 3. Copy to game's static assets
+cp models/cannonfall_agent.onnx ../public/models/cannonfall_agent.onnx
+
+# 4. Start the game
+cd .. && pnpm dev
+# Click "Com Match" → "RL Agent"
 ```
 
 Monitor with TensorBoard:
@@ -201,15 +236,16 @@ pnpm test
 ```
 training/
 ├── cannonfall_env.py      # Gymnasium environment (Python ↔ Node bridge)
-├── train.py               # PPO training script (Stable Baselines3)
+├── train.py               # PPO training script (parallel envs, curriculum)
 ├── train_selfplay.py      # Self-play training (agent vs agent)
 ├── evaluate.py            # Evaluation and comparison metrics
 ├── export_onnx.py         # Export trained model to ONNX
-├── callbacks.py           # CurriculumCallback and custom callbacks
-├── test_bridge.py         # Python ↔ Node integration tests
+├── callbacks.py           # CurriculumCallback for difficulty ramping
+├── test_bridge.py         # Python ↔ Node integration tests (8 tests)
 ├── requirements.txt       # Python dependencies
 ├── configs/
 │   ├── default.json       # Standard training config
+│   ├── fast.json          # Quick iteration (simple walls, 10k steps)
 │   └── curriculum.json    # Curriculum learning config
 ├── env/
 │   ├── HeadlessGame.js    # Headless cannon-es game simulation
@@ -217,7 +253,11 @@ training/
 │   ├── headless.test.js   # Training env tests (33 tests)
 │   └── package.json       # Node.js dependencies
 ├── inference/
-│   └── OnnxAI.js          # In-browser ONNX inference wrapper
+│   └── OnnxAI.js          # In-browser ONNX inference (AI.js drop-in)
 ├── models/                # Saved checkpoints (gitignored)
 └── logs/                  # TensorBoard logs (gitignored)
+
+public/
+└── models/
+    └── cannonfall_agent.onnx  # Trained model served to browser
 ```

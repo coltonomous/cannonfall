@@ -4,6 +4,7 @@
   "layout_generator": "mixed",
   "opponent_policy": "heuristic",
   "opponent_noise": 0.1,
+  "difficulty": 1.0,
   "total_timesteps": 200000,
 
   "learning_rate": 3e-4,

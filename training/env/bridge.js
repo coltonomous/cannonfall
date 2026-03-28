@@ -47,7 +47,11 @@ function handleMessage(msg) {
           send({ ok: false, error: 'No active game — call reset first' });
           break;
         }
-        const result = game.step(params.action);
+        const result = game.step(params.action, params.opponentAction);
+        // Include opponent observation for self-play
+        if (game.opponentPolicy === 'self') {
+          result.opponentObservation = game.getOpponentObservation();
+        }
         send({ ok: true, ...result });
         break;
       }

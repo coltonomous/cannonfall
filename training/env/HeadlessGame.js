@@ -13,6 +13,8 @@
 import * as CANNON from 'cannon-es';
 import { GAME_MODES } from '../../src/GameModes.js';
 import { getPreset } from '../../src/Presets.js';
+import { createAllPhysicsShapes } from '../../src/PhysicsShapes.js';
+import { AI } from '../../src/AI.js';
 import {
   BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES, CANNONBALL_RADIUS, CANNONBALL_MASS,
   TARGET_HIT_RADIUS, EXPLOSIVE_HIT_RADIUS,
@@ -25,67 +27,9 @@ import {
 // Re-export for bridge.js convenience
 export { GAME_MODES, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET, MIN_POWER, MAX_POWER };
 
-// ---------------------------------------------------------------------------
-// Physics shape factories (mirrors Castle.js / BlockGeometry.js, CANNON-only)
-// ---------------------------------------------------------------------------
-
-function createRampShape() {
-  const vertices = [
-    new CANNON.Vec3(-0.5, -0.5, -0.5),
-    new CANNON.Vec3( 0.5, -0.5, -0.5),
-    new CANNON.Vec3(-0.5, -0.5,  0.5),
-    new CANNON.Vec3( 0.5, -0.5,  0.5),
-    new CANNON.Vec3(-0.5,  0.5, -0.5),
-    new CANNON.Vec3(-0.5,  0.5,  0.5),
-  ];
-  const faces = [
-    [0, 1, 3, 2],
-    [0, 2, 5, 4],
-    [0, 4, 1],
-    [2, 3, 5],
-    [1, 4, 5, 3],
-  ];
-  return new CANNON.ConvexPolyhedron({ vertices, faces });
-}
-
-function createQuarterDomeShape() {
-  const verts = [
-    new CANNON.Vec3(-0.5, -0.5, -0.5),
-    new CANNON.Vec3( 0.0, -0.5, -0.5),
-    new CANNON.Vec3(-0.5, -0.5,  0.0),
-    new CANNON.Vec3(-0.5,  0.0, -0.5),
-    new CANNON.Vec3( 0.0,  0.0, -0.5),
-    new CANNON.Vec3(-0.5,  0.0,  0.0),
-    new CANNON.Vec3( 0.0, -0.5,  0.0),
-  ];
-  const faces = [
-    [3, 4, 1, 0],
-    [2, 5, 3, 0],
-    [1, 6, 2, 0],
-    [1, 6, 4],
-    [2, 5, 6],
-    [3, 4, 5],
-    [4, 6, 5],
-  ];
-  return new CANNON.ConvexPolyhedron({ vertices: verts, faces });
-}
-
-const PHYSICS_SHAPES = {
-  CUBE:         () => new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-  HALF_SLAB:    () => new CANNON.Box(new CANNON.Vec3(0.5, 0.25, 0.5)),
-  WALL:         () => new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
-  COLUMN:       () => new CANNON.Cylinder(0.25, 0.25, BLOCK_SIZE, 8),
-  BULLNOSE:     () => new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-  HALF_BULLNOSE:() => new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-  THRUSTER:     () => new CANNON.Cylinder(0.25, 0.3, 0.8, 8),
-  SHIELD:       () => new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
-  RAMP:         createRampShape,
-  QUARTER_DOME: createQuarterDomeShape,
-  PLANK:        () => new CANNON.Box(new CANNON.Vec3(1.0, 0.125, 0.25)),
-  CYLINDER:     () => new CANNON.Cylinder(0.5, 0.5, BLOCK_SIZE, 12),
-  LATTICE:      () => new CANNON.Box(new CANNON.Vec3(0.5, 0.05, 0.5)),
-  BARREL:       () => new CANNON.Cylinder(0.25, 0.25, 0.5, 8),
-};
+// Shared physics shapes (from src/PhysicsShapes.js — single source of truth)
+// Shapes are shared across bodies (cannon-es supports this).
+const PHYSICS_SHAPES = createAllPhysicsShapes();
 
 // ---------------------------------------------------------------------------
 // Layout generators
@@ -161,77 +105,49 @@ function mixedLayout(gridWidth, gridDepth, budget, gameMode) {
   return randomLayout(gridWidth, gridDepth, budget);
 }
 
+/**
+ * Curriculum-aware layout: difficulty 0→1 scales from simple walls
+ * (1-2 layers, few blocks) to full presets with mixed block types.
+ */
+function curriculumLayout(gridWidth, gridDepth, budget, gameMode, difficulty) {
+  if (difficulty < 0.3) {
+    // Easy: simple walls with 1-2 layers
+    const layers = 1 + Math.floor(difficulty * 6);
+    return simpleWallLayout(gridWidth, gridDepth, layers);
+  }
+  if (difficulty < 0.6) {
+    // Medium: random layouts with reduced budget
+    const scaledBudget = Math.floor(budget * (0.3 + difficulty));
+    return randomLayout(gridWidth, gridDepth, scaledBudget);
+  }
+  // Hard: full mixed layouts (presets + random)
+  return mixedLayout(gridWidth, gridDepth, budget, gameMode);
+}
+
 export const LAYOUT_GENERATORS = {
   simple_wall: (gw, gd) => simpleWallLayout(gw, gd, 3),
   random: (gw, gd, budget) => randomLayout(gw, gd, budget),
   preset: (_gw, _gd, _budget, gm) => presetLayout(gm),
   mixed: (gw, gd, budget, gm) => mixedLayout(gw, gd, budget, gm),
+  curriculum: (gw, gd, budget, gm, diff) => curriculumLayout(gw, gd, budget, gm, diff),
 };
 
 // ---------------------------------------------------------------------------
-// Heuristic opponent (mirrors src/AI.js trajectory solver)
+// Opponent policies — uses src/AI.js trajectory solver (single source of truth)
 // ---------------------------------------------------------------------------
 
-function heuristicAim(cannon, targetPos, gameMode, noise = 0.1) {
-  const dx = targetPos.x - cannon.x;
-  const dy = targetPos.y - cannon.y;
-  const dz = targetPos.z - cannon.z;
-  const horizDist = Math.sqrt(dx * dx + dz * dz);
+// Map noise levels to AI difficulty: low noise → HARD, high noise → EASY
+function noiseToAIDifficulty(noise) {
+  if (noise <= 0.05) return 'HARD';
+  if (noise <= 0.12) return 'MEDIUM';
+  return 'EASY';
+}
 
-  // Yaw
-  const baseAngle = cannon.facing === 1 ? Math.PI / 2 : -Math.PI / 2;
-  let yaw = Math.atan2(dx, dz) - baseAngle;
-  while (yaw > Math.PI) yaw -= 2 * Math.PI;
-  while (yaw < -Math.PI) yaw += 2 * Math.PI;
-
-  const g = Math.abs(gameMode.gravity);
-  let pitch, power;
-
-  if (g === 0) {
-    // Zero-G: direct line
-    pitch = Math.asin(Math.max(-1, Math.min(1, dy / Math.max(horizDist, 0.01))));
-    power = Math.min(MAX_POWER, Math.max(MIN_POWER, Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.2));
-  } else {
-    // Gravity: solve ballistic equation
-    pitch = Math.PI / 4;
-    power = (MIN_POWER + MAX_POWER) / 2;
-
-    for (let p = MAX_POWER; p >= MIN_POWER; p -= 2) {
-      const d = horizDist;
-      const h = dy;
-      const a = (g * d * d) / (2 * p * p);
-      if (a === 0) continue;
-      const disc = d * d - 4 * a * (h + a);
-      if (disc < 0) continue;
-
-      const tanLow = (d - Math.sqrt(disc)) / (2 * a);
-      const pitchLow = Math.atan(tanLow);
-
-      if (pitchLow >= MIN_PITCH && pitchLow <= MAX_PITCH) {
-        pitch = pitchLow;
-        power = p;
-        break;
-      }
-
-      const tanHigh = (d + Math.sqrt(disc)) / (2 * a);
-      const pitchHigh = Math.atan(tanHigh);
-      if (pitchHigh >= MIN_PITCH && pitchHigh <= MAX_PITCH) {
-        pitch = pitchHigh;
-        power = p;
-        break;
-      }
-    }
-  }
-
-  // Apply noise
-  yaw   += (Math.random() - 0.5) * 2 * noise;
-  pitch += (Math.random() - 0.5) * 2 * noise;
-  power += (Math.random() - 0.5) * 2 * noise * 20;
-
+/** Wrap HeadlessGame cannon state into the interface AI.computeAim expects. */
+function mockCannonForAI(cannon) {
   return {
-    yaw:   Math.max(-MAX_YAW_OFFSET, Math.min(MAX_YAW_OFFSET, yaw)),
-    pitch: Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch)),
-    power: Math.max(MIN_POWER, Math.min(MAX_POWER, power)),
+    group: { position: { x: cannon.x, y: cannon.y, z: cannon.z } },
+    facingDirection: cannon.facing,
   };
 }
 
@@ -258,6 +174,10 @@ export class HeadlessGame {
     this.opponentPolicy = options.opponentPolicy || 'heuristic';
     this.opponentNoise = options.opponentNoise ?? 0.1;
 
+    // Curriculum learning: difficulty scales from 0 (easiest) to 1 (hardest)
+    // Controls layout complexity and opponent skill
+    this.difficulty = Math.max(0, Math.min(1, options.difficulty ?? 1));
+
     // Per-player state
     this.hp = [MAX_HP, MAX_HP];
     this.turn = 0;           // always 0 when agent acts
@@ -280,6 +200,7 @@ export class HeadlessGame {
 
     this.lastShotResult = null;       // agent's last shot
     this.lastOpponentResult = null;   // opponent's last shot
+    this._opponentAI = null;          // lazily created AI instance
   }
 
   // -------------------------------------------------------------------
@@ -304,10 +225,12 @@ export class HeadlessGame {
 
   /**
    * Agent (player 0) takes a shot, then opponent (player 1) auto-fires.
+   * When opponentPolicy is 'self', pass opponentAction to drive player 1 externally.
    * @param {{yaw: number, pitch: number, power: number}} action
+   * @param {{yaw: number, pitch: number, power: number}} [opponentAction]
    * @returns {{ observation, reward, done, info }}
    */
-  step(action) {
+  step(action, opponentAction) {
     if (this.done) throw new Error('Game is done — call reset()');
 
     // --- Agent's turn (player 0) ---
@@ -328,6 +251,9 @@ export class HeadlessGame {
         this.done = true;
         this.winner = 0;
         reward = 100;
+      } else {
+        // Reposition defender's target after hit (matches real game flow)
+        this._repositionTarget(1);
       }
     } else {
       const maxRewardDist = 20;
@@ -346,7 +272,9 @@ export class HeadlessGame {
 
     // --- Opponent's turn (player 1) ---
     if (!this.done && this.opponentPolicy !== 'none') {
-      const oppAction = this._getOpponentAction();
+      const oppAction = this.opponentPolicy === 'self'
+        ? this._clampAction(opponentAction || randomAim())
+        : this._getOpponentAction();
       const oppResult = this._simulateShot(1, oppAction.yaw, oppAction.pitch, oppAction.power);
       this.lastOpponentResult = oppResult;
       this.turnCount++;
@@ -358,6 +286,9 @@ export class HeadlessGame {
           this.done = true;
           this.winner = 1;
           reward = -100;
+        } else {
+          // Reposition agent's target after opponent hit
+          this._repositionTarget(0);
         }
       }
 
@@ -392,9 +323,88 @@ export class HeadlessGame {
     if (this.opponentPolicy === 'random') {
       return randomAim();
     }
-    // heuristic (default)
+    // heuristic (default) — delegates to src/AI.js trajectory solver
+    if (!this._opponentAI) {
+      this._opponentAI = new AI(noiseToAIDifficulty(this.opponentNoise));
+    }
     const targetPos = this.castles[0].targetPos;
-    return heuristicAim(this.cannons[1], targetPos, this.gameMode, this.opponentNoise);
+    const aim = this._opponentAI.computeAim(
+      mockCannonForAI(this.cannons[1]),
+      targetPos,
+      this.gameMode,
+    );
+    return this._opponentAI.applySpread(aim);
+  }
+
+  /**
+   * Observation from player 1's perspective (for self-play training).
+   */
+  getOpponentObservation() {
+    const cannon = this.cannons[1];
+    const targetPos = this.castles[0].targetPos;
+    const cannonPos = { x: cannon.x, y: cannon.y, z: cannon.z };
+
+    const dx = targetPos.x - cannonPos.x;
+    const dy = targetPos.y - cannonPos.y;
+    const dz = targetPos.z - cannonPos.z;
+    const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+    const blockPositions = this.castles[0].blocks
+      .filter(b => !b.isFloor)
+      .map(b => ({
+        x: b.body.position.x - cannonPos.x,
+        y: b.body.position.y - cannonPos.y,
+        z: b.body.position.z - cannonPos.z,
+      }));
+
+    return {
+      cannonPos,
+      cannonFacing: cannon.facing,
+      cannonYaw: cannon.yaw,
+      cannonPitch: cannon.pitch,
+
+      targetDx: dx,
+      targetDy: dy,
+      targetDz: dz,
+      targetDist: dist,
+
+      blockCount: blockPositions.length,
+      blockPositions,
+
+      hp: [this.hp[1], this.hp[0]], // swapped perspective
+      turn: 0,
+      turnCount: this.turnCount,
+
+      lastHit: this.lastOpponentResult?.hit ?? null,
+      lastClosestDist: this.lastOpponentResult?.closestDist ?? null,
+      opponentLastHit: this.lastShotResult?.hit ?? null,
+    };
+  }
+
+  // -------------------------------------------------------------------
+  // Target repositioning (after a hit, move target to a new grid cell)
+  // -------------------------------------------------------------------
+
+  _repositionTarget(player) {
+    const castle = this.castles[player];
+    const gw = castle.gridWidth;
+    const gd = castle.gridDepth;
+
+    // Pick a random valid grid cell (simple strategy for training variety)
+    const newX = 1 + Math.floor(Math.random() * (gw - 2));
+    const newZ = 1 + Math.floor(Math.random() * (gd - 2));
+    const halfW = Math.floor(gw / 2);
+    const halfD = Math.floor(gd / 2);
+    const hasGround = this.gameMode.hasGround && !this.gameMode.waterSurface;
+    const floorOffset = hasGround ? BLOCK_SIZE / 2 : 0;
+
+    const worldX = castle.centerX + (newX - halfW) * BLOCK_SIZE;
+    const worldY = floorOffset + 0.5;
+    const worldZ = (newZ - halfD) * BLOCK_SIZE;
+
+    // Update physics body position
+    castle.targetBody.position.set(worldX, worldY, worldZ);
+    castle.targetPos = { x: worldX, y: worldY, z: worldZ };
   }
 
   // -------------------------------------------------------------------
@@ -491,7 +501,7 @@ export class HeadlessGame {
 
     for (let player = 0; player < 2; player++) {
       const centerX = player === 0 ? -offsetX : offsetX;
-      const { layout, target } = gen(gw, gd, budget, this.gameMode);
+      const { layout, target } = gen(gw, gd, budget, this.gameMode, this.difficulty);
       const halfW = Math.floor(gw / 2);
       const halfD = Math.floor(gd / 2);
       const floorOffset = hasGround ? BLOCK_SIZE / 2 : 0;
@@ -504,7 +514,7 @@ export class HeadlessGame {
           for (let gz = 0; gz < gd; gz++) {
             const body = new CANNON.Body({
               mass: 0,
-              shape: PHYSICS_SHAPES.CUBE(),
+              shape: PHYSICS_SHAPES.CUBE,
               position: new CANNON.Vec3(
                 centerX + (gx - halfW) * BLOCK_SIZE,
                 0,
@@ -523,7 +533,7 @@ export class HeadlessGame {
         const typeInfo = BLOCK_TYPES[block.type];
         if (!typeInfo) continue;
 
-        const shapeFactory = PHYSICS_SHAPES[block.type] || PHYSICS_SHAPES.CUBE;
+        const shape = PHYSICS_SHAPES[block.type] || PHYSICS_SHAPES.CUBE;
         const yOffset = typeInfo.size[1] < BLOCK_SIZE ? typeInfo.size[1] / 2 : BLOCK_SIZE / 2;
         const worldX = centerX + (block.x - halfW) * BLOCK_SIZE;
         const worldY = block.y * BLOCK_SIZE + yOffset + floorOffset;
@@ -532,7 +542,7 @@ export class HeadlessGame {
         const blockMass = (typeInfo.mass ?? BLOCK_MASS) * massMultiplier;
         const body = new CANNON.Body({
           mass: blockMass,
-          shape: shapeFactory(),
+          shape,
           position: new CANNON.Vec3(worldX, worldY, worldZ),
           material: this.defaultMaterial,
         });

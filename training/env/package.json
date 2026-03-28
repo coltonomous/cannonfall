@@ -1,0 +1,13 @@
+{
+  "name": "cannonfall-training-env",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "description": "Headless Cannonfall environment for RL training",
+  "scripts": {
+    "bridge": "node bridge.js"
+  },
+  "dependencies": {
+    "cannon-es": "^0.20.0"
+  }
+}

@@ -13,6 +13,7 @@ import { InputHandler } from './InputHandler.js';
 import { BattleController } from './BattleController.js';
 import { decode as decodeDesign } from './DesignCodec.js';
 import { AI } from './AI.js';
+import { OnnxAI } from '../training/inference/OnnxAI.js';
 import { getPreset } from './Presets.js';
 import { setupUIListeners } from './UIListeners.js';
 import { setupNetworkListeners } from './NetworkHandler.js';
@@ -271,11 +272,32 @@ export class Game {
 
   // ── AI Mode ──────────────────────────────────────────────
 
-  startAIMatch() {
+  async startAIMatch() {
     this.applyGameMode();
     this.mode = 'ai';
     this.playerIndex = 0;
-    this.ai = new AI(this.aiDifficulty);
+
+    if (this.aiDifficulty === 'RL') {
+      const onnxAi = new OnnxAI();
+      try {
+        const ort = await import('onnxruntime-web');
+        await onnxAi.load('/models/cannonfall_agent.onnx', ort);
+      } catch (err) {
+        console.warn('RL model not available, falling back to HARD AI:', err.message);
+        this.ai = new AI('HARD');
+        this._continueAIMatch();
+        return;
+      }
+      this.ai = onnxAi;
+    } else {
+      this.ai = new AI(this.aiDifficulty);
+    }
+
+    this._continueAIMatch();
+  }
+
+  _continueAIMatch() {
+    if (this.ai && this.ai.resetGame) this.ai.resetGame();
     this.castleData[0] = this.getPlayerBuild();
     if (this.castleData[0]) {
       this._startAIBattle();
@@ -544,7 +566,7 @@ export class Game {
   async _startAITurn() {
     const aiCannon = this.cannons[1];
     const targetPos = this.castles[0].getTargetPosition();
-    const idealAim = this.ai.computeAim(aiCannon, targetPos, this.gameMode);
+    const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
     const aim = this.ai.applySpread(idealAim);
 
     await this.ai.startAiming(aiCannon, aim);
@@ -627,6 +649,17 @@ export class Game {
     const damage = this.battle._perfectShot ? 2 : 1;
     this.hp[damagedPlayer] = Math.max(0, this.hp[damagedPlayer] - damage);
     this.ui.updateHP(this.hp[0], this.hp[1]);
+
+    // Track hit for RL agent observation state
+    if (this.ai && this.ai.updateAfterShot) {
+      if (this.currentTurn === 1) {
+        // AI just hit the player's target
+        this.ai.updateAfterShot(true, 0);
+      } else {
+        // Player hit the AI's target
+        this.ai.updateAfterOpponentShot(true);
+      }
+    }
     this.debugLog('Target hit!', { damage, perfect: this.battle._perfectShot, hp: [...this.hp] });
 
     if (this.hp[damagedPlayer] <= 0) {
@@ -663,6 +696,15 @@ export class Game {
   }
 
   onShotMiss() {
+    // Track miss for RL agent observation state
+    if (this.ai && this.ai.updateAfterShot) {
+      if (this.currentTurn === 1) {
+        this.ai.updateAfterShot(false, Infinity);
+      } else {
+        this.ai.updateAfterOpponentShot(false);
+      }
+    }
+
     if (this.mode === 'local' || this.mode === 'ai') {
       this.transition(State.TURN_TRANSITION);
       this.ui.setStatus('');

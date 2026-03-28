@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Training artifacts
+models/
+logs/
+*.onnx
+*.pth
+
+# Node
+env/node_modules/

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES, TARGET_HIT_RADIUS } from './constants.js';
-import { createAllBlockGeometries, createRampPhysicsShape, createQuarterDomePhysicsShape } from './BlockGeometry.js';
+import { createAllBlockGeometries } from './BlockGeometry.js';
+import { createAllPhysicsShapes } from './PhysicsShapes.js';
 
 export class Castle {
   constructor(sceneManager, physicsWorld, centerX, color, gridConfig) {
@@ -35,23 +36,8 @@ export class Castle {
     const geometries = createAllBlockGeometries();
     this._sharedGeometries = geometries;
 
-    // Physics shapes
-    const shapes = {
-      CUBE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-      HALF_SLAB: new CANNON.Box(new CANNON.Vec3(0.5, 0.25, 0.5)),
-      WALL: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
-      COLUMN: new CANNON.Cylinder(0.25, 0.25, BLOCK_SIZE, 8),
-      BULLNOSE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-      THRUSTER: new CANNON.Cylinder(0.25, 0.3, 0.8, 8),
-      SHIELD: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.25)),
-      HALF_BULLNOSE: new CANNON.Box(new CANNON.Vec3(0.5, 0.5, 0.5)),
-      RAMP: createRampPhysicsShape(),
-      QUARTER_DOME: createQuarterDomePhysicsShape(),
-      PLANK: new CANNON.Box(new CANNON.Vec3(1.0, 0.125, 0.25)),
-      CYLINDER: new CANNON.Cylinder(0.5, 0.5, BLOCK_SIZE, 12),
-      LATTICE: new CANNON.Box(new CANNON.Vec3(0.5, 0.05, 0.5)),
-      BARREL: new CANNON.Cylinder(0.25, 0.25, 0.5, 8),
-    };
+    // Physics shapes (shared with headless training env)
+    const shapes = createAllPhysicsShapes();
 
     const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
 

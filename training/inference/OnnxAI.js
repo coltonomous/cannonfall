@@ -46,6 +46,17 @@ export class OnnxAI {
     this._blockCountNorm = 0;
     this._avgBlockDistNorm = 0;
     this._blockSpreadYNorm = 0;
+
+    // AI.js compatibility — Game.js reads these for animation timing
+    this.difficulty = { hesitation: 0.15, aimTime: 0.6 };
+    this._aiming = false;
+    this._aimProgress = 0;
+    this._startYaw = 0;
+    this._startPitch = 0;
+    this._targetYaw = 0;
+    this._targetPitch = 0;
+    this._targetPower = 0;
+    this._aimResolve = null;
   }
 
   /**
@@ -126,6 +137,72 @@ export class OnnxAI {
 
     return { yaw, pitch, power };
   }
+
+  // -------------------------------------------------------------------
+  // AI.js drop-in methods — required by Game.js for animation/aiming
+  // -------------------------------------------------------------------
+
+  /** No spread needed — model output is already the final action. */
+  applySpread(aim) {
+    return aim;
+  }
+
+  /** Animate cannon toward target aim over time. Returns Promise. */
+  startAiming(cannon, targetAim) {
+    return new Promise((resolve) => {
+      this._aiming = true;
+      this._aimProgress = 0;
+      this._startYaw = cannon.yaw;
+      this._startPitch = cannon.pitch;
+      this._targetYaw = Math.max(-MAX_YAW, Math.min(MAX_YAW, targetAim.yaw));
+      this._targetPitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX, targetAim.pitch));
+      this._targetPower = Math.max(POWER_MIN, Math.min(POWER_MAX, targetAim.power));
+      this._aimResolve = resolve;
+    });
+  }
+
+  /** Called each frame during AI_AIMING. Returns true when done. */
+  updateAiming(dt, cannon) {
+    if (!this._aiming) return false;
+    this._aimProgress += dt / this.difficulty.aimTime;
+    if (this._aimProgress >= 1) {
+      this._aimProgress = 1;
+      this._aiming = false;
+      cannon.yaw = this._targetYaw;
+      cannon.pitch = this._targetPitch;
+      cannon.updateAim();
+      if (this._aimResolve) {
+        this._aimResolve({
+          yaw: this._targetYaw,
+          pitch: this._targetPitch,
+          power: this._targetPower,
+        });
+        this._aimResolve = null;
+      }
+      return true;
+    }
+    const t = this._aimProgress;
+    const ease = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    cannon.yaw = this._startYaw + (this._targetYaw - this._startYaw) * ease;
+    cannon.pitch = this._startPitch + (this._targetPitch - this._startPitch) * ease;
+    cannon.updateAim();
+    return false;
+  }
+
+  /** Pick a random reposition target (RL agent doesn't optimise this). */
+  chooseRepositionTarget(castle) {
+    const gw = castle.gridWidth || 9;
+    const gd = castle.gridDepth || 9;
+    return {
+      x: Math.floor(Math.random() * gw),
+      y: 0,
+      z: Math.floor(Math.random() * gd),
+    };
+  }
+
+  // -------------------------------------------------------------------
+  // State tracking
+  // -------------------------------------------------------------------
 
   /**
    * Call after each shot to update internal state for next observation.

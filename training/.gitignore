@@ -9,6 +9,7 @@ venv/
 models/
 logs/
 *.onnx
+*.pth
 
 # Node
 env/node_modules/

@@ -41,7 +41,9 @@ def make_env(cfg: dict) -> CannonFallEnv:
         CannonFallEnv(
             mode=cfg.get("mode", "CASTLE"),
             max_turns=cfg.get("max_turns", 30),
-            layout_generator=cfg.get("layout_generator", "random"),
+            layout_generator=cfg.get("layout_generator", "mixed"),
+            opponent_policy=cfg.get("opponent_policy", "heuristic"),
+            opponent_noise=cfg.get("opponent_noise", 0.1),
         )
     )
 

@@ -6,10 +6,13 @@
  * external agent (Python via bridge.js).
  *
  * One instance = one full game (two castles, two cannons, turn-based).
+ * The agent always controls player 0.  Player 1 is driven by the
+ * configured opponent policy (random, heuristic, or none).
  */
 
 import * as CANNON from 'cannon-es';
 import { GAME_MODES } from '../../src/GameModes.js';
+import { getPreset } from '../../src/Presets.js';
 import {
   BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES, CANNONBALL_RADIUS, CANNONBALL_MASS,
   TARGET_HIT_RADIUS, EXPLOSIVE_HIT_RADIUS,
@@ -85,7 +88,7 @@ const PHYSICS_SHAPES = {
 };
 
 // ---------------------------------------------------------------------------
-// Simple preset layouts for training variety
+// Layout generators
 // ---------------------------------------------------------------------------
 
 /** Generate a simple wall castle for training. */
@@ -94,7 +97,6 @@ function simpleWallLayout(gridWidth, gridDepth, layers = 3) {
   for (let y = 0; y < layers; y++) {
     for (let x = 0; x < gridWidth; x++) {
       for (let z = 0; z < gridDepth; z++) {
-        // Build outer walls only (perimeter + partial fill)
         const isPerimeter = x === 0 || x === gridWidth - 1 || z === 0 || z === gridDepth - 1;
         if (isPerimeter || (y === 0 && Math.random() < 0.3)) {
           layout.push({ x, y, z, type: 'CUBE', rotation: 0 });
@@ -102,7 +104,7 @@ function simpleWallLayout(gridWidth, gridDepth, layers = 3) {
       }
     }
   }
-  return layout;
+  return { layout, target: { x: Math.floor(gridWidth / 2), y: 0, z: Math.floor(gridDepth / 2) } };
 }
 
 /** Random castle with mixed block types. */
@@ -111,7 +113,6 @@ function randomLayout(gridWidth, gridDepth, budget) {
   let spent = 0;
   const types = Object.keys(BLOCK_TYPES);
 
-  // Ground layer — mostly filled
   for (let x = 0; x < gridWidth; x++) {
     for (let z = 0; z < gridDepth; z++) {
       if (Math.random() < 0.6) {
@@ -125,7 +126,6 @@ function randomLayout(gridWidth, gridDepth, budget) {
     }
   }
 
-  // Upper layers — sparser
   for (let y = 1; y < 4; y++) {
     for (let x = 0; x < gridWidth; x++) {
       for (let z = 0; z < gridDepth; z++) {
@@ -141,13 +141,107 @@ function randomLayout(gridWidth, gridDepth, budget) {
     }
   }
 
-  return layout;
+  const tx = 1 + Math.floor(Math.random() * (gridWidth - 2));
+  const tz = 1 + Math.floor(Math.random() * (gridDepth - 2));
+  return { layout, target: { x: tx, y: 0, z: tz } };
+}
+
+/** Pick a random game preset for the current mode. */
+function presetLayout(gameMode) {
+  const presetNames = gameMode.presets;
+  const name = presetNames[Math.floor(Math.random() * presetNames.length)];
+  return getPreset(name, gameMode.id);
+}
+
+/** Mix of presets and random layouts for training variety. */
+function mixedLayout(gridWidth, gridDepth, budget, gameMode) {
+  if (Math.random() < 0.5) {
+    return presetLayout(gameMode);
+  }
+  return randomLayout(gridWidth, gridDepth, budget);
 }
 
 export const LAYOUT_GENERATORS = {
   simple_wall: (gw, gd) => simpleWallLayout(gw, gd, 3),
   random: (gw, gd, budget) => randomLayout(gw, gd, budget),
+  preset: (_gw, _gd, _budget, gm) => presetLayout(gm),
+  mixed: (gw, gd, budget, gm) => mixedLayout(gw, gd, budget, gm),
 };
+
+// ---------------------------------------------------------------------------
+// Heuristic opponent (mirrors src/AI.js trajectory solver)
+// ---------------------------------------------------------------------------
+
+function heuristicAim(cannon, targetPos, gameMode, noise = 0.1) {
+  const dx = targetPos.x - cannon.x;
+  const dy = targetPos.y - cannon.y;
+  const dz = targetPos.z - cannon.z;
+  const horizDist = Math.sqrt(dx * dx + dz * dz);
+
+  // Yaw
+  const baseAngle = cannon.facing === 1 ? Math.PI / 2 : -Math.PI / 2;
+  let yaw = Math.atan2(dx, dz) - baseAngle;
+  while (yaw > Math.PI) yaw -= 2 * Math.PI;
+  while (yaw < -Math.PI) yaw += 2 * Math.PI;
+
+  const g = Math.abs(gameMode.gravity);
+  let pitch, power;
+
+  if (g === 0) {
+    // Zero-G: direct line
+    pitch = Math.asin(Math.max(-1, Math.min(1, dy / Math.max(horizDist, 0.01))));
+    power = Math.min(MAX_POWER, Math.max(MIN_POWER, Math.sqrt(dx * dx + dy * dy + dz * dz) * 1.2));
+  } else {
+    // Gravity: solve ballistic equation
+    pitch = Math.PI / 4;
+    power = (MIN_POWER + MAX_POWER) / 2;
+
+    for (let p = MAX_POWER; p >= MIN_POWER; p -= 2) {
+      const d = horizDist;
+      const h = dy;
+      const a = (g * d * d) / (2 * p * p);
+      if (a === 0) continue;
+      const disc = d * d - 4 * a * (h + a);
+      if (disc < 0) continue;
+
+      const tanLow = (d - Math.sqrt(disc)) / (2 * a);
+      const pitchLow = Math.atan(tanLow);
+
+      if (pitchLow >= MIN_PITCH && pitchLow <= MAX_PITCH) {
+        pitch = pitchLow;
+        power = p;
+        break;
+      }
+
+      const tanHigh = (d + Math.sqrt(disc)) / (2 * a);
+      const pitchHigh = Math.atan(tanHigh);
+      if (pitchHigh >= MIN_PITCH && pitchHigh <= MAX_PITCH) {
+        pitch = pitchHigh;
+        power = p;
+        break;
+      }
+    }
+  }
+
+  // Apply noise
+  yaw   += (Math.random() - 0.5) * 2 * noise;
+  pitch += (Math.random() - 0.5) * 2 * noise;
+  power += (Math.random() - 0.5) * 2 * noise * 20;
+
+  return {
+    yaw:   Math.max(-MAX_YAW_OFFSET, Math.min(MAX_YAW_OFFSET, yaw)),
+    pitch: Math.max(MIN_PITCH, Math.min(MAX_PITCH, pitch)),
+    power: Math.max(MIN_POWER, Math.min(MAX_POWER, power)),
+  };
+}
+
+function randomAim() {
+  return {
+    yaw:   (Math.random() - 0.5) * 2 * MAX_YAW_OFFSET,
+    pitch: MIN_PITCH + Math.random() * (MAX_PITCH - MIN_PITCH),
+    power: MIN_POWER + Math.random() * (MAX_POWER - MIN_POWER),
+  };
+}
 
 // ---------------------------------------------------------------------------
 // HeadlessGame
@@ -160,11 +254,13 @@ export class HeadlessGame {
     if (!this.gameMode) throw new Error(`Unknown game mode: ${modeName}`);
 
     this.maxTurns = options.maxTurns || 30;
-    this.layoutGenerator = options.layoutGenerator || 'random';
+    this.layoutGenerator = options.layoutGenerator || 'mixed';
+    this.opponentPolicy = options.opponentPolicy || 'heuristic';
+    this.opponentNoise = options.opponentNoise ?? 0.1;
 
     // Per-player state
     this.hp = [MAX_HP, MAX_HP];
-    this.turn = 0;           // 0 = player 0 fires, 1 = player 1 fires
+    this.turn = 0;           // always 0 when agent acts
     this.turnCount = 0;
     this.done = false;
     this.winner = null;
@@ -182,7 +278,8 @@ export class HeadlessGame {
       { x: 0, y: CANNON_HEIGHT, z: 0, yaw: 0, pitch: Math.PI / 6, facing: -1 },
     ];
 
-    this.lastShotResult = null;  // { hit, closestDist, impactPos }
+    this.lastShotResult = null;       // agent's last shot
+    this.lastOpponentResult = null;   // opponent's last shot
   }
 
   // -------------------------------------------------------------------
@@ -200,58 +297,76 @@ export class HeadlessGame {
     this.done = false;
     this.winner = null;
     this.lastShotResult = null;
+    this.lastOpponentResult = null;
 
     return this.getObservation();
   }
 
   /**
-   * Agent takes a shot.
+   * Agent (player 0) takes a shot, then opponent (player 1) auto-fires.
    * @param {{yaw: number, pitch: number, power: number}} action
    * @returns {{ observation, reward, done, info }}
    */
   step(action) {
     if (this.done) throw new Error('Game is done — call reset()');
 
+    // --- Agent's turn (player 0) ---
     const { yaw, pitch, power } = this._clampAction(action);
-    const cannon = this.cannons[this.turn];
+    const cannon = this.cannons[0];
     cannon.yaw = yaw;
     cannon.pitch = pitch;
 
-    // Fire
-    const result = this._simulateShot(this.turn, yaw, pitch, power);
+    const result = this._simulateShot(0, yaw, pitch, power);
     this.lastShotResult = result;
+    this.turnCount++;
 
-    // Reward shaping
-    let reward = -0.1;  // small cost per shot
+    let reward = -0.1;
     if (result.hit) {
       reward = 10;
-      const defender = 1 - this.turn;
-      this.hp[defender]--;
-      if (this.hp[defender] <= 0) {
+      this.hp[1]--;
+      if (this.hp[1] <= 0) {
         this.done = true;
-        this.winner = this.turn;
+        this.winner = 0;
         reward = 100;
       }
     } else {
-      // Proximity bonus: closer to target = higher reward (0 to 1)
       const maxRewardDist = 20;
       if (result.closestDist < maxRewardDist) {
         reward += (1 - result.closestDist / maxRewardDist);
       }
     }
 
-    // Advance turn
-    this.turnCount++;
+    // Check turn limit after agent's shot
     if (!this.done && this.turnCount >= this.maxTurns) {
       this.done = true;
-      // Winner = player with more HP, or defender advantage
       if (this.hp[0] !== this.hp[1]) {
         this.winner = this.hp[0] > this.hp[1] ? 0 : 1;
       }
     }
 
-    if (!this.done) {
-      this.turn = 1 - this.turn;
+    // --- Opponent's turn (player 1) ---
+    if (!this.done && this.opponentPolicy !== 'none') {
+      const oppAction = this._getOpponentAction();
+      const oppResult = this._simulateShot(1, oppAction.yaw, oppAction.pitch, oppAction.power);
+      this.lastOpponentResult = oppResult;
+      this.turnCount++;
+
+      if (oppResult.hit) {
+        this.hp[0]--;
+        reward -= 5;  // penalty for getting hit
+        if (this.hp[0] <= 0) {
+          this.done = true;
+          this.winner = 1;
+          reward = -100;
+        }
+      }
+
+      if (!this.done && this.turnCount >= this.maxTurns) {
+        this.done = true;
+        if (this.hp[0] !== this.hp[1]) {
+          this.winner = this.hp[0] > this.hp[1] ? 0 : 1;
+        }
+      }
     }
 
     return {
@@ -261,6 +376,7 @@ export class HeadlessGame {
       info: {
         hit: result.hit,
         closestDist: result.closestDist,
+        opponentHit: this.lastOpponentResult?.hit ?? false,
         turnCount: this.turnCount,
         hp: [...this.hp],
         winner: this.winner,
@@ -269,25 +385,34 @@ export class HeadlessGame {
   }
 
   // -------------------------------------------------------------------
-  // Observation
+  // Opponent policy
+  // -------------------------------------------------------------------
+
+  _getOpponentAction() {
+    if (this.opponentPolicy === 'random') {
+      return randomAim();
+    }
+    // heuristic (default)
+    const targetPos = this.castles[0].targetPos;
+    return heuristicAim(this.cannons[1], targetPos, this.gameMode, this.opponentNoise);
+  }
+
+  // -------------------------------------------------------------------
+  // Observation (always from player 0's perspective)
   // -------------------------------------------------------------------
 
   getObservation() {
-    const attacker = this.turn;
-    const defender = 1 - this.turn;
-    const cannon = this.cannons[attacker];
-    const targetPos = this.castles[defender].targetPos;
+    const cannon = this.cannons[0];
+    const targetPos = this.castles[1].targetPos;
     const cannonPos = { x: cannon.x, y: cannon.y, z: cannon.z };
 
-    // Relative target position (from cannon)
     const dx = targetPos.x - cannonPos.x;
     const dy = targetPos.y - cannonPos.y;
     const dz = targetPos.z - cannonPos.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    // Block positions of defender castle (relative to cannon)
-    const blockPositions = this.castles[defender].blocks
-      .filter(b => !b.body.isSleeping || true)  // include all
+    const blockPositions = this.castles[1].blocks
+      .filter(b => !b.isFloor)
       .map(b => ({
         x: b.body.position.x - cannonPos.x,
         y: b.body.position.y - cannonPos.y,
@@ -295,30 +420,26 @@ export class HeadlessGame {
       }));
 
     return {
-      // Agent's cannon
       cannonPos,
       cannonFacing: cannon.facing,
       cannonYaw: cannon.yaw,
       cannonPitch: cannon.pitch,
 
-      // Target relative to cannon
       targetDx: dx,
       targetDy: dy,
       targetDz: dz,
       targetDist: dist,
 
-      // Defender castle blocks (relative positions)
       blockCount: blockPositions.length,
       blockPositions,
 
-      // Game state
       hp: [...this.hp],
-      turn: this.turn,
+      turn: 0,
       turnCount: this.turnCount,
 
-      // Last shot feedback
       lastHit: this.lastShotResult?.hit ?? null,
       lastClosestDist: this.lastShotResult?.closestDist ?? null,
+      opponentLastHit: this.lastOpponentResult?.hit ?? null,
     };
   }
 
@@ -366,12 +487,11 @@ export class HeadlessGame {
     const damping = this.gameMode.blockDamping || 0.01;
     const hasGround = this.gameMode.hasGround && !this.gameMode.waterSurface;
 
-    // Generate layouts
-    const gen = LAYOUT_GENERATORS[this.layoutGenerator] || LAYOUT_GENERATORS.random;
+    const gen = LAYOUT_GENERATORS[this.layoutGenerator] || LAYOUT_GENERATORS.mixed;
 
     for (let player = 0; player < 2; player++) {
       const centerX = player === 0 ? -offsetX : offsetX;
-      const layout = gen(gw, gd, budget);
+      const { layout, target } = gen(gw, gd, budget, this.gameMode);
       const halfW = Math.floor(gw / 2);
       const halfD = Math.floor(gd / 2);
       const floorOffset = hasGround ? BLOCK_SIZE / 2 : 0;
@@ -417,8 +537,9 @@ export class HeadlessGame {
           material: this.defaultMaterial,
         });
 
+        const rotX = (block.rotX || 0) * Math.PI / 2;
         const rotY = (block.rotation || 0) * Math.PI / 2;
-        body.quaternion.setFromEuler(0, rotY, 0);
+        body.quaternion.setFromEuler(rotX, rotY, 0);
 
         if (block.type === 'SHIELD') body.isShield = true;
         body.linearDamping = damping;
@@ -432,12 +553,11 @@ export class HeadlessGame {
         blocks.push({ body, type: block.type });
       }
 
-      // Place target at a random interior grid position
-      const tx = 1 + Math.floor(Math.random() * (gw - 2));
-      const tz = 1 + Math.floor(Math.random() * (gd - 2));
-      const targetWorldX = centerX + (tx - halfW) * BLOCK_SIZE;
-      const targetWorldY = floorOffset + 0.5;
-      const targetWorldZ = (tz - halfD) * BLOCK_SIZE;
+      // Place target
+      const tp = target || { x: Math.floor(gw / 2), y: 0, z: Math.floor(gd / 2) };
+      const targetWorldX = centerX + (tp.x - halfW) * BLOCK_SIZE;
+      const targetWorldY = (tp.y || 0) * BLOCK_SIZE + floorOffset + 0.5;
+      const targetWorldZ = (tp.z - halfD) * BLOCK_SIZE;
 
       const targetBody = new CANNON.Body({
         mass: 0,
@@ -463,7 +583,6 @@ export class HeadlessGame {
     const offsetX = this.gameMode.castleOffsetX;
     const defaultPitch = this.gameMode.defaultPitch ?? Math.PI / 6;
 
-    // Player 0 cannon: to the left of castle 0 (facing +X toward castle 1)
     this.cannons[0] = {
       x: -offsetX - 4,
       y: CANNON_HEIGHT,
@@ -473,7 +592,6 @@ export class HeadlessGame {
       facing: 1,
     };
 
-    // Player 1 cannon: to the right of castle 1 (facing -X toward castle 0)
     this.cannons[1] = {
       x: offsetX + 4,
       y: CANNON_HEIGHT,
@@ -499,30 +617,25 @@ export class HeadlessGame {
   _simulateShot(attacker, yaw, pitch, power) {
     const cannon = this.cannons[attacker];
     const defender = 1 - attacker;
-    const targetBody = this.castles[defender].targetBody;
     const targetPos = this.castles[defender].targetPos;
 
     // Compute fire position and direction (mirrors CannonTower logic)
     const baseAngle = cannon.facing === 1 ? Math.PI / 2 : -Math.PI / 2;
     const totalYaw = baseAngle + yaw;
 
-    // Fire direction from yaw + pitch
     const cosPitch = Math.cos(pitch);
     const dirX = Math.sin(totalYaw) * cosPitch;
     const dirY = Math.sin(pitch);
     const dirZ = Math.cos(totalYaw) * cosPitch;
 
-    // Fire position = cannon pos + barrel offset in fire direction
     const fireX = cannon.x + dirX * CANNON_BARREL_LENGTH;
     const fireY = cannon.y + dirY * CANNON_BARREL_LENGTH;
     const fireZ = cannon.z + dirZ * CANNON_BARREL_LENGTH;
 
-    // Velocity
     const vx = dirX * power;
     const vy = dirY * power;
     const vz = dirZ * power;
 
-    // Create projectile body
     const projBody = new CANNON.Body({
       mass: CANNONBALL_MASS,
       shape: new CANNON.Sphere(CANNONBALL_RADIUS),
@@ -536,7 +649,6 @@ export class HeadlessGame {
     projBody.ccdIterations = 10;
     this.world.addBody(projBody);
 
-    // Track collisions
     let hit = false;
     let hitBlock = false;
     let explosionPos = null;
@@ -554,29 +666,24 @@ export class HeadlessGame {
       }
     });
 
-    // Step physics until projectile settles or goes OOB
     let closestDist = Infinity;
     let settleTimer = 0;
-    const maxSteps = 600;  // 10 seconds at 60fps
+    const maxSteps = 600;
     const outOfBoundsY = this.gameMode.outOfBoundsY;
 
     for (let i = 0; i < maxSteps; i++) {
       this.world.step(PHYSICS_STEP);
 
-      // Track closest approach to target
       const dx = projBody.position.x - targetPos.x;
       const dy = projBody.position.y - targetPos.y;
       const dz = projBody.position.z - targetPos.z;
       const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
       if (dist < closestDist) closestDist = dist;
 
-      // Direct hit via collision
       if (hit) break;
 
-      // Explosion hit check (space mode)
       if (explosionPos) {
         this._applyExplosion(explosionPos, defender, power);
-        // Check if explosion hit target
         const edx = explosionPos.x - targetPos.x;
         const edy = explosionPos.y - targetPos.y;
         const edz = explosionPos.z - targetPos.z;
@@ -585,11 +692,9 @@ export class HeadlessGame {
         break;
       }
 
-      // Out of bounds
       if (projBody.position.y < outOfBoundsY) break;
       if (Math.abs(projBody.position.x) > 80 || Math.abs(projBody.position.z) > 80) break;
 
-      // Settled (stopped moving)
       const speed = projBody.velocity.length();
       if (speed < SETTLE_SPEED) {
         settleTimer += PHYSICS_STEP;
@@ -599,7 +704,6 @@ export class HeadlessGame {
       }
     }
 
-    // Clean up projectile
     this.world.removeBody(projBody);
 
     return {

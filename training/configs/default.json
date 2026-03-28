@@ -1,0 +1,23 @@
+{
+  "mode": "CASTLE",
+  "max_turns": 30,
+  "layout_generator": "random",
+  "total_timesteps": 200000,
+
+  "learning_rate": 3e-4,
+  "n_steps": 2048,
+  "batch_size": 64,
+  "n_epochs": 10,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "clip_range": 0.2,
+  "ent_coef": 0.01,
+
+  "policy_kwargs": {
+    "net_arch": [128, 128]
+  },
+
+  "checkpoint_freq": 10000,
+  "eval_freq": 5000,
+  "eval_episodes": 10
+}

@@ -17,8 +17,12 @@ import torch
 from stable_baselines3 import PPO
 
 
-def export(model_path: str, output_path: str | None = None, obs_size: int = 11):
-    """Export SB3 PPO policy network to ONNX."""
+def export(model_path: str, output_path: str | None = None, obs_size: int = 14):
+    """Export SB3 PPO policy network to ONNX.
+
+    The input tensor is named "observation" to match OnnxAI.js.
+    The output tensor is named "action" (deterministic mean).
+    """
     print(f"Loading model from {model_path}...")
     model = PPO.load(model_path)
     policy = model.policy
@@ -68,6 +72,17 @@ def export(model_path: str, output_path: str | None = None, obs_size: int = 11):
     try:
         import onnxruntime as ort
         sess = ort.InferenceSession(output_path)
+
+        # Print tensor names so users can verify OnnxAI.js compatibility
+        input_names = [inp.name for inp in sess.get_inputs()]
+        output_names = [out.name for out in sess.get_outputs()]
+        print(f"Input tensors:  {input_names}")
+        print(f"Output tensors: {output_names}")
+
+        if "observation" not in input_names:
+            print(f"WARNING: Expected input named 'observation', got {input_names}.")
+            print("  Update OnnxAI.js feed key to match.")
+
         test_obs = np.random.randn(1, obs_size).astype(np.float32)
         result = sess.run(None, {"observation": test_obs})
         print(f"Verification passed. Output shape: {result[0].shape}")
@@ -83,7 +98,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export trained model to ONNX")
     parser.add_argument("model_path", type=str, help="Path to saved SB3 model")
     parser.add_argument("--output", type=str, default=None, help="Output ONNX path")
-    parser.add_argument("--obs-size", type=int, default=11, help="Observation vector size")
+    parser.add_argument("--obs-size", type=int, default=14, help="Observation vector size")
     args = parser.parse_args()
 
     export(args.model_path, args.output, args.obs_size)

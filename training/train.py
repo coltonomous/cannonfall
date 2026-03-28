@@ -22,6 +22,7 @@ from stable_baselines3.common.callbacks import (
 )
 from stable_baselines3.common.monitor import Monitor
 
+from callbacks import CurriculumCallback
 from cannonfall_env import CannonFallEnv
 
 _HERE = Path(__file__).resolve().parent
@@ -106,11 +107,15 @@ def main():
         model = PPO(**ppo_kwargs)
 
     # Callbacks
+    callbacks = []
+
     checkpoint_cb = CheckpointCallback(
         save_freq=cfg.get("checkpoint_freq", 10_000),
         save_path=str(_MODELS_DIR / run_name),
         name_prefix="checkpoint",
     )
+    callbacks.append(checkpoint_cb)
+
     eval_cb = EvalCallback(
         eval_env,
         best_model_save_path=str(_MODELS_DIR / run_name),
@@ -119,6 +124,18 @@ def main():
         n_eval_episodes=cfg.get("eval_episodes", 10),
         deterministic=True,
     )
+    callbacks.append(eval_cb)
+
+    # Curriculum: auto-ramp difficulty if layout_generator is "curriculum"
+    if cfg.get("layout_generator") == "curriculum":
+        curriculum_cb = CurriculumCallback(
+            start=cfg.get("curriculum_start", 0.1),
+            end=cfg.get("curriculum_end", 1.0),
+            ramp_steps=int(total_timesteps * cfg.get("curriculum_ramp_frac", 0.75)),
+            verbose=1,
+        )
+        callbacks.append(curriculum_cb)
+        print(f"Curriculum: difficulty {curriculum_cb.start} → {curriculum_cb.end}")
 
     print(f"Training PPO on {mode} mode for {total_timesteps:,} steps")
     print(f"Models → {_MODELS_DIR / run_name}")
@@ -127,7 +144,7 @@ def main():
     try:
         model.learn(
             total_timesteps=total_timesteps,
-            callback=[checkpoint_cb, eval_cb],
+            callback=callbacks,
             tb_log_name=run_name,
         )
     except KeyboardInterrupt:

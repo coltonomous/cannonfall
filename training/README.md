@@ -13,9 +13,10 @@ Python (SB3/Gymnasium)          Node.js (cannon-es)
 └──────────────────┘  stdout    └─────────────────┘
 ```
 
-The training pipeline is fully separate from the game. The shared code
-is `src/constants.js`, `src/GameModes.js`, and `src/Presets.js` (imported
-read-only by HeadlessGame.js for accurate physics and layout replication).
+The training pipeline is fully separate from the game. Shared imports are
+read-only: `src/constants.js`, `src/GameModes.js`, `src/Presets.js`,
+`src/PhysicsShapes.js`, and `src/AI.js` — ensuring the training env's
+physics and opponent behaviour stay in sync with the real game.
 
 ## Setup
 
@@ -37,6 +38,9 @@ pip install -r requirements.txt
 # Default: Castle mode, 200k steps, mixed layouts, heuristic opponent
 python train.py
 
+# With curriculum learning (simple → complex castles)
+python train.py --config configs/curriculum.json
+
 # Custom config
 python train.py --config configs/default.json
 
@@ -45,6 +49,15 @@ python train.py --mode SPACE --steps 500000
 
 # Resume from checkpoint
 python train.py --resume models/ppo_castle/checkpoint_100000_steps
+```
+
+### Self-Play Training
+
+Train against copies of the agent itself, with periodic opponent swaps:
+
+```bash
+python train_selfplay.py
+python train_selfplay.py --steps 500000 --swap-freq 20000
 ```
 
 Monitor with TensorBoard:
@@ -72,29 +85,48 @@ python export_onnx.py models/ppo_castle_final
 python export_onnx.py models/ppo_castle_final --output models/cannonfall_agent.onnx
 ```
 
-The exported model can be loaded in the browser using `inference/OnnxAI.js`
-with onnxruntime-web. See that file for the integration interface.
+The export prints input/output tensor names for verification. The input
+tensor is named `"observation"` and output is `"action"` — matching the
+feed keys in `inference/OnnxAI.js`.
+
+The exported model can be loaded in the browser:
+
+```js
+import { OnnxAI } from './training/inference/OnnxAI.js';
+
+const ai = new OnnxAI();
+await ai.load('/models/cannonfall_agent.onnx');
+
+const aim = await ai.computeAim(cannon, targetPos, gameMode);
+// aim = { yaw, pitch, power }
+```
 
 ## How It Works
 
 ### Environment
 
-Each step = one agent shot + one opponent shot.  The agent always
-controls player 0.  Player 1 is driven by the configured opponent
-policy (`heuristic`, `random`, or `none`).
+Each step = one agent shot + one opponent shot. The agent always
+controls player 0. Player 1 is driven by the configured opponent
+policy (`heuristic`, `random`, `self`, or `none`).
 
-**Observation (11 features):**
+After a target hit, the defender's target automatically repositions
+to a new grid cell (matching real game flow).
 
-| Feature | Description |
-|---------|-------------|
-| targetDx/Dy/Dz | Target position relative to cannon |
-| targetDist | Euclidean distance to target |
-| cannonFacing | Direction cannon faces (+1 or -1) |
-| hp_self / hp_opp | Hit points for each player |
-| turnFrac | Progress through the game (0→1) |
-| lastHit | Whether the previous shot hit (0/1) |
-| lastClosestDist | How close the last shot came (normalised) |
-| opponentLastHit | Whether the opponent hit us last turn (0/1) |
+**Observation (14 features):**
+
+| # | Feature | Description |
+|---|---------|-------------|
+| 0–2 | targetDx/Dy/Dz | Target position relative to cannon |
+| 3 | targetDist | Euclidean distance to target |
+| 4 | cannonFacing | Direction cannon faces (+1 or -1) |
+| 5–6 | hp_self / hp_opp | Hit points for each player |
+| 7 | turnFrac | Progress through the game (0→1) |
+| 8 | lastHit | Whether the previous shot hit (0/1) |
+| 9 | lastClosestDist | How close the last shot came (normalised) |
+| 10 | opponentLastHit | Whether the opponent hit us last turn (0/1) |
+| 11 | blockCountNorm | Number of defender blocks (normalised) |
+| 12 | avgBlockDist | Mean distance to defender blocks (normalised) |
+| 13 | blockSpreadY | Vertical spread of defender blocks (normalised) |
 
 **Action (3 continuous values, normalised to [-1, 1]):**
 - **Yaw**: horizontal aim angle
@@ -114,10 +146,11 @@ policy (`heuristic`, `random`, or `none`).
 
 ### Opponent Policies
 
-- **`heuristic`** (default): Trajectory solver mirroring the game's AI
-  with configurable noise. Uses ballistic equations for gravity modes
-  and direct aim for zero-G.
+- **`heuristic`** (default): Uses `src/AI.js` trajectory solver with
+  difficulty-based spread. Low noise → HARD, high noise → EASY.
 - **`random`**: Uniformly random yaw/pitch/power.
+- **`self`**: Self-play — opponent driven by an external policy
+  (e.g. a frozen copy of the agent). See `train_selfplay.py`.
 - **`none`**: Opponent never fires. Useful for aim-only training.
 
 ### Castle Layouts
@@ -126,22 +159,40 @@ policy (`heuristic`, `random`, or `none`).
 - **`random`**: Procedurally generated with mixed block types
 - **`simple_wall`**: Perimeter walls for easy training warmup
 - **`mixed`** (default): 50/50 split of preset and random layouts
+- **`curriculum`**: Difficulty-scaled — simple walls at low difficulty,
+  full presets at high difficulty. Use with `CurriculumCallback`.
+
+### Curriculum Learning
+
+The `curriculum` layout generator + `CurriculumCallback` automatically
+ramp difficulty during training:
+
+- **difficulty 0–0.3**: Simple walls (1–2 layers)
+- **difficulty 0.3–0.6**: Random layouts with reduced budget
+- **difficulty 0.6–1.0**: Full mixed layouts (presets + random)
+
+```bash
+python train.py --config configs/curriculum.json
+```
 
 ### Headless Physics
 
 `HeadlessGame.js` replicates the game's cannon-es physics simulation
-without any THREE.js dependency. It builds castles from real preset
-layouts, fires projectiles, detects collisions, and handles explosions
-(space mode) — all driven by the same constants, game modes, and
-preset definitions as the real game.
+without any THREE.js dependency. It imports shared code from `src/`
+(physics shapes, AI trajectory solver, constants, game modes, presets)
+to stay in sync with the real game. This minimises code drift — changes
+to the game's physics or AI automatically propagate to the training env.
 
 ## Testing
 
 ```bash
-# Run training env tests (33 tests)
+# Run training env tests (33 JS tests)
 npx vitest run training/env/headless.test.js
 
-# Run all tests (game + training)
+# Run bridge integration tests (8 Python tests)
+python test_bridge.py
+
+# Run all game + training tests
 pnpm test
 ```
 
@@ -151,26 +202,22 @@ pnpm test
 training/
 ├── cannonfall_env.py      # Gymnasium environment (Python ↔ Node bridge)
 ├── train.py               # PPO training script (Stable Baselines3)
+├── train_selfplay.py      # Self-play training (agent vs agent)
 ├── evaluate.py            # Evaluation and comparison metrics
 ├── export_onnx.py         # Export trained model to ONNX
+├── callbacks.py           # CurriculumCallback and custom callbacks
+├── test_bridge.py         # Python ↔ Node integration tests
 ├── requirements.txt       # Python dependencies
 ├── configs/
-│   └── default.json       # Hyperparameters
+│   ├── default.json       # Standard training config
+│   └── curriculum.json    # Curriculum learning config
 ├── env/
 │   ├── HeadlessGame.js    # Headless cannon-es game simulation
 │   ├── bridge.js          # stdin/stdout JSON protocol server
 │   ├── headless.test.js   # Training env tests (33 tests)
 │   └── package.json       # Node.js dependencies
 ├── inference/
-│   └── OnnxAI.js          # In-browser inference wrapper
+│   └── OnnxAI.js          # In-browser ONNX inference wrapper
 ├── models/                # Saved checkpoints (gitignored)
 └── logs/                  # TensorBoard logs (gitignored)
 ```
-
-## Next Steps
-
-- [ ] Add castle block positions to observation space (spatial awareness)
-- [ ] Implement self-play (agent vs agent training)
-- [ ] Curriculum learning (simple castles → complex castles)
-- [ ] Per-mode training configs (gravity vs zero-G physics differ significantly)
-- [ ] Target repositioning after hits (matches real game flow)

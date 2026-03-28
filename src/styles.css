@@ -786,6 +786,16 @@ body {
   transform: scale(0.97);
 }
 
+.diff-btn-rl {
+  border-color: rgba(155, 89, 182, 0.4);
+  background: rgba(155, 89, 182, 0.15);
+}
+
+.diff-btn-rl:hover {
+  background: rgba(155, 89, 182, 0.3);
+  border-color: #9b59b6;
+}
+
 /* ── Disabled Match Buttons ──────────────────────── */
 .menu-buttons button:disabled {
   opacity: 0.35;

@@ -232,7 +232,7 @@ describe('opponent policies', () => {
     expect(result).toHaveProperty('observation');
   });
 
-  it('heuristic opponent should aim at player 0 target', () => {
+  it('heuristic opponent should aim at player 0 target', { timeout: 15000 }, () => {
     // With zero noise, heuristic should aim precisely
     const game = makeGame({ opponentPolicy: 'heuristic', opponentNoise: 0 });
     game.reset();

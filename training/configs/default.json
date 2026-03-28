@@ -1,7 +1,9 @@
 {
   "mode": "CASTLE",
   "max_turns": 30,
-  "layout_generator": "random",
+  "layout_generator": "mixed",
+  "opponent_policy": "heuristic",
+  "opponent_noise": 0.1,
   "total_timesteps": 200000,
 
   "learning_rate": 3e-4,

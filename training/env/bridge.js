@@ -48,8 +48,6 @@ function handleMessage(msg) {
           break;
         }
         const result = game.step(params.action);
-        // Flatten blockPositions out of observation for bandwidth
-        // Python side reconstructs the fixed-size array
         send({ ok: true, ...result });
         break;
       }

@@ -43,6 +43,9 @@ export class OnnxAI {
     this._opponentLastHit = false;
     this._hp = MAX_HP;
     this._opponentHp = MAX_HP;
+    this._blockCountNorm = 0;
+    this._avgBlockDistNorm = 0;
+    this._blockSpreadYNorm = 0;
   }
 
   /**
@@ -87,7 +90,9 @@ export class OnnxAI {
     const dz = targetPos.z - cp.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    // Construct the same 11-element observation vector as cannonfall_env.py
+    // Construct the same 14-element observation vector as cannonfall_env.py
+    // Block summary features default to 0 — in browser, call updateBlockInfo()
+    // each turn to provide spatial awareness of the opponent's castle.
     const obs = new Float32Array([
       dx,
       dy,
@@ -102,6 +107,9 @@ export class OnnxAI {
         ? Math.min(this._lastClosestDist / MAX_DIST, 1)
         : 1,
       this._opponentLastHit ? 1 : 0,
+      this._blockCountNorm,
+      this._avgBlockDistNorm,
+      this._blockSpreadYNorm,
     ]);
 
     const tensor = new this._ort.Tensor('float32', obs, [1, obs.length]);
@@ -140,6 +148,27 @@ export class OnnxAI {
     if (opponentHit) this._hp--;
   }
 
+  /**
+   * Update block summary features for spatial awareness.
+   * Call each turn with the opponent castle's block positions relative to cannon.
+   * @param {{ x: number, y: number, z: number }[]} blockPositions
+   */
+  updateBlockInfo(blockPositions) {
+    const maxBlocks = 200;
+    this._blockCountNorm = Math.min(blockPositions.length / maxBlocks, 1);
+    if (blockPositions.length > 0) {
+      const dists = blockPositions.map(b => Math.sqrt(b.x * b.x + b.y * b.y + b.z * b.z));
+      this._avgBlockDistNorm = Math.min(
+        dists.reduce((a, d) => a + d, 0) / dists.length / MAX_DIST, 1
+      );
+      const ys = blockPositions.map(b => b.y);
+      this._blockSpreadYNorm = Math.min((Math.max(...ys) - Math.min(...ys)) / 10, 1);
+    } else {
+      this._avgBlockDistNorm = 0;
+      this._blockSpreadYNorm = 0;
+    }
+  }
+
   /** Reset state for a new game. */
   resetGame() {
     this._turnCount = 0;
@@ -148,5 +177,8 @@ export class OnnxAI {
     this._opponentLastHit = false;
     this._hp = MAX_HP;
     this._opponentHp = MAX_HP;
+    this._blockCountNorm = 0;
+    this._avgBlockDistNorm = 0;
+    this._blockSpreadYNorm = 0;
   }
 }

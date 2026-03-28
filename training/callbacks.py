@@ -35,11 +35,16 @@ class CurriculumCallback(BaseCallback):
         frac = min(self.num_timesteps / self.ramp_steps, 1.0)
         difficulty = self.start + (self.end - self.start) * frac
 
-        # Update difficulty on the training env (unwrap Monitor if needed)
-        env = self.training_env.envs[0]
-        inner = env.env if hasattr(env.env, "_difficulty") else env
-        if hasattr(inner, "_difficulty"):
-            inner._difficulty = difficulty
+        # Update difficulty on all training envs (handles both
+        # DummyVecEnv and SubprocVecEnv via set_attr)
+        try:
+            self.training_env.set_attr("_difficulty", difficulty)
+        except AttributeError:
+            # Fallback for DummyVecEnv: unwrap manually
+            for env in self.training_env.envs:
+                inner = env.env if hasattr(env.env, "_difficulty") else env
+                if hasattr(inner, "_difficulty"):
+                    inner._difficulty = difficulty
 
         if self.verbose > 0 and self.num_timesteps % 10_000 == 0:
             self.logger.record("curriculum/difficulty", difficulty)

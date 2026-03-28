@@ -6,10 +6,12 @@ __pycache__/
 venv/
 
 # Training artifacts
-models/
+models/logs/
 logs/
-*.onnx
 *.pth
+
+# ONNX models tracked in public/models/ instead
+models/*.onnx
 
 # Node
 env/node_modules/

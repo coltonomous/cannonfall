@@ -1,4 +1,23 @@
 import { defineConfig } from 'vite';
+import { readdirSync, copyFileSync, mkdirSync } from 'fs';
+import { resolve, join } from 'path';
+
+/** Copy onnxruntime-web WASM files into the build output. */
+function copyOrtWasm() {
+  return {
+    name: 'copy-ort-wasm',
+    writeBundle(options) {
+      const src = resolve('node_modules/onnxruntime-web/dist');
+      const dest = resolve(options.dir, 'ort-wasm');
+      mkdirSync(dest, { recursive: true });
+      for (const f of readdirSync(src)) {
+        if (f.endsWith('.wasm')) {
+          copyFileSync(join(src, f), join(dest, f));
+        }
+      }
+    },
+  };
+}
 
 export default defineConfig({
   define: {
@@ -19,4 +38,5 @@ export default defineConfig({
     outDir: 'dist',
     sourcemap: false,
   },
+  plugins: [copyOrtWasm()],
 });

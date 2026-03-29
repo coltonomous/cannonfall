@@ -281,6 +281,7 @@ export class Game {
       const onnxAi = new OnnxAI();
       try {
         const ort = await import('onnxruntime-web');
+        ort.env.wasm.wasmPaths = '/ort-wasm/';
         await onnxAi.load('/models/cannonfall_agent.onnx', ort);
       } catch (err) {
         console.warn('RL model not available:', err.message);

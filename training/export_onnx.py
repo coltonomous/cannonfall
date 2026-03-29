@@ -68,6 +68,17 @@ def export(model_path: str, output_path: str | None = None, obs_size: int = 14):
         opset_version=17,
     )
 
+    # Ensure all weights are inlined (no external .data files).
+    # Newer PyTorch/onnx versions split large tensors into external files
+    # which won't work in the browser.
+    import onnx
+    model_proto = onnx.load(output_path, load_external_data=True)
+    onnx.save_model(model_proto, output_path, save_as_external_data=False)
+    # Clean up any leftover .data file
+    data_file = Path(output_path + ".data")
+    if data_file.exists():
+        data_file.unlink()
+
     # Verify with onnxruntime
     try:
         import onnxruntime as ort

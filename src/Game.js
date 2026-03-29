@@ -280,9 +280,18 @@ export class Game {
     if (this.aiDifficulty === 'RL') {
       const onnxAi = new OnnxAI();
       try {
-        const ort = await import('onnxruntime-web');
-        ort.env.wasm.wasmPaths = '/ort-wasm/';
-        await onnxAi.load('/models/cannonfall_agent.onnx', ort);
+        // Load onnxruntime-web from CDN — the bundled version has issues
+        // with WASM module resolution in production builds.
+        if (!globalThis.ort) {
+          await new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js';
+            s.onload = resolve;
+            s.onerror = () => reject(new Error('Failed to load onnxruntime-web CDN'));
+            document.head.appendChild(s);
+          });
+        }
+        await onnxAi.load('/models/cannonfall_agent.onnx');
       } catch (err) {
         console.warn('RL model load failed:', err);
         const picker = document.getElementById('diff-picker');

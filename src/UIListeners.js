@@ -60,11 +60,15 @@ export function setupUIListeners(game, State) {
     ui.menuPanel.classList.toggle('hidden');
   });
 
-  // Close debug menu when tapping outside
+  // Close debug menu / popups when tapping outside
   document.addEventListener('click', (e) => {
     if (!ui.menuPanel.classList.contains('hidden') &&
         !e.target.closest('#hamburger-menu')) {
       ui.menuPanel.classList.add('hidden');
+    }
+    if (picker && !picker.classList.contains('hidden') &&
+        !e.target.closest('#ai-match-btn') && !e.target.closest('#diff-picker')) {
+      picker.classList.add('hidden');
     }
   });
 

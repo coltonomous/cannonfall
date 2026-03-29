@@ -796,6 +796,14 @@ body {
   border-color: #9b59b6;
 }
 
+.rl-error {
+  width: 100%;
+  text-align: center;
+  font-size: 0.8rem;
+  color: #e74c3c;
+  margin-top: 4px;
+}
+
 /* ── Disabled Match Buttons ──────────────────────── */
 .menu-buttons button:disabled {
   opacity: 0.35;

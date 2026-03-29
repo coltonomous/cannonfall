@@ -284,7 +284,7 @@ export class Game {
         ort.env.wasm.wasmPaths = '/ort-wasm/';
         await onnxAi.load('/models/cannonfall_agent.onnx', ort);
       } catch (err) {
-        console.warn('RL model not available:', err.message);
+        console.warn('RL model load failed:', err);
         const picker = document.getElementById('diff-picker');
         if (picker) {
           let msg = picker.querySelector('.rl-error');
@@ -293,7 +293,7 @@ export class Game {
             msg.className = 'rl-error';
             picker.appendChild(msg);
           }
-          msg.textContent = 'RL model not available';
+          msg.textContent = `RL model failed: ${err.message}`;
           picker.classList.remove('hidden');
         }
         return;

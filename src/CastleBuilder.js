@@ -402,10 +402,7 @@ export class CastleBuilder {
 
   loadFromDesignData(data) {
     this._pushUndo();
-    const excluded = new Set(this.modeConfig?.excludeBlocks || []);
-    this.layout = data.layout
-      .filter(b => !excluded.has(b.type))
-      .map(b => ({ ...b }));
+    this.layout = data.layout.map(b => ({ ...b }));
     this.targetPos = { ...data.target };
     this.customFloor = data.floor || null;
     let cost = 0;

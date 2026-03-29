@@ -283,9 +283,18 @@ export class Game {
         const ort = await import('onnxruntime-web');
         await onnxAi.load('/models/cannonfall_agent.onnx', ort);
       } catch (err) {
-        console.warn('RL model not available, falling back to HARD AI:', err.message);
-        this.ai = new AI('HARD');
-        this._continueAIMatch();
+        console.warn('RL model not available:', err.message);
+        const picker = document.getElementById('diff-picker');
+        if (picker) {
+          let msg = picker.querySelector('.rl-error');
+          if (!msg) {
+            msg = document.createElement('span');
+            msg.className = 'rl-error';
+            picker.appendChild(msg);
+          }
+          msg.textContent = 'RL model not available';
+          picker.classList.remove('hidden');
+        }
         return;
       }
       this.ai = onnxAi;

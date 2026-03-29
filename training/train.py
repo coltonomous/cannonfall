@@ -132,7 +132,7 @@ def main():
 
     if args.resume:
         print(f"Resuming from {args.resume}")
-        model = PPO.load(args.resume, env=train_env)
+        model = PPO.load(args.resume, env=train_env, tensorboard_log=str(_LOGS_DIR))
     else:
         model = PPO(**ppo_kwargs)
 

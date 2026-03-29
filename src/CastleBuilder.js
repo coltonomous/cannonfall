@@ -327,8 +327,8 @@ export class CastleBuilder {
     if (x < 0 || x >= this.gridW || z < 0 || z >= this.gridD) return false;
     if (y < 0 || y >= this.maxLayers) return false;
     if (this.hasBlockAt(x, y, z)) return false;
-    // Can't place a block on the target — it must remain exposed
-    if (x === this.targetPos.x && y === (this.targetPos.y || 0) && z === this.targetPos.z) return false;
+    // Can't place a block anywhere in the target's column — it must remain exposed
+    if (x === this.targetPos.x && z === this.targetPos.z) return false;
     // Must be on floor (y=0) or on top of another block
     if (y === 0) return true;
     return this.hasBlockAt(x, y - 1, z);
@@ -382,9 +382,13 @@ export class CastleBuilder {
     this.rebuildMeshes();
   }
 
+  hasBlockInColumn(x, z) {
+    return this.layout.some(b => b.x === x && b.z === z);
+  }
+
   placeTarget(x, z) {
-    // Don't allow placing target inside a block
-    if (this.hasBlockAt(x, 0, z)) return;
+    // Don't allow placing target inside a block (any layer)
+    if (this.hasBlockInColumn(x, z)) return;
     this._pushUndo();
     this.targetPos = { x, y: 0, z };
     this.updateTargetMesh();

@@ -61,12 +61,16 @@ export function setupUIListeners(game, State) {
   });
 
   // Close debug menu when tapping outside
-  document.addEventListener('click', (e) => {
+  // Listen on both click (mouse) and touchstart (touch — canvas preventDefault
+  // suppresses the synthesized click, so touchstart is needed for mobile)
+  const closeMenuOutside = (e) => {
     if (!ui.menuPanel.classList.contains('hidden') &&
         !e.target.closest('#hamburger-menu')) {
       ui.menuPanel.classList.add('hidden');
     }
-  });
+  };
+  document.addEventListener('click', closeMenuOutside);
+  document.addEventListener('touchstart', closeMenuOutside);
 
   ui.menuQuitBtn.addEventListener('click', () => {
     ui.menuPanel.classList.add('hidden');

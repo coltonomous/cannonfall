@@ -91,6 +91,9 @@ function validateCastleData(data) {
     if (!isFiniteNumber(block.x) || !isFiniteNumber(block.y) || !isFiniteNumber(block.z)) return false;
     if (typeof block.type !== 'string' || block.type.length > 20) return false;
   }
+  // Target must not overlap any block in the same column
+  const tx = data.target.x, tz = data.target.z;
+  if (data.layout.some(b => b.x === tx && b.z === tz)) return false;
   return true;
 }
 

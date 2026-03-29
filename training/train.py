@@ -54,6 +54,7 @@ def _make_env_fn(cfg: dict, rank: int = 0):
             opponent_policy=cfg.get("opponent_policy", "heuristic"),
             opponent_noise=cfg.get("opponent_noise", 0.1),
             difficulty=cfg.get("difficulty", 1.0),
+            fast_physics=cfg.get("fast_physics", False),
         )
         return Monitor(env)
     return _init

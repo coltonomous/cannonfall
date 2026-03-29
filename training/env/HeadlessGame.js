@@ -178,6 +178,9 @@ export class HeadlessGame {
     // Controls layout complexity and opponent skill
     this.difficulty = Math.max(0, Math.min(1, options.difficulty ?? 1));
 
+    // Fast-training mode: reduced physics fidelity for faster iteration
+    this.fastPhysics = options.fastPhysics ?? false;
+
     // Per-player state
     this.hp = [MAX_HP, MAX_HP];
     this.turn = 0;           // always 0 when agent acts
@@ -462,7 +465,7 @@ export class HeadlessGame {
     this.world = new CANNON.World({
       gravity: new CANNON.Vec3(0, gravity, 0),
     });
-    this.world.solver.iterations = 10;
+    this.world.solver.iterations = this.fastPhysics ? 4 : 10;
     this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.allowSleep = true;
 
@@ -678,7 +681,7 @@ export class HeadlessGame {
 
     let closestDist = Infinity;
     let settleTimer = 0;
-    const maxSteps = 600;
+    const maxSteps = this.fastPhysics ? 300 : 600;
     const outOfBoundsY = this.gameMode.outOfBoundsY;
 
     for (let i = 0; i < maxSteps; i++) {

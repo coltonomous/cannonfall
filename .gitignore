@@ -3,3 +3,7 @@ dist/
 .DS_Store
 .claude/
 .env
+
+# Training artifacts
+training/models/
+training/logs/

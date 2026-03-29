@@ -58,6 +58,7 @@ class CannonFallEnv(gym.Env):
         opponent_policy: str = "heuristic",
         opponent_noise: float = 0.1,
         difficulty: float = 1.0,
+        fast_physics: bool = False,
         node_executable: str = "node",
     ):
         super().__init__()
@@ -68,6 +69,7 @@ class CannonFallEnv(gym.Env):
         self._opponent_policy = opponent_policy
         self._opponent_noise = opponent_noise
         self._difficulty = difficulty
+        self._fast_physics = fast_physics
         self._node_exe = node_executable
         self._proc: subprocess.Popen | None = None
 
@@ -108,6 +110,7 @@ class CannonFallEnv(gym.Env):
                 "opponentPolicy": self._opponent_policy,
                 "opponentNoise": self._opponent_noise,
                 "difficulty": self._difficulty,
+                "fastPhysics": self._fast_physics,
             },
         })
         obs = self._parse_obs(resp["observation"])

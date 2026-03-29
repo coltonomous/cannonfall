@@ -5,6 +5,7 @@
   "opponent_policy": "heuristic",
   "opponent_noise": 0.15,
   "difficulty": 0.1,
+  "fast_physics": true,
   "total_timesteps": 300000,
 
   "curriculum_start": 0.1,
@@ -24,7 +25,7 @@
     "net_arch": [128, 128]
   },
 
-  "checkpoint_freq": 10000,
-  "eval_freq": 5000,
-  "eval_episodes": 10
+  "checkpoint_freq": 25000,
+  "eval_freq": 25000,
+  "eval_episodes": 5
 }

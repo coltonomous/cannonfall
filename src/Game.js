@@ -204,6 +204,11 @@ export class Game {
       readyLabel.textContent = `${label} Ready`;
       readyLabel.classList.toggle('hidden', !hasBuild);
     }
+
+    // RL agent is only trained for Castle mode
+    const rlBtn = document.querySelector('.diff-btn-rl');
+    if (rlBtn) rlBtn.disabled = this.gameMode.id !== 'castle';
+
     this.updateMatchButtons();
   }
 
@@ -587,8 +592,8 @@ export class Game {
       const aiCannon = this.cannons[1];
       const targetPos = this.castles[0].getTargetPosition();
       // Feed block spatial data to RL agent before it aims
-      if (this.ai.updateBlockInfo) {
-        this.ai.updateBlockInfo(this.castles[0], aiCannon.group.position);
+      if (this.ai.updateBlockGrid) {
+        this.ai.updateBlockGrid(this.castles[0]);
       }
       const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
       const aim = this.ai.applySpread(idealAim);

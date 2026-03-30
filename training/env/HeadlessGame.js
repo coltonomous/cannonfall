@@ -259,6 +259,11 @@ export class HeadlessGame {
         this._repositionTarget(1);
       }
     } else {
+      // Reward block destruction (degrades castle, exposes target)
+      if (result.blocksDestroyed > 0) {
+        reward += Math.min(result.blocksDestroyed * 0.2, 2.0);
+      }
+      // Proximity shaping for near misses
       const maxRewardDist = 20;
       if (result.closestDist < maxRewardDist) {
         reward += (1 - result.closestDist / maxRewardDist);
@@ -309,6 +314,8 @@ export class HeadlessGame {
       done: this.done,
       info: {
         hit: result.hit,
+        hitBlock: result.hitBlock,
+        blocksDestroyed: result.blocksDestroyed,
         closestDist: result.closestDist,
         opponentHit: this.lastOpponentResult?.hit ?? false,
         turnCount: this.turnCount,
@@ -579,6 +586,7 @@ export class HeadlessGame {
         body.sleepSpeedLimit = 0.1;
         body.sleepTimeLimit = 0.5;
         body.sleep();
+        body.isBlock = true;
 
         this.world.addBody(body);
         blocks.push({ body, type: block.type });
@@ -684,16 +692,24 @@ export class HeadlessGame {
     let hitBlock = false;
     let explosionPos = null;
 
+    // Track which defender blocks exist before the shot
+    const defenderBlocks = this.castles[defender].blocks;
+    const blocksBefore = defenderBlocks.filter(b =>
+      !b.isFloor && b.body.position.y > this.gameMode.outOfBoundsY
+    ).length;
+
     projBody.addEventListener('collide', (e) => {
       if (e.body.isTarget) {
         hit = true;
-      } else if (this.gameMode.explosiveProjectile && !hitBlock) {
-        hitBlock = true;
-        explosionPos = {
-          x: projBody.position.x,
-          y: projBody.position.y,
-          z: projBody.position.z,
-        };
+      } else if (e.body.isBlock) {
+        if (!hitBlock) hitBlock = true;
+        if (this.gameMode.explosiveProjectile && !explosionPos) {
+          explosionPos = {
+            x: projBody.position.x,
+            y: projBody.position.y,
+            z: projBody.position.z,
+          };
+        }
       }
     });
 
@@ -737,8 +753,16 @@ export class HeadlessGame {
 
     this.world.removeBody(projBody);
 
+    // Count blocks destroyed (fell below bounds during simulation)
+    const blocksAfter = defenderBlocks.filter(b =>
+      !b.isFloor && b.body.position.y > this.gameMode.outOfBoundsY
+    ).length;
+    const blocksDestroyed = Math.max(0, blocksBefore - blocksAfter);
+
     return {
       hit,
+      hitBlock,
+      blocksDestroyed,
       closestDist,
       impactPos: {
         x: projBody.position.x,

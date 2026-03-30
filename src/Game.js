@@ -588,7 +588,7 @@ export class Game {
       const targetPos = this.castles[0].getTargetPosition();
       // Feed block spatial data to RL agent before it aims
       if (this.ai.updateBlockInfo) {
-        this.ai.updateBlockInfo(this.castles[0]);
+        this.ai.updateBlockInfo(this.castles[0], aiCannon.group.position);
       }
       const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
       const aim = this.ai.applySpread(idealAim);

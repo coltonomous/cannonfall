@@ -19,6 +19,13 @@
  *   onnxruntime-web (loaded via CDN or npm)
  */
 
+/** Standard normal sample via Box-Muller transform. */
+function _randn() {
+  const u1 = Math.random();
+  const u2 = Math.random();
+  return Math.sqrt(-2 * Math.log(u1 || 1e-10)) * Math.cos(2 * Math.PI * u2);
+}
+
 // Constants matching the training env observation construction
 const MAX_HP = 3;
 const MAX_DIST = 80;
@@ -124,14 +131,23 @@ export class OnnxAI {
     const tensor = new this._ort.Tensor('float32', obs, [1, obs.length]);
     const feeds = { observation: tensor };
     const results = await this._session.run(feeds);
-    const action = results.action.data;
+    const mean = results.action.data;
+
+    // Sample from the learned policy distribution (mean + std * noise)
+    // using the exported log_std. Falls back to deterministic if missing.
+    const logStd = results.action_log_std?.data;
+    const sampled = new Float32Array(3);
+    for (let i = 0; i < 3; i++) {
+      const noise = logStd ? Math.exp(logStd[i]) * _randn() : 0;
+      sampled[i] = Math.max(-1, Math.min(1, mean[i] + noise));
+    }
 
     // Rescale from [-1, 1] to game ranges (matches cannonfall_env.py)
-    const yaw   = Math.max(-MAX_YAW, Math.min(MAX_YAW, action[0] * MAX_YAW));
+    const yaw   = Math.max(-MAX_YAW, Math.min(MAX_YAW, sampled[0] * MAX_YAW));
     const pitch = Math.max(PITCH_MIN, Math.min(PITCH_MAX,
-      PITCH_MIN + (action[1] + 1) / 2 * (PITCH_MAX - PITCH_MIN)));
+      PITCH_MIN + (sampled[1] + 1) / 2 * (PITCH_MAX - PITCH_MIN)));
     const power = Math.max(POWER_MIN, Math.min(POWER_MAX,
-      POWER_MIN + (action[2] + 1) / 2 * (POWER_MAX - POWER_MIN)));
+      POWER_MIN + (sampled[2] + 1) / 2 * (POWER_MAX - POWER_MIN)));
 
     return { yaw, pitch, power };
   }
@@ -140,7 +156,7 @@ export class OnnxAI {
   // AI.js drop-in methods — required by Game.js for animation/aiming
   // -------------------------------------------------------------------
 
-  /** No spread needed — model output is already the final action. */
+  /** Spread is handled by sampling from the policy distribution in computeAim. */
   applySpread(aim) {
     return aim;
   }
@@ -229,17 +245,25 @@ export class OnnxAI {
    * Call each turn with the opponent castle's block data.
    * @param {object} castle  Castle instance (needs .blocks)
    */
-  updateBlockInfo(castle) {
+  /**
+   * Update block summary features for spatial awareness.
+   * Distances are relative to the cannon, matching training env.
+   * @param {object} castle  Castle instance (needs .blocks)
+   * @param {{ x: number, y: number, z: number }} cannonPos  Cannon world position
+   */
+  updateBlockInfo(castle, cannonPos) {
     const maxBlocks = 200;
     const blocks = castle.blocks.filter(b => b.body);
     this._blockCountNorm = Math.min(blocks.length / maxBlocks, 1);
     if (blocks.length > 0) {
-      const cannon = { x: 0, y: 0, z: 0 }; // relative distances
+      const cx = cannonPos?.x || 0;
+      const cy = cannonPos?.y || 0;
+      const cz = cannonPos?.z || 0;
       const dists = blocks.map(b => {
-        const bx = b.body.position.x;
-        const by = b.body.position.y;
-        const bz = b.body.position.z;
-        return Math.sqrt(bx * bx + by * by + bz * bz);
+        const dx = b.body.position.x - cx;
+        const dy = b.body.position.y - cy;
+        const dz = b.body.position.z - cz;
+        return Math.sqrt(dx * dx + dy * dy + dz * dz);
       });
       this._avgBlockDistNorm = Math.min(
         dists.reduce((a, d) => a + d, 0) / dists.length / MAX_DIST, 1

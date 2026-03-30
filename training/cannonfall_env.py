@@ -8,16 +8,14 @@ followed by an automatic opponent shot.
 Action space (Box, continuous):
     [yaw, pitch, power]  — normalised to [-1, 1] then rescaled
 
-Observation space (Box, continuous, 14 features):
+Observation space (Box, continuous, 83 features):
     [targetDx, targetDy, targetDz, targetDist,
      cannonFacing,
      hp_self, hp_opponent,
      turnCount_normalised,
      lastHit (0/1), lastClosestDist_normalised,
      opponentLastHit (0/1),
-     blockCount_normalised,
-     avgBlockDist_normalised,
-     blockSpreadY_normalised]
+     blockGrid[72] (9×8 front-facing occupancy grid)]
 """
 
 from __future__ import annotations

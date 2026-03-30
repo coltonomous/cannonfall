@@ -28,10 +28,6 @@ const PITCH_MIN = -0.15;
 const PITCH_MAX = Math.PI / 3;
 const POWER_MIN = 10;
 const POWER_MAX = 50;
-const BLOCK_SIZE = 1;
-const GRID_DEPTH = 9;
-const MAX_LAYERS = 8;
-const GRID_SIZE = GRID_DEPTH * MAX_LAYERS; // 72
 
 export class OnnxAI {
   /**
@@ -47,7 +43,9 @@ export class OnnxAI {
     this._opponentLastHit = false;
     this._hp = MAX_HP;
     this._opponentHp = MAX_HP;
-    this._blockGrid = new Float32Array(GRID_SIZE);
+    this._blockCountNorm = 0;
+    this._avgBlockDistNorm = 0;
+    this._blockSpreadYNorm = 0;
 
     // AI.js compatibility — Game.js reads these for animation timing
     this.difficulty = { hesitation: 0.15, aimTime: 0.6 };
@@ -103,22 +101,25 @@ export class OnnxAI {
     const dz = targetPos.z - cp.z;
     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    // Construct 83-element observation: 11 scalars + 72 block grid (9×8)
-    const obs = new Float32Array(11 + GRID_SIZE);
-    obs[0] = dx;
-    obs[1] = dy;
-    obs[2] = dz;
-    obs[3] = dist;
-    obs[4] = facing;
-    obs[5] = this._hp;
-    obs[6] = this._opponentHp;
-    obs[7] = this._turnCount / this._maxTurns;
-    obs[8] = this._lastHit ? 1 : 0;
-    obs[9] = this._lastClosestDist !== null
-      ? Math.min(this._lastClosestDist / MAX_DIST, 1)
-      : 1;
-    obs[10] = this._opponentLastHit ? 1 : 0;
-    obs.set(this._blockGrid, 11);
+    // Construct 14-element observation matching the trained model
+    const obs = new Float32Array([
+      dx,
+      dy,
+      dz,
+      dist,
+      facing,
+      this._hp,
+      this._opponentHp,
+      this._turnCount / this._maxTurns,
+      this._lastHit ? 1 : 0,
+      this._lastClosestDist !== null
+        ? Math.min(this._lastClosestDist / MAX_DIST, 1)
+        : 1,
+      this._opponentLastHit ? 1 : 0,
+      this._blockCountNorm,
+      this._avgBlockDistNorm,
+      this._blockSpreadYNorm,
+    ]);
 
     const tensor = new this._ort.Tensor('float32', obs, [1, obs.length]);
     const feeds = { observation: tensor };
@@ -223,21 +224,30 @@ export class OnnxAI {
   }
 
   /**
-   * Build front-facing occupancy grid from the opponent's castle blocks.
-   * Call each turn before computeAim.
-   * @param {object} castle  Castle instance (needs .blocks, .gridDepth)
+   * Update block summary features for spatial awareness.
+   * Call each turn with the opponent castle's block data.
+   * @param {object} castle  Castle instance (needs .blocks)
    */
-  updateBlockGrid(castle) {
-    this._blockGrid.fill(0);
-    const gd = castle.gridDepth || GRID_DEPTH;
-    const halfD = Math.floor(gd / 2);
-    for (const b of castle.blocks) {
-      if (!b.body) continue;
-      const gz = Math.round(b.body.position.z / BLOCK_SIZE + halfD);
-      const gy = Math.round((b.body.position.y - BLOCK_SIZE / 2) / BLOCK_SIZE);
-      if (gz >= 0 && gz < gd && gy >= 0 && gy < MAX_LAYERS) {
-        this._blockGrid[gy * gd + gz] = 1;
-      }
+  updateBlockInfo(castle) {
+    const maxBlocks = 200;
+    const blocks = castle.blocks.filter(b => b.body);
+    this._blockCountNorm = Math.min(blocks.length / maxBlocks, 1);
+    if (blocks.length > 0) {
+      const cannon = { x: 0, y: 0, z: 0 }; // relative distances
+      const dists = blocks.map(b => {
+        const bx = b.body.position.x;
+        const by = b.body.position.y;
+        const bz = b.body.position.z;
+        return Math.sqrt(bx * bx + by * by + bz * bz);
+      });
+      this._avgBlockDistNorm = Math.min(
+        dists.reduce((a, d) => a + d, 0) / dists.length / MAX_DIST, 1
+      );
+      const ys = blocks.map(b => b.body.position.y);
+      this._blockSpreadYNorm = Math.min((Math.max(...ys) - Math.min(...ys)) / 10, 1);
+    } else {
+      this._avgBlockDistNorm = 0;
+      this._blockSpreadYNorm = 0;
     }
   }
 
@@ -249,6 +259,8 @@ export class OnnxAI {
     this._opponentLastHit = false;
     this._hp = MAX_HP;
     this._opponentHp = MAX_HP;
-    this._blockGrid.fill(0);
+    this._blockCountNorm = 0;
+    this._avgBlockDistNorm = 0;
+    this._blockSpreadYNorm = 0;
   }
 }

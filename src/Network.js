@@ -17,10 +17,10 @@ const EVENTS = [
 ];
 
 function getSessionId() {
-  let id = localStorage.getItem('cannonfall-session');
+  let id = sessionStorage.getItem('cannonfall-session');
   if (!id) {
     id = crypto.randomUUID();
-    localStorage.setItem('cannonfall-session', id);
+    sessionStorage.setItem('cannonfall-session', id);
   }
   return id;
 }

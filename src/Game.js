@@ -583,26 +583,43 @@ export class Game {
   }
 
   async _startAITurn() {
-    const aiCannon = this.cannons[1];
-    const targetPos = this.castles[0].getTargetPosition();
-    // Feed block spatial data to RL agent before it aims
-    if (this.ai.updateBlockGrid) {
-      this.ai.updateBlockGrid(this.castles[0]);
+    try {
+      const aiCannon = this.cannons[1];
+      const targetPos = this.castles[0].getTargetPosition();
+      // Feed block spatial data to RL agent before it aims
+      if (this.ai.updateBlockInfo) {
+        this.ai.updateBlockInfo(this.castles[0]);
+      }
+      const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
+      const aim = this.ai.applySpread(idealAim);
+
+      await this.ai.startAiming(aiCannon, aim);
+      if (this.state !== State.AI_AIMING) return; // game was quit
+
+      const hesitation = Math.max(200, (this.ai.difficulty.hesitation || 0.3) * 1000);
+      await new Promise(r => { this._schedule(r, hesitation, State.AI_AIMING); });
+      if (this.state !== State.AI_AIMING) return;
+
+      this.battle.power = aim.power;
+      this.battle._perfectShot = false;
+      this.battle.fire(false);
+      this.transition(State.AI_FIRING);
+    } catch (err) {
+      console.error('AI turn failed:', err);
+      this.ui.setStatus('AI error — firing random shot');
+      // Fall back to a random shot so the game doesn't freeze
+      const aiCannon = this.cannons[1];
+      const yaw = (Math.random() - 0.5) * Math.PI / 4;
+      const pitch = 0.3 + Math.random() * 0.5;
+      const power = 20 + Math.random() * 20;
+      aiCannon.yaw = yaw;
+      aiCannon.pitch = pitch;
+      aiCannon.updateAim();
+      this.battle.power = power;
+      this.battle._perfectShot = false;
+      this.battle.fire(false);
+      this.transition(State.AI_FIRING);
     }
-    const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
-    const aim = this.ai.applySpread(idealAim);
-
-    await this.ai.startAiming(aiCannon, aim);
-    if (this.state !== State.AI_AIMING) return; // game was quit
-
-    const hesitation = Math.max(200, (this.ai.difficulty.hesitation || 0.3) * 1000);
-    await new Promise(r => { this._schedule(r, hesitation, State.AI_AIMING); });
-    if (this.state !== State.AI_AIMING) return;
-
-    this.battle.power = aim.power;
-    this.battle._perfectShot = false;
-    this.battle.fire(false);
-    this.transition(State.AI_FIRING);
   }
 
   /**

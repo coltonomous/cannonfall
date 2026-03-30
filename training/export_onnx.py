@@ -17,15 +17,20 @@ import torch
 from stable_baselines3 import PPO
 
 
-def export(model_path: str, output_path: str | None = None, obs_size: int = 83):
+def export(model_path: str, output_path: str | None = None, obs_size: int | None = None):
     """Export SB3 PPO policy network to ONNX.
 
     The input tensor is named "observation" to match OnnxAI.js.
     The output tensor is named "action" (deterministic mean).
+    obs_size is auto-detected from the model's observation space if not provided.
     """
     print(f"Loading model from {model_path}...")
     model = PPO.load(model_path)
     policy = model.policy
+
+    if obs_size is None:
+        obs_size = model.observation_space.shape[0]
+        print(f"Auto-detected observation size: {obs_size}")
 
     # SB3 MlpPolicy: policy.mlp_extractor + policy.action_net
     # We need to export the full forward pass: obs → action (deterministic)
@@ -109,7 +114,7 @@ def main():
     parser = argparse.ArgumentParser(description="Export trained model to ONNX")
     parser.add_argument("model_path", type=str, help="Path to saved SB3 model")
     parser.add_argument("--output", type=str, default=None, help="Output ONNX path")
-    parser.add_argument("--obs-size", type=int, default=14, help="Observation vector size")
+    parser.add_argument("--obs-size", type=int, default=None, help="Observation vector size (auto-detected from model if omitted)")
     args = parser.parse_args()
 
     export(args.model_path, args.output, args.obs_size)

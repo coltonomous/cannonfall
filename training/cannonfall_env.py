@@ -79,9 +79,11 @@ class CannonFallEnv(gym.Env):
             high=np.array([1.0, 1.0, 1.0], dtype=np.float32),
         )
 
-        # Observation: 14-element fixed-size vector
-        obs_low = np.full(14, -np.inf, dtype=np.float32)
-        obs_high = np.full(14, np.inf, dtype=np.float32)
+        # Observation: 11 scalar features + 72 block grid (9 wide × 8 tall) = 83
+        self._grid_size = 9 * 8  # gridDepth × maxLayers
+        obs_size = 11 + self._grid_size
+        obs_low = np.full(obs_size, -np.inf, dtype=np.float32)
+        obs_high = np.full(obs_size, np.inf, dtype=np.float32)
         obs_low[4] = -1;   obs_high[4] = 1      # facing
         obs_low[5] = 0;    obs_high[5] = 3      # hp self
         obs_low[6] = 0;    obs_high[6] = 3      # hp opponent
@@ -89,9 +91,8 @@ class CannonFallEnv(gym.Env):
         obs_low[8] = 0;    obs_high[8] = 1      # lastHit
         obs_low[9] = 0;    obs_high[9] = 1      # closestDist norm
         obs_low[10] = 0;   obs_high[10] = 1     # opponentLastHit
-        obs_low[11] = 0;   obs_high[11] = 1     # blockCount norm
-        obs_low[12] = 0;   obs_high[12] = 1     # avgBlockDist norm
-        obs_low[13] = 0;   obs_high[13] = 1     # blockSpreadY norm
+        # indices 11..82: blockGrid (binary occupancy, 0 or 1)
+        obs_low[11:] = 0;  obs_high[11:] = 1
         self.observation_space = spaces.Box(low=obs_low, high=obs_high, dtype=np.float32)
 
     # ------------------------------------------------------------------
@@ -180,7 +181,6 @@ class CannonFallEnv(gym.Env):
 
     def _parse_obs(self, raw: dict) -> np.ndarray:
         max_dist = 80.0
-        max_blocks = 200.0  # normalisation ceiling for block count
 
         last_hit = 1.0 if raw.get("lastHit") is True else 0.0
 
@@ -191,19 +191,10 @@ class CannonFallEnv(gym.Env):
         opp_hit = 1.0 if raw.get("opponentLastHit") is True else 0.0
         turn_frac = raw["turnCount"] / self._max_turns
 
-        # Block position summary features
-        block_positions = raw.get("blockPositions", [])
-        block_count_norm = min(len(block_positions) / max_blocks, 1.0)
+        # Front-facing occupancy grid from bridge (9 wide × 8 tall = 72 values)
+        block_grid = raw.get("blockGrid", [0] * self._grid_size)
 
-        avg_block_dist = 0.0
-        block_spread_y = 0.0
-        if block_positions:
-            dists = [math.sqrt(b["x"]**2 + b["y"]**2 + b["z"]**2) for b in block_positions]
-            avg_block_dist = min(sum(dists) / len(dists) / max_dist, 1.0)
-            ys = [b["y"] for b in block_positions]
-            block_spread_y = min((max(ys) - min(ys)) / 10.0, 1.0)
-
-        return np.array([
+        scalars = np.array([
             raw["targetDx"],
             raw["targetDy"],
             raw["targetDz"],
@@ -215,7 +206,7 @@ class CannonFallEnv(gym.Env):
             last_hit,
             last_close,
             opp_hit,
-            block_count_norm,
-            avg_block_dist,
-            block_spread_y,
         ], dtype=np.float32)
+
+        grid = np.array(block_grid, dtype=np.float32)
+        return np.concatenate([scalars, grid])

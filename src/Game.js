@@ -585,6 +585,10 @@ export class Game {
   async _startAITurn() {
     const aiCannon = this.cannons[1];
     const targetPos = this.castles[0].getTargetPosition();
+    // Feed block spatial data to RL agent before it aims
+    if (this.ai.updateBlockGrid) {
+      this.ai.updateBlockGrid(this.castles[0]);
+    }
     const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
     const aim = this.ai.applySpread(idealAim);
 

@@ -22,7 +22,7 @@
   "ent_coef": 0.01,
 
   "policy_kwargs": {
-    "net_arch": [128, 128]
+    "net_arch": [256, 128]
   },
 
   "checkpoint_freq": 25000,

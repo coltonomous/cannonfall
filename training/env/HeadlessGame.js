@@ -432,6 +432,23 @@ export class HeadlessGame {
         z: b.body.position.z - cannonPos.z,
       }));
 
+    // Front-facing 2D occupancy grid (Z × Y = 9 × 8 = 72 values).
+    // Projects opponent castle blocks onto the plane the cannon sees.
+    const castle1 = this.castles[1];
+    const gd = castle1.gridDepth;
+    const maxLayers = this.gameMode.maxLayers || 8;
+    const halfD = Math.floor(gd / 2);
+    const blockGrid = new Array(gd * maxLayers).fill(0);
+    for (const b of castle1.blocks) {
+      if (b.isFloor) continue;
+      // Convert world position back to grid coords
+      const gz = Math.round(b.body.position.z / BLOCK_SIZE + halfD);
+      const gy = Math.round((b.body.position.y - BLOCK_SIZE / 2) / BLOCK_SIZE);
+      if (gz >= 0 && gz < gd && gy >= 0 && gy < maxLayers) {
+        blockGrid[gy * gd + gz] = 1;
+      }
+    }
+
     return {
       cannonPos,
       cannonFacing: cannon.facing,
@@ -445,6 +462,7 @@ export class HeadlessGame {
 
       blockCount: blockPositions.length,
       blockPositions,
+      blockGrid,
 
       hp: [...this.hp],
       turn: 0,

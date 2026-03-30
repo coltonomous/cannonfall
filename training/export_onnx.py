@@ -17,7 +17,7 @@ import torch
 from stable_baselines3 import PPO
 
 
-def export(model_path: str, output_path: str | None = None, obs_size: int = 14):
+def export(model_path: str, output_path: str | None = None, obs_size: int = 83):
     """Export SB3 PPO policy network to ONNX.
 
     The input tensor is named "observation" to match OnnxAI.js.

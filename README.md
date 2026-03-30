@@ -17,6 +17,12 @@
 3. **Battle** — Aim with WASD/arrows, hold space to charge power, release to fire. Hit the sweet spot (80-88% power) for a perfect shot that deals double damage.
 4. **Win** — First to deplete the opponent's 3 HP wins. After each hit, the defender repositions their target.
 
+## RL Agent
+
+An AI opponent trained via reinforcement learning (PPO) plays directly in the browser. The training pipeline runs headless cannon-es physics through a Python↔Node.js bridge, with curriculum learning that ramps from simple walls to full castle layouts. The trained model is exported to ONNX and loaded in-browser via onnxruntime-web. Select "RL Agent" in the difficulty picker to play against it.
+
+See [training/README.md](training/README.md) for the full training pipeline.
+
 ## Tech Stack
 
 | Layer | Technology |
@@ -24,6 +30,8 @@
 | Rendering | Three.js |
 | Physics | cannon-es |
 | Server | Node.js + Express + Socket.io |
+| RL Training | Stable Baselines3 (PPO) + Gymnasium |
+| Model Inference | ONNX Runtime Web |
 | Bundler | Vite |
 | Tests | Vitest |
 | Package Manager | pnpm |
@@ -74,6 +82,15 @@ cannonfall/
 │   ├── OrbitController.js # Camera orbit for build phase
 │   ├── TargetRepositioner.js # Post-hit target repositioning
 │   └── styles.css
+├── training/
+│   ├── train.py           # PPO training (parallel envs, curriculum)
+│   ├── cannonfall_env.py  # Gymnasium environment
+│   ├── export_onnx.py     # Export model to ONNX for browser
+│   ├── env/
+│   │   ├── HeadlessGame.js # Headless cannon-es physics sim
+│   │   └── bridge.js      # Python↔Node JSON protocol
+│   └── inference/
+│       └── OnnxAI.js      # In-browser ONNX inference
 └── tests/
     ├── integration.test.js
     ├── lobby.test.js

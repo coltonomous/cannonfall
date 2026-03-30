@@ -60,14 +60,26 @@ python train.py --resume models/ppo_castle_final --config configs/curriculum.jso
 
 ### Parallel Environments
 
-The bottleneck is the physics simulation (each shot runs ~600 cannon-es
-timesteps). `--n-envs N` spawns N independent bridge.js processes via
-`SubprocVecEnv`, running physics in parallel across CPU cores.
+The bottleneck is the physics simulation (each shot runs up to 600
+cannon-es timesteps via Node.js subprocess IPC). `--n-envs N` spawns N
+independent bridge.js processes via `SubprocVecEnv`, running physics in
+parallel across CPU cores.
 
 Recommended values:
 - MacBook M4: `--n-envs 8` (uses efficiency + performance cores)
 - 4-core machine: `--n-envs 4`
 - CI / testing: `--n-envs 1` (default, simplest)
+
+### Fast Physics Mode
+
+Set `"fast_physics": true` in your config (enabled by default in
+`configs/curriculum.json`) to reduce physics fidelity for faster training:
+- Solver iterations: 10 → 4
+- Max simulation steps per shot: 600 → 300
+
+This trades physics precision for ~2x faster step throughput. The agent
+still gets directionally correct feedback. For final fine-tuning, disable
+fast physics to train against full-fidelity simulation.
 
 ### Self-Play Training
 
@@ -147,7 +159,7 @@ policy (`heuristic`, `random`, `self`, or `none`).
 After a target hit, the defender's target automatically repositions
 to a new grid cell (matching real game flow).
 
-**Observation (14 features):**
+**Observation (83 features):**
 
 | # | Feature | Description |
 |---|---------|-------------|
@@ -159,9 +171,7 @@ to a new grid cell (matching real game flow).
 | 8 | lastHit | Whether the previous shot hit (0/1) |
 | 9 | lastClosestDist | How close the last shot came (normalised) |
 | 10 | opponentLastHit | Whether the opponent hit us last turn (0/1) |
-| 11 | blockCountNorm | Number of defender blocks (normalised) |
-| 12 | avgBlockDist | Mean distance to defender blocks (normalised) |
-| 13 | blockSpreadY | Vertical spread of defender blocks (normalised) |
+| 11–82 | blockGrid | 9×8 front-facing occupancy grid (binary, Z×Y projection of opponent castle) |
 
 **Action (3 continuous values, normalised to [-1, 1]):**
 - **Yaw**: horizontal aim angle

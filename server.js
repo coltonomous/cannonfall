@@ -111,20 +111,21 @@ function hashPassword(pw) {
   return createHash('sha256').update(pw).digest('hex');
 }
 
-function getLobbyList() {
-  return Array.from(lobbies.values()).map(l => ({
-    id: l.id,
-    hostName: l.hostName,
-    gameMode: l.gameMode,
-    hasPassword: !!l.passwordHash,
-  }));
+function getLobbyList(forSessionId) {
+  return Array.from(lobbies.values())
+    .filter(l => l.hostSessionId !== forSessionId)
+    .map(l => ({
+      id: l.id,
+      hostName: l.hostName,
+      gameMode: l.gameMode,
+      hasPassword: !!l.passwordHash,
+    }));
 }
 
 function broadcastLobbyList() {
-  const list = getLobbyList();
   for (const sid of lobbyClients) {
     const s = liveSockets.get(sid);
-    if (s) s.emit('lobby:list', list);
+    if (s) s.emit('lobby:list', getLobbyList(sid));
   }
 }
 
@@ -290,7 +291,7 @@ io.on('connection', (socket) => {
 
   socket.on('lobby:enter', () => {
     lobbyClients.add(sessionId);
-    socket.emit('lobby:list', getLobbyList());
+    socket.emit('lobby:list', getLobbyList(sessionId));
   });
 
   socket.on('lobby:leave', () => {

@@ -220,6 +220,7 @@ export class OnnxAI {
    */
   updateAfterOpponentShot(opponentHit) {
     this._opponentLastHit = opponentHit;
+    this._turnCount++;
     if (opponentHit) this._hp--;
   }
 

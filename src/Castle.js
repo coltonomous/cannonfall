@@ -3,6 +3,7 @@ import * as CANNON from 'cannon-es';
 import { BLOCK_SIZE, BLOCK_MASS, BLOCK_TYPES, TARGET_HIT_RADIUS } from './constants.js';
 import { createAllBlockGeometries } from './BlockGeometry.js';
 import { createAllPhysicsShapes } from './PhysicsShapes.js';
+import { generateModeTextures } from './NoiseTexture.js';
 
 export class Castle {
   constructor(sceneManager, physicsWorld, centerX, color, gridConfig) {
@@ -14,6 +15,7 @@ export class Castle {
     this.gridDepth = gridConfig?.gridDepth || 9;
     this.blockMassMultiplier = gridConfig?.blockMassMultiplier || 1;
     this.blockDamping = gridConfig?.blockDamping || 0.01;
+    this.noiseConfig = gridConfig?.noiseConfig || null;
     this.blocks = []; // { mesh, body }
     this.thrusters = []; // { mesh, exhaustDir: THREE.Vector3 }
     this.target = null; // THREE.Mesh
@@ -39,7 +41,19 @@ export class Castle {
     // Physics shapes (shared with headless training env)
     const shapes = createAllPhysicsShapes();
 
-    const baseMat = new THREE.MeshStandardMaterial({ color: this.color });
+    // Generate noise-based roughness + bump textures (shared across all blocks)
+    this._noiseTextures = null;
+    const baseMatProps = { color: this.color };
+    if (this.noiseConfig) {
+      this._noiseTextures = generateModeTextures(this.noiseConfig);
+      if (this._noiseTextures) {
+        baseMatProps.roughnessMap = this._noiseTextures.roughnessMap;
+        baseMatProps.roughness = this.noiseConfig.roughnessBase ?? 0.5;
+        baseMatProps.bumpMap = this._noiseTextures.bumpMap;
+        baseMatProps.bumpScale = this.noiseConfig.bumpScale ?? 0.1;
+      }
+    }
+    const baseMat = new THREE.MeshStandardMaterial(baseMatProps);
 
     // Build floor layer (static) — skip for water/space modes with no custom floor
     const hasCustomFloor = customFloor && customFloor.length > 0;
@@ -323,6 +337,11 @@ export class Castle {
         geo.dispose();
       }
       this._sharedGeometries = null;
+    }
+    if (this._noiseTextures) {
+      this._noiseTextures.roughnessMap.dispose();
+      this._noiseTextures.bumpMap.dispose();
+      this._noiseTextures = null;
     }
 
     if (this.target) {

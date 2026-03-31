@@ -443,7 +443,7 @@ export class Game {
       this.physicsWorld,
       -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
       this.gameMode.player0Color,
-      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping }
+      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping, noiseConfig: this.gameMode.noiseConfig }
     );
     const mirror = !!this.gameMode.mirrorZ;
     this.castles[0].buildFromLayout(data0.layout, data0.target, data0.floor, mirror);
@@ -453,7 +453,7 @@ export class Game {
       this.physicsWorld,
       (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
       this.gameMode.player1Color,
-      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping }
+      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping, noiseConfig: this.gameMode.noiseConfig }
     );
     this.castles[1].buildFromLayout(data1.layout, data1.target, data1.floor);
 

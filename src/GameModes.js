@@ -65,6 +65,13 @@ export const GAME_MODES = {
     budget: 600,
     maxLayers: 8,
 
+    noiseConfig: {
+      scaleX: 5, scaleY: 5,     // isotropic — rough stone grain
+      octaves: 4, amplitude: 0.3,
+      roughnessBase: 0.7,
+      bumpScale: 0.15,
+    },
+
     ...EXPLOSION,
   },
 
@@ -122,6 +129,14 @@ export const GAME_MODES = {
     budget: 500,
     maxLayers: 6,
 
+    noiseConfig: {
+      scaleX: 10, scaleY: 3.3,  // 3:1 anisotropic — wood grain
+      octaves: 3, amplitude: 0.2,
+      gain: 0.45,
+      roughnessBase: 0.55,
+      bumpScale: 0.1,
+    },
+
     ...EXPLOSION,
   },
 
@@ -177,6 +192,13 @@ export const GAME_MODES = {
     gridDepth: 13,
     budget: 600,
     maxLayers: 5,
+
+    noiseConfig: {
+      scaleX: 12, scaleY: 12,   // fine isotropic — brushed metal
+      octaves: 2, amplitude: 0.08,
+      roughnessBase: 0.2,
+      bumpScale: 0.03,
+    },
 
     ...EXPLOSION,
   },

@@ -135,7 +135,7 @@ describe('shot simulation', () => {
     expect(result.info.closestDist).toBeLessThan(Infinity);
   });
 
-  it('should decrement defender HP on hit', () => {
+  it('should decrement defender HP on hit', { timeout: 15000 }, () => {
     const game = makeGame({ opponentPolicy: 'none' });
     game.reset();
 

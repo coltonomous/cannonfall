@@ -58,6 +58,7 @@ class CannonFallEnv(gym.Env):
         difficulty: float = 1.0,
         fast_physics: bool = False,
         node_executable: str = "node",
+        blueprint_dna: list[list[float] | None] | None = None,
     ):
         super().__init__()
 
@@ -70,6 +71,9 @@ class CannonFallEnv(gym.Env):
         self._fast_physics = fast_physics
         self._node_exe = node_executable
         self._proc: subprocess.Popen | None = None
+        # Per-player blueprint DNA: [dnaP0, dnaP1], each 32-float list or None.
+        # When set, overrides layout_generator for that player.
+        self._blueprint_dna = blueprint_dna
 
         # Actions normalised to [-1, 1]
         self.action_space = spaces.Box(
@@ -100,18 +104,18 @@ class CannonFallEnv(gym.Env):
     def reset(self, *, seed=None, options=None) -> tuple[np.ndarray, dict]:
         super().reset(seed=seed)
         self._ensure_process()
-        resp = self._send({
-            "cmd": "reset",
-            "options": {
-                "mode": self._mode,
-                "maxTurns": self._max_turns,
-                "layoutGenerator": self._layout_generator,
-                "opponentPolicy": self._opponent_policy,
-                "opponentNoise": self._opponent_noise,
-                "difficulty": self._difficulty,
-                "fastPhysics": self._fast_physics,
-            },
-        })
+        opts = {
+            "mode": self._mode,
+            "maxTurns": self._max_turns,
+            "layoutGenerator": self._layout_generator,
+            "opponentPolicy": self._opponent_policy,
+            "opponentNoise": self._opponent_noise,
+            "difficulty": self._difficulty,
+            "fastPhysics": self._fast_physics,
+        }
+        if self._blueprint_dna:
+            opts["blueprintDNA"] = self._blueprint_dna
+        resp = self._send({"cmd": "reset", "options": opts})
         obs = self._parse_obs(resp["observation"])
         return obs, {}
 

@@ -355,6 +355,24 @@ export class HeadlessGame {
   }
 
   /**
+   * Generate a heuristic action for any player (used by play_game).
+   * @param {number} player  0 or 1
+   * @param {string} difficulty  AI difficulty level
+   * @returns {{ yaw: number, pitch: number, power: number }}
+   */
+  getHeuristicAction(player, difficulty = 'HARD') {
+    const ai = new AI(difficulty);
+    const defender = 1 - player;
+    const targetPos = this.castles[defender].targetPos;
+    const aim = ai.computeAim(
+      mockCannonForAI(this.cannons[player]),
+      targetPos,
+      this.gameMode,
+    );
+    return ai.applySpread(aim);
+  }
+
+  /**
    * Observation from player 1's perspective (for self-play training).
    */
   getOpponentObservation() {

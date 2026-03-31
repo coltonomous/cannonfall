@@ -106,7 +106,7 @@ export function decodeDNA(dna, opts = {}) {
   const innerWallH  = Math.max(1, Math.round(p[30] * (maxLayers / 2)));
   const hollowCore  = p[31] > 0.5;
 
-  // Occupancy grid: [y][x][z] = block type or null
+  // Occupancy grid: [y][x][z] = { type, rotation } or null
   const grid = [];
   for (let y = 0; y < maxLayers; y++) {
     grid[y] = [];
@@ -114,6 +114,9 @@ export function decodeDNA(dna, opts = {}) {
       grid[y][x] = new Array(gd).fill(null);
     }
   }
+
+  // Block types that benefit from rotation
+  const ROTATABLE = new Set(['WALL', 'RAMP', 'BULLNOSE', 'HALF_BULLNOSE', 'HALF_SLAB']);
 
   // Helper: pick block type from weighted distribution
   function pickType(seed) {
@@ -123,6 +126,23 @@ export function decodeDNA(dna, opts = {}) {
       if (seed < acc) return BUILD_TYPES[i];
     }
     return BUILD_TYPES[NUM_BUILD_TYPES - 1];
+  }
+
+  // Helper: create a grid cell with contextual rotation
+  function cell(type, x, z) {
+    if (!ROTATABLE.has(type)) return { type, rotation: 0 };
+    // Orient walls/ramps to face the nearest perimeter edge
+    const distLeft = x;
+    const distRight = gw - 1 - x;
+    const distFront = z;
+    const distBack = gd - 1 - z;
+    const minDist = Math.min(distLeft, distRight, distFront, distBack);
+    let rotation = 0;
+    if (minDist === distFront) rotation = 0;      // face front (z=0)
+    else if (minDist === distBack) rotation = 2;   // face back
+    else if (minDist === distLeft) rotation = 1;   // face left
+    else rotation = 3;                              // face right
+    return { type, rotation };
   }
 
   // Seeded random for determinism within a DNA (using simple LCG)
@@ -139,38 +159,45 @@ export function decodeDNA(dna, opts = {}) {
     return 1 + asymX * cx * 0.3 + asymZ * cz * 0.3;
   }
 
+  // Grid helpers — set/get handle { type, rotation } objects
+  function set(y, x, z, type) {
+    grid[y][x][z] = cell(type, x, z);
+  }
+  function setIfEmpty(y, x, z, type) {
+    if (grid[y][x][z] === null) grid[y][x][z] = cell(type, x, z);
+  }
+  function occupied(y, x, z) {
+    return grid[y][x][z] !== null;
+  }
+
   // --- Phase 1: Perimeter walls ---
   for (let y = 0; y < perimH; y++) {
     const centerX = Math.floor(gw / 2);
     const centerZ = Math.floor(gd / 2);
 
-    // Front wall (z=0 side, toward attacker)
     for (let d = 0; d <= thickFront; d++) {
       if (d >= gd) break;
       for (let x = 0; x < gw; x++) {
-        // Opening in center of wall
         if (d === 0 && Math.abs(x - centerX) <= Math.floor(openFront / 2) && y < perimH - 1) continue;
-        grid[y][x][d] = 'CUBE';
+        set(y, x, d, 'CUBE');
       }
     }
 
-    // Back wall
     for (let d = 0; d <= thickBack; d++) {
       const z = gd - 1 - d;
       if (z < 0) break;
       for (let x = 0; x < gw; x++) {
         if (d === 0 && Math.abs(x - centerX) <= Math.floor(openBack / 2) && y < perimH - 1) continue;
-        if (grid[y][x][z] === null) grid[y][x][z] = 'CUBE';
+        setIfEmpty(y, x, z, 'CUBE');
       }
     }
 
-    // Side walls
     for (let d = 0; d <= thickSides; d++) {
       for (let z = 0; z < gd; z++) {
         if (d === 0 && Math.abs(z - centerZ) <= Math.floor(openSides / 2) && y < perimH - 1) continue;
-        if (d < gw && grid[y][d][z] === null) grid[y][d][z] = 'CUBE';
+        if (d < gw) setIfEmpty(y, d, z, 'CUBE');
         const rx = gw - 1 - d;
-        if (rx >= 0 && grid[y][rx][z] === null) grid[y][rx][z] = 'CUBE';
+        if (rx >= 0) setIfEmpty(y, rx, z, 'CUBE');
       }
     }
   }
@@ -188,12 +215,11 @@ export function decodeDNA(dna, opts = {}) {
     for (let t = 0; t < Math.min(towerCount, 4); t++) {
       const [tx, tz] = positions[t];
       for (let y = 0; y < towerH && y < maxLayers; y++) {
-        // 2x2 footprint
         for (let dx = 0; dx <= 1; dx++) {
           for (let dz = 0; dz <= 1; dz++) {
             const bx = Math.min(tx + dx, gw - 1);
             const bz = Math.min(tz + dz, gd - 1);
-            grid[y][bx][bz] = 'CUBE';
+            set(y, bx, bz, 'CUBE');
           }
         }
       }
@@ -204,10 +230,10 @@ export function decodeDNA(dna, opts = {}) {
   for (let y = 0; y < intHeight && y < maxLayers; y++) {
     for (let x = 1; x < gw - 1; x++) {
       for (let z = 1; z < gd - 1; z++) {
-        if (grid[y][x][z] !== null) continue;
+        if (occupied(y, x, z)) continue;
         const bias = asymmetryBias(x, z);
         if (rand() < intDensity * bias) {
-          grid[y][x][z] = pickType(rand());
+          set(y, x, z, pickType(rand()));
         }
       }
     }
@@ -233,8 +259,8 @@ export function decodeDNA(dna, opts = {}) {
     for (let y = 0; y < innerWallH && y < maxLayers; y++) {
       for (let x = 0; x < gw; x++) {
         if (x === targetX && innerWallZ === targetZ) continue;
-        if (grid[y][x][innerWallZ] === null) {
-          grid[y][x][innerWallZ] = 'WALL';
+        if (!occupied(y, x, innerWallZ)) {
+          set(y, x, innerWallZ, 'WALL');
         }
       }
     }
@@ -245,8 +271,8 @@ export function decodeDNA(dna, opts = {}) {
     for (let x = 0; x < gw; x++) {
       for (let z = 0; z < gd; z++) {
         if (x === targetX && z === targetZ) continue;
-        if (rand() < roofCov) {
-          grid[roofY][x][z] = grid[roofY][x][z] || 'HALF_SLAB';
+        if (rand() < roofCov && !occupied(roofY, x, z)) {
+          set(roofY, x, z, 'HALF_SLAB');
         }
       }
     }
@@ -256,12 +282,12 @@ export function decodeDNA(dna, opts = {}) {
   if (useRamps && perimH > 0 && perimH < maxLayers) {
     const rampY = perimH;
     for (let x = 1; x < gw - 1; x++) {
-      if (grid[rampY - 1][x][0] !== null) grid[rampY][x][0] = 'RAMP';
-      if (grid[rampY - 1][x][gd - 1] !== null) grid[rampY][x][gd - 1] = 'RAMP';
+      if (occupied(rampY - 1, x, 0)) set(rampY, x, 0, 'RAMP');
+      if (occupied(rampY - 1, x, gd - 1)) set(rampY, x, gd - 1, 'RAMP');
     }
     for (let z = 1; z < gd - 1; z++) {
-      if (grid[rampY - 1][0][z] !== null) grid[rampY][0][z] = 'RAMP';
-      if (grid[rampY - 1][gw - 1][z] !== null) grid[rampY][gw - 1][z] = 'RAMP';
+      if (occupied(rampY - 1, 0, z)) set(rampY, 0, z, 'RAMP');
+      if (occupied(rampY - 1, gw - 1, z)) set(rampY, gw - 1, z, 'RAMP');
     }
   }
 
@@ -269,12 +295,12 @@ export function decodeDNA(dna, opts = {}) {
   if (useCrenels && perimH > 0 && perimH < maxLayers) {
     const cY = perimH;
     for (let x = 0; x < gw; x++) {
-      if ((x % 2 === 0) && grid[cY - 1][x][0] !== null) grid[cY][x][0] = 'HALF_SLAB';
-      if ((x % 2 === 0) && grid[cY - 1][x][gd - 1] !== null) grid[cY][x][gd - 1] = 'HALF_SLAB';
+      if ((x % 2 === 0) && occupied(cY - 1, x, 0)) set(cY, x, 0, 'HALF_SLAB');
+      if ((x % 2 === 0) && occupied(cY - 1, x, gd - 1)) set(cY, x, gd - 1, 'HALF_SLAB');
     }
     for (let z = 0; z < gd; z++) {
-      if ((z % 2 === 0) && grid[cY - 1][0][z] !== null) grid[cY][0][z] = 'HALF_SLAB';
-      if ((z % 2 === 0) && grid[cY - 1][gw - 1][z] !== null) grid[cY][gw - 1][z] = 'HALF_SLAB';
+      if ((z % 2 === 0) && occupied(cY - 1, 0, z)) set(cY, 0, z, 'HALF_SLAB');
+      if ((z % 2 === 0) && occupied(cY - 1, gw - 1, z)) set(cY, gw - 1, z, 'HALF_SLAB');
     }
   }
 
@@ -290,9 +316,9 @@ export function decodeDNA(dna, opts = {}) {
   for (let y = 0; y < maxLayers; y++) {
     for (let x = 0; x < gw; x++) {
       for (let z = 0; z < gd; z++) {
-        const type = grid[y][x][z];
-        if (type === null) continue;
-        const cost = BLOCK_TYPES[type]?.cost || 3;
+        const entry = grid[y][x][z];
+        if (entry === null) continue;
+        const cost = BLOCK_TYPES[entry.type]?.cost || 3;
         if (spent + cost > budget) {
           // Over budget — clear this cell and everything above it
           for (let clearY = y; clearY < maxLayers; clearY++) {
@@ -326,8 +352,9 @@ export function decodeDNA(dna, opts = {}) {
   for (let y = 0; y < maxLayers; y++) {
     for (let x = 0; x < gw; x++) {
       for (let z = 0; z < gd; z++) {
-        if (grid[y][x][z] === null) continue;
-        layout.push({ x, y, z, type: grid[y][x][z], rotation: 0 });
+        const entry = grid[y][x][z];
+        if (entry === null) continue;
+        layout.push({ x, y, z, type: entry.type, rotation: entry.rotation });
       }
     }
   }

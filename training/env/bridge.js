@@ -72,28 +72,32 @@ function handleMessage(msg) {
       }
 
       case 'play_game': {
-        // Play a full game with blueprint DNA castles and a frozen attacker policy.
-        // The attacker fires using actions provided per-turn by the Python side,
-        // or uses heuristic if no attacker actions are supplied.
-        // params: { options, attackerActions? }
+        // Play a full game with optional blueprint DNA castles.
+        // Player 0 (attacker) fires using provided actions or heuristic.
+        // Player 1 (defender) fires via configured opponent policy.
+        //
+        // params:
         //   options.blueprintDNA: [dnaP0, dnaP1] — 32-float arrays or null
+        //   options.attackerDifficulty: AI difficulty for player 0 ('EASY'|'MEDIUM'|'HARD')
+        //   attackerActions: [{yaw,pitch,power}, ...] — optional per-turn overrides
+        //
         // Returns: { ok, result: { winner, hp, turnCount, blocksDestroyed } }
         const options = params.options || {};
+        const attackerDifficulty = options.attackerDifficulty || 'HARD';
         const g = new HeadlessGame(options);
-        const obs = g.reset();
+        g.reset();
 
         const attackerActions = params.attackerActions || null;
         let totalBlocksDestroyed = 0;
         let turn = 0;
 
         while (!g.done) {
-          // Use provided attacker actions if available, otherwise heuristic
           let action;
           if (attackerActions && attackerActions[turn]) {
             action = attackerActions[turn];
           } else {
-            // Default: use the configured opponent as a stand-in attacker
-            action = { yaw: 0, pitch: 0.5, power: 30 };
+            // Use heuristic AI for player 0 (attacker)
+            action = g.getHeuristicAction(0, attackerDifficulty);
           }
           const stepResult = g.step(action);
           totalBlocksDestroyed += stepResult.info.blocksDestroyed || 0;

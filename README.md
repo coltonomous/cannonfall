@@ -19,7 +19,9 @@
 
 ## RL Agent
 
-An AI opponent trained via reinforcement learning (PPO) plays directly in the browser. The training pipeline runs headless cannon-es physics through a Python↔Node.js bridge, with curriculum learning that ramps from simple walls to full castle layouts. The trained model is exported to ONNX and loaded in-browser via onnxruntime-web. Select "RL Agent" in the difficulty picker to play against it.
+An AI opponent trained via reinforcement learning (PPO) plays directly in the browser. The training pipeline runs headless cannon-es physics through a Python↔Node.js bridge, with curriculum learning that ramps both layout difficulty and opponent skill. The trained model is exported to ONNX and loaded in-browser via onnxruntime-web — the browser samples from the model's learned policy distribution for varied, non-deterministic play. Select "RL Agent" in the difficulty picker to play against it (Castle mode only).
+
+An experimental adversarial training system pits a **builder agent** (designs castles via a 32-parameter "DNA" blueprint) against the cannon-firing **attacker agent** in a PSRO-lite loop, enabling the discovery of novel castle designs that emerge from competitive pressure rather than hand-crafting.
 
 See [training/README.md](training/README.md) for the full training pipeline.
 
@@ -41,7 +43,7 @@ See [training/README.md](training/README.md) for the full training pipeline.
 ```bash
 pnpm install
 pnpm dev        # client (Vite) + server (Express) concurrently
-pnpm test       # 278 tests
+pnpm test       # 451 tests
 ```
 
 ## Deploy

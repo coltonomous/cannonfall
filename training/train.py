@@ -159,14 +159,19 @@ def main():
 
     # Curriculum: auto-ramp difficulty if layout_generator is "curriculum"
     if cfg.get("layout_generator") == "curriculum":
+        noise_start = cfg.get("opponent_noise", 0.15)
+        noise_end = cfg.get("opponent_noise_end", 0.04)
         curriculum_cb = CurriculumCallback(
             start=cfg.get("curriculum_start", 0.1),
             end=cfg.get("curriculum_end", 1.0),
             ramp_steps=int(total_timesteps * cfg.get("curriculum_ramp_frac", 0.75)),
+            opponent_noise_start=noise_start,
+            opponent_noise_end=noise_end,
             verbose=1,
         )
         callbacks.append(curriculum_cb)
         print(f"Curriculum: difficulty {curriculum_cb.start} → {curriculum_cb.end}")
+        print(f"Curriculum: opponent noise {noise_start} (EASY) → {noise_end} (HARD)")
 
     print(f"Training PPO on {mode} mode for {total_timesteps:,} steps")
     print(f"Parallel envs: {n_envs} ({'SubprocVecEnv' if n_envs > 1 else 'DummyVecEnv'})")

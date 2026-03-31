@@ -23,6 +23,7 @@ import {
   CANNON_HEIGHT, CANNON_BARREL_LENGTH,
   SETTLE_SPEED, SETTLE_TIME, MAX_HP,
 } from '../../src/constants.js';
+import { decodeDNA } from './BlueprintDecoder.js';
 
 // Re-export for bridge.js convenience
 export { GAME_MODES, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET, MIN_POWER, MAX_POWER };
@@ -130,6 +131,9 @@ export const LAYOUT_GENERATORS = {
   preset: (_gw, _gd, _budget, gm) => presetLayout(gm),
   mixed: (gw, gd, budget, gm) => mixedLayout(gw, gd, budget, gm),
   curriculum: (gw, gd, budget, gm, diff) => curriculumLayout(gw, gd, budget, gm, diff),
+  // Blueprint generator: decode DNA vector into castle layout
+  // DNA is passed via options.blueprintDNA[playerIndex] at reset time
+  blueprint: null, // handled specially in _buildCastles
 };
 
 // ---------------------------------------------------------------------------
@@ -177,6 +181,10 @@ export class HeadlessGame {
     // Curriculum learning: difficulty scales from 0 (easiest) to 1 (hardest)
     // Controls layout complexity and opponent skill
     this.difficulty = Math.max(0, Math.min(1, options.difficulty ?? 1));
+
+    // Blueprint DNA: per-player castle DNA vectors for the blueprint generator.
+    // Each entry is a 32-element array or null (null = use standard generator).
+    this.blueprintDNA = options.blueprintDNA || [null, null];
 
     // Fast-training mode: reduced physics fidelity for faster iteration
     this.fastPhysics = options.fastPhysics ?? false;
@@ -529,7 +537,10 @@ export class HeadlessGame {
 
     for (let player = 0; player < 2; player++) {
       const centerX = player === 0 ? -offsetX : offsetX;
-      const { layout, target } = gen(gw, gd, budget, this.gameMode, this.difficulty);
+      const dna = this.blueprintDNA[player];
+      const { layout, target } = dna
+        ? decodeDNA(dna, { gridWidth: gw, gridDepth: gd, maxLayers: this.gameMode.maxLayers, budget })
+        : gen(gw, gd, budget, this.gameMode, this.difficulty);
       const halfW = Math.floor(gw / 2);
       const halfD = Math.floor(gd / 2);
       const floorOffset = hasGround ? BLOCK_SIZE / 2 : 0;

@@ -132,9 +132,9 @@ python export_onnx.py models/ppo_castle_final
 python export_onnx.py models/ppo_castle_final --output models/cannonfall_agent.onnx
 ```
 
-The export prints input/output tensor names for verification. The input
-tensor is named `"observation"` and output is `"action"` — matching the
-feed keys in `inference/OnnxAI.js`.
+The export includes both `action` (mean) and `action_log_std` (learned
+standard deviation) outputs, so the browser can sample from the full
+policy distribution rather than outputting deterministic actions.
 
 The exported model can be loaded in the browser:
 
@@ -184,6 +184,7 @@ to a new grid cell (matching real game flow).
 |-------|--------|
 | Each shot | -0.1 (encourages efficiency) |
 | Near miss | 0 to +1 (proximity shaping) |
+| Blocks destroyed | +0.2/block, max +2.0 (degrades castle) |
 | Hit target | +10 |
 | Win game | +100 |
 | Get hit by opponent | -5 |
@@ -210,11 +211,14 @@ to a new grid cell (matching real game flow).
 ### Curriculum Learning
 
 The `curriculum` layout generator + `CurriculumCallback` automatically
-ramp difficulty during training:
+ramp both difficulty and opponent skill during training:
 
-- **difficulty 0–0.3**: Simple walls (1–2 layers)
-- **difficulty 0.3–0.6**: Random layouts with reduced budget
-- **difficulty 0.6–1.0**: Full mixed layouts (presets + random)
+- **difficulty 0–0.3**: Simple walls (1–2 layers), EASY opponent
+- **difficulty 0.3–0.6**: Random layouts with reduced budget, MEDIUM opponent
+- **difficulty 0.6–1.0**: Full mixed layouts (presets + random), HARD opponent
+
+Opponent noise ramps from 0.15 (EASY, wide spread) to 0.04 (HARD, tight
+spread) on the same schedule as layout difficulty.
 
 ```bash
 python train.py --config configs/curriculum.json
@@ -227,6 +231,82 @@ without any THREE.js dependency. It imports shared code from `src/`
 (physics shapes, AI trajectory solver, constants, game modes, presets)
 to stay in sync with the real game. This minimises code drift — changes
 to the game's physics or AI automatically propagate to the training env.
+
+## Adversarial Training (Builder vs Attacker)
+
+An experimental adversarial training system where a **builder** agent
+learns to design castles that a **cannon attacker** can't crack, and vice
+versa. The two models are fully independent — each can be trained and
+refined separately.
+
+### Architecture
+
+```
+train_adversarial.py  (PSRO-lite orchestrator)
+  │
+  ├── ATTACKER: cannonfall_env.py → bridge.js → HeadlessGame
+  │   PPO model: obs=83 → action=3 (yaw, pitch, power)
+  │   Trained independently via train.py
+  │
+  └── BUILDER: builder_env.py → bridge.js → HeadlessGame
+      PPO model: obs=8 → action=32 (blueprint DNA)
+      Single-step episodes: output DNA, play full game, get reward
+```
+
+### Blueprint DNA
+
+The builder outputs a 32-float vector ("DNA") that a deterministic
+decoder (`BlueprintDecoder.js`) converts into a structurally valid
+castle layout. The DNA controls:
+
+- Perimeter wall height, thickness, and openings per side
+- Tower count, height, and spread
+- Interior fill density with weighted block type selection
+- Roof layer, ramp deflectors, crenellations
+- Internal cross-walls and hollow core around target
+- Asymmetry bias and target position (including elevation)
+
+The decoder guarantees every output is valid (in-bounds, budget-respected,
+supported, target column clear) regardless of DNA values. Small DNA changes
+produce small castle changes, making the space smooth for gradient-based
+optimisation.
+
+### Running Adversarial Training
+
+```bash
+# From existing attacker model (recommended):
+python train_adversarial.py \
+  --attacker-seed models/ppo_castle/best_model \
+  --rounds 5 \
+  --attacker-steps 100000 \
+  --builder-steps 50000 \
+  --n-envs 4
+
+# From scratch:
+python train_adversarial.py --rounds 10 --n-envs 8
+```
+
+Each round:
+1. Trains the attacker for N steps against standard layouts
+2. Trains the builder for N steps against heuristic attacker
+3. Evaluates the matchup (builder win rate, avg HP survived)
+4. Saves both models to the pool (`models/adversarial/`)
+
+### Builder Reward Signal
+
+| Event | Reward |
+|-------|--------|
+| Castle survives (builder wins) | +50 |
+| Builder HP remaining | +10 per HP |
+| Turns lasted | +0.5 per turn |
+| Attacker wins | -20 |
+| Blocks destroyed | -0.1 per block |
+
+### Seeding from Presets
+
+`encodeToDNA()` converts existing presets (Keep, Bunker, Tower) into
+approximate DNA vectors for seeding the builder pool, so training starts
+from known-good designs rather than random noise.
 
 ## Testing
 
@@ -245,26 +325,32 @@ pnpm test
 
 ```
 training/
-├── cannonfall_env.py      # Gymnasium environment (Python ↔ Node bridge)
-├── train.py               # PPO training script (parallel envs, curriculum)
+├── cannonfall_env.py      # Attacker Gymnasium env (Python ↔ Node bridge)
+├── builder_env.py         # Builder Gymnasium env (single-step DNA → game)
+├── train.py               # Attacker PPO training (parallel envs, curriculum)
+├── train_adversarial.py   # PSRO adversarial training (builder vs attacker)
 ├── train_selfplay.py      # Self-play training (agent vs agent)
 ├── evaluate.py            # Evaluation and comparison metrics
 ├── export_onnx.py         # Export trained model to ONNX
-├── callbacks.py           # CurriculumCallback for difficulty ramping
+├── callbacks.py           # CurriculumCallback (difficulty + opponent ramp)
 ├── test_bridge.py         # Python ↔ Node integration tests (8 tests)
 ├── requirements.txt       # Python dependencies
 ├── configs/
 │   ├── default.json       # Standard training config
 │   ├── fast.json          # Quick iteration (simple walls, 10k steps)
-│   └── curriculum.json    # Curriculum learning config
+│   ├── curriculum.json    # Curriculum learning config
+│   └── full.json          # Full 500k training w/ opponent ramp
 ├── env/
 │   ├── HeadlessGame.js    # Headless cannon-es game simulation
+│   ├── BlueprintDecoder.js# DNA → castle layout decoder (32 params)
 │   ├── bridge.js          # stdin/stdout JSON protocol server
 │   ├── headless.test.js   # Training env tests (33 tests)
+│   ├── blueprint.test.js  # Blueprint decoder tests (9 tests)
 │   └── package.json       # Node.js dependencies
 ├── inference/
 │   └── OnnxAI.js          # In-browser ONNX inference (AI.js drop-in)
 ├── models/                # Saved checkpoints (gitignored)
+│   └── adversarial/       # PSRO pool (attacker + builder per round)
 └── logs/                  # TensorBoard logs (gitignored)
 
 public/

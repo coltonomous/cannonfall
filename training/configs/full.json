@@ -4,6 +4,7 @@
   "layout_generator": "curriculum",
   "opponent_policy": "heuristic",
   "opponent_noise": 0.15,
+  "opponent_noise_end": 0.04,
   "difficulty": 0.1,
   "fast_physics": true,
   "total_timesteps": 500000,

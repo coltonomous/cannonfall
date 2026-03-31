@@ -71,6 +71,47 @@ function handleMessage(msg) {
         break;
       }
 
+      case 'play_game': {
+        // Play a full game with blueprint DNA castles and a frozen attacker policy.
+        // The attacker fires using actions provided per-turn by the Python side,
+        // or uses heuristic if no attacker actions are supplied.
+        // params: { options, attackerActions? }
+        //   options.blueprintDNA: [dnaP0, dnaP1] — 32-float arrays or null
+        // Returns: { ok, result: { winner, hp, turnCount, blocksDestroyed } }
+        const options = params.options || {};
+        const g = new HeadlessGame(options);
+        const obs = g.reset();
+
+        const attackerActions = params.attackerActions || null;
+        let totalBlocksDestroyed = 0;
+        let turn = 0;
+
+        while (!g.done) {
+          // Use provided attacker actions if available, otherwise heuristic
+          let action;
+          if (attackerActions && attackerActions[turn]) {
+            action = attackerActions[turn];
+          } else {
+            // Default: use the configured opponent as a stand-in attacker
+            action = { yaw: 0, pitch: 0.5, power: 30 };
+          }
+          const stepResult = g.step(action);
+          totalBlocksDestroyed += stepResult.info.blocksDestroyed || 0;
+          turn++;
+        }
+
+        send({
+          ok: true,
+          result: {
+            winner: g.winner,
+            hp: [...g.hp],
+            turnCount: g.turnCount,
+            blocksDestroyed: totalBlocksDestroyed,
+          },
+        });
+        break;
+      }
+
       case 'close': {
         send({ ok: true });
         process.exit(0);

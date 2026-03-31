@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import math
+import random
 import subprocess
 from pathlib import Path
 
@@ -58,7 +59,8 @@ class CannonFallEnv(gym.Env):
         difficulty: float = 1.0,
         fast_physics: bool = False,
         node_executable: str = "node",
-        blueprint_dna: list[list[float] | None] | None = None,
+        blueprint_dna_pool: list[list[float]] | None = None,
+        blueprint_dna_mix: float = 0.5,
     ):
         super().__init__()
 
@@ -71,9 +73,12 @@ class CannonFallEnv(gym.Env):
         self._fast_physics = fast_physics
         self._node_exe = node_executable
         self._proc: subprocess.Popen | None = None
-        # Per-player blueprint DNA: [dnaP0, dnaP1], each 32-float list or None.
-        # When set, overrides layout_generator for that player.
-        self._blueprint_dna = blueprint_dna
+        # Pool of pre-computed DNA vectors for the defender's castle.
+        # On each reset, one is sampled at random (with blueprint_dna_mix
+        # probability). This lets the attacker train against diverse builder
+        # castles without loading models in subprocess workers.
+        self._blueprint_dna_pool = blueprint_dna_pool or []
+        self._blueprint_dna_mix = blueprint_dna_mix
 
         # Actions normalised to [-1, 1]
         self.action_space = spaces.Box(
@@ -113,8 +118,10 @@ class CannonFallEnv(gym.Env):
             "difficulty": self._difficulty,
             "fastPhysics": self._fast_physics,
         }
-        if self._blueprint_dna:
-            opts["blueprintDNA"] = self._blueprint_dna
+        # Sample a fresh builder castle DNA each episode
+        if self._blueprint_dna_pool and random.random() < self._blueprint_dna_mix:
+            dna = random.choice(self._blueprint_dna_pool)
+            opts["blueprintDNA"] = [None, dna]  # player 1 = defender
         resp = self._send({"cmd": "reset", "options": opts})
         obs = self._parse_obs(resp["observation"])
         return obs, {}

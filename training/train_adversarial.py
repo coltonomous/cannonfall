@@ -44,43 +44,38 @@ _MODELS_DIR = _HERE / "models"
 _POOL_DIR = _MODELS_DIR / "adversarial"
 
 
-def sample_builder_dna(builder_pool: list[str]) -> list[float] | None:
-    """Sample a castle DNA from a random builder in the pool.
+def generate_dna_pool(builder_model_paths: list[str], samples_per_model: int = 20) -> list[list[float]]:
+    """Pre-generate a batch of DNA vectors from builder models.
 
-    Returns None if the pool is empty (fall back to standard layouts).
+    Loads each builder model, runs inference multiple times with stochastic
+    sampling, and collects the DNA vectors. This avoids loading models inside
+    SubprocVecEnv workers (which can't pickle them).
     """
-    if not builder_pool:
-        return None
-    path = random.choice(builder_pool)
-    try:
-        model = PPO.load(path)
-        # Builder observation is static context — use zeros
-        obs = np.zeros(8, dtype=np.float32)
-        dna, _ = model.predict(obs, deterministic=False)
-        return np.clip(dna, -1, 1).tolist()
-    except Exception as e:
-        print(f"  Warning: failed to load builder {path}: {e}")
-        return None
+    pool = []
+    obs = np.zeros(8, dtype=np.float32)
+    for path in builder_model_paths:
+        try:
+            model = PPO.load(path)
+            for _ in range(samples_per_model):
+                dna, _ = model.predict(obs, deterministic=False)
+                pool.append(np.clip(dna, -1, 1).tolist())
+        except Exception as e:
+            print(f"  Warning: failed to load builder {path}: {e}")
+    return pool
 
 
 def make_attacker_env(
-    builder_pool: list[str],
+    dna_pool: list[list[float]],
     opponent_noise: float,
     fast_physics: bool,
     mix_ratio: float = 0.5,
 ):
     """Create a CannonFallEnv that trains against builder castles.
 
-    mix_ratio: fraction of episodes using builder DNA (rest use standard layouts).
-    When builder_pool is empty, always uses standard layouts.
+    dna_pool: pre-generated DNA vectors. On each reset, the env samples
+    one at random (with mix_ratio probability).
     """
     def _make():
-        # Decide whether this env uses a builder castle
-        dna = None
-        if builder_pool and random.random() < mix_ratio:
-            dna = sample_builder_dna(builder_pool)
-
-        blueprint = [None, dna] if dna else None  # player 1 = defender
         env = CannonFallEnv(
             mode="CASTLE",
             max_turns=30,
@@ -88,7 +83,8 @@ def make_attacker_env(
             opponent_policy="heuristic",
             opponent_noise=opponent_noise,
             fast_physics=fast_physics,
-            blueprint_dna=blueprint,
+            blueprint_dna_pool=dna_pool,
+            blueprint_dna_mix=mix_ratio,
         )
         return Monitor(env)
     return _make
@@ -121,14 +117,17 @@ def train_attacker(
     steps: int,
     n_envs: int,
     opponent_noise: float,
-    builder_pool: list[str],
+    builder_model_paths: list[str],
     round_num: int,
 ) -> Path:
     """Train attacker model for one PSRO round."""
     print(f"\n{'='*60}")
     print(f"  ROUND {round_num}: Training ATTACKER for {steps:,} steps")
-    mix = 0.5 if builder_pool else 0.0
-    print(f"  Builder castle mix: {mix:.0%} ({len(builder_pool)} in pool)")
+
+    # Pre-generate DNA pool from builder models (done once in main process)
+    dna_pool = generate_dna_pool(builder_model_paths) if builder_model_paths else []
+    mix = 0.5 if dna_pool else 0.0
+    print(f"  Builder castle mix: {mix:.0%} ({len(dna_pool)} DNA samples from {len(builder_model_paths)} models)")
     print(f"{'='*60}")
 
     run_name = f"attacker_r{round_num:02d}"
@@ -137,16 +136,16 @@ def train_attacker(
 
     if n_envs > 1:
         train_env = SubprocVecEnv([
-            make_attacker_env(builder_pool, opponent_noise, True, mix)
+            make_attacker_env(dna_pool, opponent_noise, True, mix)
             for _ in range(n_envs)
         ])
     else:
         train_env = DummyVecEnv([
-            make_attacker_env(builder_pool, opponent_noise, True, mix)
+            make_attacker_env(dna_pool, opponent_noise, True, mix)
         ])
 
     eval_env = DummyVecEnv([
-        make_attacker_env(builder_pool, opponent_noise, True, mix)
+        make_attacker_env(dna_pool, opponent_noise, True, mix)
     ])
 
     if seed_path and Path(seed_path).exists():
@@ -362,7 +361,7 @@ def main():
             steps=args.attacker_steps,
             n_envs=args.n_envs,
             opponent_noise=args.opponent_noise,
-            builder_pool=builder_pool,
+            builder_model_paths=builder_pool,
             round_num=round_num,
         )
         attacker_path = str(new_attacker)

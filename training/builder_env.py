@@ -44,13 +44,15 @@ class BuilderEnv(gym.Env):
     def __init__(
         self,
         mode: str = "CASTLE",
-        max_turns: int = 30,
+        max_turns: int = 15,
         opponent_policy: str = "heuristic",
         opponent_noise: float = 0.04,
         attacker_difficulty: str = "HARD",
         fast_physics: bool = True,
         node_executable: str = "node",
-        num_games: int = 3,
+        num_games: int = 1,
+        early_stop_hits: int = 2,
+        early_stop_turns: int = 5,
         **kwargs,  # ignore extra kwargs for compatibility
     ):
         super().__init__()
@@ -63,6 +65,8 @@ class BuilderEnv(gym.Env):
         self._fast_physics = fast_physics
         self._node_exe = node_executable
         self._num_games = num_games
+        self._early_stop_hits = early_stop_hits
+        self._early_stop_turns = early_stop_turns
         self._proc: subprocess.Popen | None = None
         self._last_reward = 0.0
 
@@ -181,6 +185,8 @@ class BuilderEnv(gym.Env):
                 "fastPhysics": self._fast_physics,
                 "blueprintDNA": [None, dna],  # player 1 = builder's castle
                 "attackerDifficulty": self._attacker_difficulty,
+                "earlyStopHits": self._early_stop_hits,
+                "earlyStopTurns": self._early_stop_turns,
             },
         })
         return resp.get("result", {})

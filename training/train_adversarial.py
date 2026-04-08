@@ -93,7 +93,7 @@ def make_attacker_env(
 def make_builder_env(
     attacker_difficulty: str,
     fast_physics: bool,
-    num_games: int = 3,
+    num_games: int = 1,
 ):
     """Create a BuilderEnv that evaluates castles against heuristic attacker."""
     # Map difficulty name to noise level
@@ -101,7 +101,7 @@ def make_builder_env(
     def _make():
         env = BuilderEnv(
             mode="CASTLE",
-            max_turns=30,
+            max_turns=15,
             opponent_policy="heuristic",
             opponent_noise=noise,
             fast_physics=fast_physics,
@@ -215,7 +215,7 @@ def train_builder(
     else:
         train_env = DummyVecEnv([make_builder_env(attacker_difficulty, True)])
 
-    eval_env = DummyVecEnv([make_builder_env(attacker_difficulty, True, num_games=5)])
+    eval_env = DummyVecEnv([make_builder_env(attacker_difficulty, True, num_games=3)])
 
     if seed_path and Path(seed_path).exists():
         print(f"  Resuming from {seed_path}")

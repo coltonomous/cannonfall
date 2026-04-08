@@ -88,7 +88,10 @@ function handleMessage(msg) {
         g.reset();
 
         const attackerActions = params.attackerActions || null;
+        const earlyStopHits = options.earlyStopHits || 0;
+        const earlyStopTurns = options.earlyStopTurns || 0;
         let totalBlocksDestroyed = 0;
+        let attackerHits = 0;
         let turn = 0;
 
         while (!g.done) {
@@ -101,7 +104,13 @@ function handleMessage(msg) {
           }
           const stepResult = g.step(action);
           totalBlocksDestroyed += stepResult.info.blocksDestroyed || 0;
+          if (stepResult.info.hit) attackerHits++;
           turn++;
+
+          // Early termination: castle is clearly weak
+          if (earlyStopHits > 0 && attackerHits >= earlyStopHits && turn <= earlyStopTurns) {
+            break;
+          }
         }
 
         send({

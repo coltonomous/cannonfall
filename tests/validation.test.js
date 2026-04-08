@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 
 const MAX_LAYOUT_BLOCKS = 600;
 const MAX_GRID_SIZE = 20;
+const MAX_LAYERS = 8;
 
 function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -19,7 +20,13 @@ function validateCastleData(data) {
     if (!block || typeof block !== 'object') return false;
     if (!isFiniteNumber(block.x) || !isFiniteNumber(block.y) || !isFiniteNumber(block.z)) return false;
     if (typeof block.type !== 'string' || block.type.length > 20) return false;
+    if (block.x < 0 || block.x >= MAX_GRID_SIZE) return false;
+    if (block.y < 0 || block.y >= MAX_LAYERS) return false;
+    if (block.z < 0 || block.z >= MAX_GRID_SIZE) return false;
   }
+  // Target must not overlap any block in the same column
+  const tx = data.target.x, tz = data.target.z;
+  if (data.layout.some(b => b.x === tx && b.z === tz)) return false;
   return true;
 }
 
@@ -36,7 +43,7 @@ function validateRepositionPayload({ targetPos }) {
 describe('validateCastleData', () => {
   const validCastle = () => ({
     layout: [
-      { x: 4, y: 0, z: 4, type: 'CUBE' },
+      { x: 3, y: 0, z: 4, type: 'CUBE' },
       { x: 5, y: 0, z: 4, type: 'WALL' },
     ],
     target: { x: 4, z: 4 },
@@ -77,7 +84,7 @@ describe('validateCastleData', () => {
   });
 
   it('accepts layout at exactly MAX_LAYOUT_BLOCKS', () => {
-    const max = { layout: Array(MAX_LAYOUT_BLOCKS).fill({ x: 0, y: 0, z: 0, type: 'CUBE' }), target: { x: 0, z: 0 } };
+    const max = { layout: Array(MAX_LAYOUT_BLOCKS).fill({ x: 0, y: 0, z: 0, type: 'CUBE' }), target: { x: 1, z: 1 } };
     expect(validateCastleData(max)).toBe(true);
   });
 
@@ -137,6 +144,51 @@ describe('validateCastleData', () => {
   it('rejects null block in layout', () => {
     const data = { layout: [null], target: { x: 4, z: 4 } };
     expect(validateCastleData(data)).toBe(false);
+  });
+
+  it('rejects block with x out of grid bounds', () => {
+    const data = { layout: [{ x: -1, y: 0, z: 0, type: 'CUBE' }], target: { x: 4, z: 4 } };
+    expect(validateCastleData(data)).toBe(false);
+    const data2 = { layout: [{ x: MAX_GRID_SIZE, y: 0, z: 0, type: 'CUBE' }], target: { x: 4, z: 4 } };
+    expect(validateCastleData(data2)).toBe(false);
+  });
+
+  it('rejects block with y out of layer bounds', () => {
+    const data = { layout: [{ x: 0, y: -1, z: 0, type: 'CUBE' }], target: { x: 4, z: 4 } };
+    expect(validateCastleData(data)).toBe(false);
+    const data2 = { layout: [{ x: 0, y: MAX_LAYERS, z: 0, type: 'CUBE' }], target: { x: 4, z: 4 } };
+    expect(validateCastleData(data2)).toBe(false);
+  });
+
+  it('rejects block with z out of grid bounds', () => {
+    const data = { layout: [{ x: 0, y: 0, z: -1, type: 'CUBE' }], target: { x: 4, z: 4 } };
+    expect(validateCastleData(data)).toBe(false);
+    const data2 = { layout: [{ x: 0, y: 0, z: MAX_GRID_SIZE, type: 'CUBE' }], target: { x: 4, z: 4 } };
+    expect(validateCastleData(data2)).toBe(false);
+  });
+
+  it('accepts block at grid boundaries', () => {
+    const data = {
+      layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }, { x: MAX_GRID_SIZE - 1, y: MAX_LAYERS - 1, z: MAX_GRID_SIZE - 1, type: 'CUBE' }],
+      target: { x: 4, z: 4 },
+    };
+    expect(validateCastleData(data)).toBe(true);
+  });
+
+  it('rejects target overlapping a block column', () => {
+    const data = {
+      layout: [{ x: 4, y: 0, z: 4, type: 'CUBE' }],
+      target: { x: 4, z: 4 },
+    };
+    expect(validateCastleData(data)).toBe(false);
+  });
+
+  it('accepts target adjacent to blocks', () => {
+    const data = {
+      layout: [{ x: 3, y: 0, z: 4, type: 'CUBE' }, { x: 4, y: 0, z: 3, type: 'CUBE' }],
+      target: { x: 4, z: 4 },
+    };
+    expect(validateCastleData(data)).toBe(true);
   });
 });
 

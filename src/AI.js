@@ -174,8 +174,10 @@ export class AI {
   applySpread(aim) {
     const { spreadRad, powerOffset } = this.difficulty;
     return {
-      yaw: aim.yaw + (Math.random() - 0.5) * 2 * spreadRad,
-      pitch: aim.pitch + (Math.random() - 0.5) * 2 * spreadRad,
+      yaw: Math.max(-MAX_YAW_OFFSET, Math.min(MAX_YAW_OFFSET,
+        aim.yaw + (Math.random() - 0.5) * 2 * spreadRad)),
+      pitch: Math.max(MIN_PITCH, Math.min(MAX_PITCH,
+        aim.pitch + (Math.random() - 0.5) * 2 * spreadRad)),
       power: Math.max(MIN_POWER, Math.min(MAX_POWER,
         aim.power + (Math.random() - 0.5) * 2 * powerOffset)),
     };

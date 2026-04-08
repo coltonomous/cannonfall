@@ -226,6 +226,22 @@ export class BattleController {
 
   updateTrajectory() {
     const cannon = this.cannons[this.currentTurn];
+    const currentYaw = cannon.yaw;
+    const currentPitch = cannon.pitch;
+    const currentPower = this.power;
+
+    if (this._lastTrajYaw === currentYaw &&
+        this._lastTrajPitch === currentPitch &&
+        this._lastTrajPower === currentPower &&
+        this._lastTrajTurn === this.currentTurn) {
+      this._updateTrajectoryPulse();
+      return;
+    }
+    this._lastTrajYaw = currentYaw;
+    this._lastTrajPitch = currentPitch;
+    this._lastTrajPower = currentPower;
+    this._lastTrajTurn = this.currentTurn;
+
     const pos = cannon.getFirePosition();
     const dir = cannon.getFireDirection();
     const g = Math.abs(this.gameMode.gravity);
@@ -280,6 +296,24 @@ export class BattleController {
         this.impactBeam.visible = false;
         this.impactRing.visible = false;
       }
+    }
+  }
+
+  _updateTrajectoryPulse() {
+    const g = Math.abs(this.gameMode.gravity);
+    if (g === 0) {
+      const pulse = 1.0 + 0.15 * Math.sin(performance.now() * 0.004);
+      this.reticle.scale.setScalar(pulse);
+      this.reticle.lookAt(this.sceneManager.camera.position);
+    } else if (this.impactBeam.visible) {
+      const t = performance.now() * 0.005;
+      const pulse = 0.3 + 0.15 * Math.sin(t);
+      this.impactBeam.material.opacity = pulse;
+      this.impactBeamGlow.material.opacity = pulse * 0.3;
+      this.impactRing.material.opacity = pulse + 0.15;
+      this.impactDot.material.opacity = pulse + 0.25;
+      const ringPulse = 1.0 + 0.1 * Math.sin(t * 1.5);
+      this.impactRing.scale.setScalar(ringPulse);
     }
   }
 
@@ -785,5 +819,9 @@ export class BattleController {
     this._pendingTargetHit = false;
     this._pendingSpaceImpact = null;
     this._reticleInitialized = false;
+    this._lastTrajYaw = undefined;
+    this._lastTrajPitch = undefined;
+    this._lastTrajPower = undefined;
+    this._lastTrajTurn = undefined;
   }
 }

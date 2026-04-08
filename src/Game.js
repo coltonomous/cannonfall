@@ -18,42 +18,9 @@ import { getPreset } from './Presets.js';
 import { setupUIListeners } from './UIListeners.js';
 import { setupNetworkListeners } from './NetworkHandler.js';
 import * as C from './constants.js';
+import { StateMachine, State } from './StateMachine.js';
 
-export const State = {
-  MENU: 'menu',
-  BUILD: 'build',
-  PASS_DEVICE: 'pass_device',
-  WAITING_OPPONENT_BUILD: 'waiting_build',
-  MY_TURN: 'my_turn',
-  FIRING: 'firing',
-  OPPONENT_TURN: 'opponent_turn',
-  OPPONENT_FIRING: 'opponent_firing',
-  REPOSITION: 'reposition',
-  PASS_DEVICE_REPOSITION: 'pass_device_reposition',
-  TURN_TRANSITION: 'turn_transition',
-  AI_AIMING: 'ai_aiming',
-  AI_FIRING: 'ai_firing',
-  REPLAY: 'replay',
-  GAME_OVER: 'game_over',
-};
-
-const VALID_TRANSITIONS = {
-  [State.MENU]:                  [State.BUILD, State.MY_TURN, State.OPPONENT_TURN, State.WAITING_OPPONENT_BUILD, State.AI_AIMING],
-  [State.BUILD]:                 [State.MENU, State.PASS_DEVICE, State.WAITING_OPPONENT_BUILD, State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
-  [State.PASS_DEVICE]:           [State.BUILD],
-  [State.WAITING_OPPONENT_BUILD]:[State.MY_TURN, State.OPPONENT_TURN],
-  [State.MY_TURN]:               [State.FIRING, State.GAME_OVER, State.MENU],
-  [State.FIRING]:                [State.GAME_OVER, State.REPLAY, State.PASS_DEVICE_REPOSITION, State.TURN_TRANSITION, State.OPPONENT_TURN, State.MY_TURN, State.REPOSITION, State.AI_AIMING],
-  [State.OPPONENT_TURN]:         [State.OPPONENT_FIRING, State.REPOSITION, State.MY_TURN, State.GAME_OVER, State.MENU],
-  [State.OPPONENT_FIRING]:       [State.GAME_OVER, State.REPLAY, State.REPOSITION, State.MY_TURN, State.OPPONENT_TURN, State.TURN_TRANSITION],
-  [State.REPOSITION]:            [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING],
-  [State.PASS_DEVICE_REPOSITION]:[State.REPOSITION],
-  [State.TURN_TRANSITION]:       [State.MY_TURN, State.OPPONENT_TURN, State.AI_AIMING, State.REPOSITION, State.PASS_DEVICE_REPOSITION],
-  [State.AI_AIMING]:             [State.AI_FIRING, State.GAME_OVER, State.MENU],
-  [State.AI_FIRING]:             [State.GAME_OVER, State.REPLAY, State.TURN_TRANSITION, State.MY_TURN, State.REPOSITION],
-  [State.REPLAY]:                [State.GAME_OVER],
-  [State.GAME_OVER]:             [State.MENU],
-};
+export { State };
 
 export class Game {
   constructor(canvas) {
@@ -68,7 +35,7 @@ export class Game {
     if (fireBtn && this.isTouch) this.input.setupFireButton(fireBtn);
     this.particles = new ParticleManager(this.sceneManager.scene);
 
-    this.state = State.MENU;
+    this._sm = new StateMachine();
     this.gameMode = GAME_MODES.CASTLE;
     this.mode = null; // 'local', 'online', or 'ai'
     this.playerIndex = 0;
@@ -153,15 +120,14 @@ export class Game {
 
   // ── State Machine ───────────────────────────────────────
 
+  get state() { return this._sm.state; }
+  set state(v) { this._sm.current = v; }
+
   transition(newState) {
-    const valid = VALID_TRANSITIONS[this.state];
-    if (!valid || !valid.includes(newState)) {
-      console.warn(`[Cannonfall] Invalid state transition: ${this.state} → ${newState}`);
-      return false;
-    }
-    this.debugLog(`State: ${this.state} → ${newState}`);
-    this.state = newState;
-    return true;
+    const prev = this._sm.state;
+    const ok = this._sm.transition(newState);
+    if (ok) this.debugLog(`State: ${prev} → ${newState}`);
+    return ok;
   }
 
   // ── Mode Setup ───────────────────────────────────────────
@@ -400,6 +366,7 @@ export class Game {
       this._prebuild = false;
       this.castleBuilds[this.getModeKey()] = castleData;
       this.transition(State.MENU);
+      this.ui.hideConnectionLost();
       this.ui.showMenu();
       this._showCastleReady();
       return;
@@ -974,6 +941,7 @@ export class Game {
   // ── Cleanup ──────────────────────────────────────────────
 
   cleanup() {
+    this._sm.reset();
     this._cancelPendingTimers();
     this.castles.forEach((c) => { if (c) c.clear(); });
     this.cannons.forEach((c) => { if (c) c.destroy(); });
@@ -993,6 +961,7 @@ export class Game {
     if (debugOverlay) debugOverlay.remove();
     this.ui.menuPanel.classList.add('hidden');
     this.ui.hideDisconnectBanner();
+    this.ui.hideConnectionLost();
 
     // Reset debug state and checkboxes
     this.debugPhysics = false;

@@ -64,6 +64,7 @@ const MAX_PITCH = Math.PI / 3;
 const MAX_YAW_OFFSET = Math.PI / 4;
 const MAX_LAYOUT_BLOCKS = 600;
 const MAX_GRID_SIZE = 20;
+const MAX_LAYERS = 8;
 const SHOT_RESOLVE_TIMEOUT = 3000;
 const FIRE_SAFETY_TIMEOUT = 10000;
 const VALID_MODES = ['castle', 'pirate', 'space'];
@@ -90,6 +91,9 @@ function validateCastleData(data) {
     if (!block || typeof block !== 'object') return false;
     if (!isFiniteNumber(block.x) || !isFiniteNumber(block.y) || !isFiniteNumber(block.z)) return false;
     if (typeof block.type !== 'string' || block.type.length > 20) return false;
+    if (block.x < 0 || block.x >= MAX_GRID_SIZE) return false;
+    if (block.y < 0 || block.y >= MAX_LAYERS) return false;
+    if (block.z < 0 || block.z >= MAX_GRID_SIZE) return false;
   }
   // Target must not overlap any block in the same column
   const tx = data.target.x, tz = data.target.z;
@@ -397,16 +401,17 @@ io.on('connection', (socket) => {
     if (oppSocket) oppSocket.emit('opponent-fired', { yaw, pitch, power });
 
     if (turnTimeouts.has(game.id)) clearTimeout(turnTimeouts.get(game.id));
+    const firedByTurn = game.currentTurn;
     turnTimeouts.set(game.id, setTimeout(() => {
       turnTimeouts.delete(game.id);
-      if (!pendingShots.has(game.id)) {
-        const g = games.get(game.id);
-        if (!g || g.phase !== 'battle') return;
-        g.currentTurn = 1 - g.currentTurn;
-        for (const sid of g.sessionIds) {
-          const s = liveSockets.get(sid);
-          if (s) s.emit('shot-resolved', { hit: false, nextTurn: g.currentTurn });
-        }
+      const g = games.get(game.id);
+      if (!g || g.phase !== 'battle') return;
+      if (g.currentTurn !== firedByTurn) return;
+      if (pendingShots.has(game.id)) return;
+      g.currentTurn = 1 - g.currentTurn;
+      for (const sid of g.sessionIds) {
+        const s = liveSockets.get(sid);
+        if (s) s.emit('shot-resolved', { hit: false, nextTurn: g.currentTurn });
       }
     }, FIRE_SAFETY_TIMEOUT));
   });

@@ -162,6 +162,22 @@ export class UI {
     if (banner) banner.classList.add('hidden');
   }
 
+  showConnectionLost() {
+    let banner = document.getElementById('connection-lost-banner');
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = 'connection-lost-banner';
+      document.body.appendChild(banner);
+    }
+    banner.textContent = 'Connection lost \u2014 reconnecting...';
+    banner.classList.remove('hidden');
+  }
+
+  hideConnectionLost() {
+    const banner = document.getElementById('connection-lost-banner');
+    if (banner) banner.classList.add('hidden');
+  }
+
   // Lobby
 
   showLobby() {

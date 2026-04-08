@@ -56,6 +56,14 @@ export class Network {
         reject(err);
       });
 
+      // Connection loss / reconnect (fires after initial connect too)
+      this.socket.on('disconnect', () => {
+        if (this.handlers['connection-lost']) this.handlers['connection-lost']();
+      });
+      this.socket.io.on('reconnect', () => {
+        if (this.handlers['connection-restored']) this.handlers['connection-restored']();
+      });
+
       for (const event of EVENTS) {
         this.socket.on(event, (data) => {
           if (this.handlers[event]) {

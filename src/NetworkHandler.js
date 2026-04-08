@@ -109,6 +109,16 @@ export function setupNetworkListeners(game, State) {
     game.ui.hideDisconnectBanner();
   });
 
+  game.network.on('connection-lost', () => {
+    if (game.mode === 'online') {
+      game.ui.showConnectionLost();
+    }
+  });
+
+  game.network.on('connection-restored', () => {
+    game.ui.hideConnectionLost();
+  });
+
   game.network.on('reconnected', (data) => {
     handleReconnect(game, State, data);
   });

@@ -442,35 +442,6 @@ body {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
 }
 
-/* ── Fire Button (touch devices) ──────────────────── */
-#fire-btn {
-  --charge-pct: 0%;
-  position: absolute;
-  right: 16px;
-  bottom: 80px;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 255, 255, 0.3);
-  background: radial-gradient(circle, rgba(192, 57, 43, 0.8), rgba(142, 37, 23, 0.9));
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 1px;
-  cursor: pointer;
-  pointer-events: auto;
-  touch-action: none;
-  z-index: 10;
-  transition: transform 0.1s;
-}
-
-#fire-btn:active,
-#fire-btn.charging {
-  transform: scale(0.92);
-  border-color: rgba(255, 200, 0, 0.8);
-  background: radial-gradient(circle, rgba(230, 126, 34, 0.9), rgba(192, 57, 43, 0.9));
-}
-
 /* ── HP Display ────────────────────────────────────── */
 #hp-display {
   position: absolute;
@@ -1091,14 +1062,6 @@ body {
     height: 80px;
     bottom: 120px;
     right: 8px;
-  }
-
-  #fire-btn {
-    right: 8px;
-    bottom: 32px;
-    width: 60px;
-    height: 60px;
-    font-size: 0.7rem;
   }
 
   #hp-display {

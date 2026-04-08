@@ -31,8 +31,6 @@ export class Game {
     this.input = new InputHandler();
     this.input.setupTouchListeners(canvas);
     this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    const fireBtn = document.getElementById('fire-btn');
-    if (fireBtn && this.isTouch) this.input.setupFireButton(fireBtn);
     this.particles = new ParticleManager(this.sceneManager.scene);
 
     this._sm = new StateMachine();
@@ -541,9 +539,6 @@ export class Game {
       this.cannons[this.currentTurn].resetAim(defaultPitch);
       this.input.resetTouchState();
       this.ui.setControlsHint(this.isTouch);
-      this._showFireButton(true);
-    } else {
-      this._showFireButton(false);
     }
     if (this.state === State.AI_AIMING) {
       this.cannons[this.currentTurn].resetAim(defaultPitch);
@@ -984,11 +979,6 @@ export class Game {
   }
 
   // ── Debug ────────────────────────────────────────────────
-
-  _showFireButton(visible) {
-    const btn = document.getElementById('fire-btn');
-    if (btn) btn.classList.toggle('hidden', !visible || !this.isTouch);
-  }
 
   toggleAxesHelper(enabled) {
     this._showBlockAxes = enabled;

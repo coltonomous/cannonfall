@@ -5,11 +5,16 @@
  * heuristic AI (computeAim), so it can be dropped into the game as
  * an opponent type without modifying existing game code.
  *
+ * Also owns the builder model for castle generation — when the OnnxAI
+ * instance is replaced (e.g. switching to heuristic AI), the builder
+ * session is discarded automatically.
+ *
  * Usage:
  *   import { OnnxAI } from './training/inference/OnnxAI.js';
  *
  *   const ai = new OnnxAI();
  *   await ai.load('/models/cannonfall_agent.onnx');
+ *   await ai.loadBuilder('/models/builder_agent.onnx');
  *
  *   // Returns a Promise (inference is async)
  *   const aim = await ai.computeAim(cannon, targetPos, gameMode);
@@ -18,6 +23,10 @@
  * Dependencies:
  *   onnxruntime-web (loaded via CDN or npm)
  */
+
+import { decodeDNA } from '../env/BlueprintDecoder.js';
+
+const MIN_BUILDER_BLOCKS = 15;
 
 /** Standard normal sample via Box-Muller transform. */
 function _randn() {
@@ -47,6 +56,7 @@ export class OnnxAI {
    */
   constructor(options = {}) {
     this._session = null;
+    this._builderSession = null;
     this._maxTurns = options.maxTurns || MAX_TURNS_DEFAULT;
     this._turnCount = 0;
     this._lastHit = false;
@@ -273,6 +283,76 @@ export class OnnxAI {
         this._blockGrid[gy * gd + gz] = 1;
       }
     }
+  }
+
+  // -------------------------------------------------------------------
+  // Builder model — castle generation from DNA
+  // -------------------------------------------------------------------
+
+  /**
+   * Load the builder ONNX model for castle generation.
+   * @param {string} modelPath  URL or path to the builder .onnx file
+   */
+  async loadBuilder(modelPath) {
+    const runtime = this._ort || globalThis.ort;
+    if (!runtime) throw new Error('onnxruntime-web not loaded');
+    this._builderSession = await runtime.InferenceSession.create(modelPath);
+  }
+
+  get hasBuilder() {
+    return this._builderSession !== null;
+  }
+
+  /**
+   * Generate a castle layout using the builder model.
+   * Runs inference to get a DNA vector, decodes it, and nudges sparse
+   * results to ensure a viable castle.
+   * @param {object} gameMode  Game mode config (needs gridWidth, gridDepth, maxLayers, budget)
+   * @returns {Promise<{ layout: object[], target: object, cannonPos: object }>}
+   */
+  async generateCastle(gameMode) {
+    if (!this._builderSession) throw new Error('Builder model not loaded');
+    const ort = this._ort || globalThis.ort;
+
+    const obs = new Float32Array([
+      0.4,  // attacker_skill (moderate opponent)
+      1.0,  // mode (castle)
+      gameMode.gridWidth || 9,
+      gameMode.gridDepth || 9,
+      gameMode.maxLayers || 8,
+      gameMode.budget || 600,
+      15.0, // max_turns
+      0.0,  // last_reward
+    ]);
+
+    const tensor = new ort.Tensor('float32', obs, [1, obs.length]);
+    const results = await this._builderSession.run({ observation: tensor });
+    const dna = Array.from(results.action.data);
+
+    const decodeOpts = {
+      gridWidth: gameMode.gridWidth || 9,
+      gridDepth: gameMode.gridDepth || 9,
+      maxLayers: gameMode.maxLayers || 8,
+      budget: gameMode.budget || 600,
+    };
+
+    let decoded = decodeDNA(dna, decodeOpts);
+
+    // Nudge sparse layouts by boosting structural genes
+    const MAX_NUDGES = 3;
+    const NUDGE_STEP = 0.3;
+    for (let i = 0; i < MAX_NUDGES && decoded.layout.length < MIN_BUILDER_BLOCKS; i++) {
+      dna[0] = Math.min(1, dna[0] + NUDGE_STEP);   // perimeterHeight
+      dna[4] = Math.min(1, dna[4] + NUDGE_STEP);   // interiorDensity
+      dna[5] = Math.min(1, dna[5] + NUDGE_STEP * 0.5); // interiorHeight
+      dna[6] = Math.min(1, dna[6] + NUDGE_STEP * 0.5); // roofCoverage
+      decoded = decodeDNA(dna, decodeOpts);
+    }
+
+    const gd = gameMode.gridDepth || 9;
+    decoded.cannonPos = { x: (gameMode.gridWidth || 9) - 1, z: Math.floor(gd / 2) };
+
+    return decoded;
   }
 
   /** Reset state for a new game. */

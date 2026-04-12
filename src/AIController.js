@@ -1,14 +1,10 @@
 import { AI } from './AI.js';
 import { OnnxAI } from '../training/inference/OnnxAI.js';
 import { getPreset } from './Presets.js';
-import { decodeDNA } from '../training/env/BlueprintDecoder.js';
 import * as C from './constants.js';
 
 const ONNX_CDN_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js';
 const ONNX_CDN_INTEGRITY = 'sha384-ptI8iyyOcINc8kC8ZGnLexw29V7PfIaX46b1GMjaX2QKGvUPH8Jrp5U81Mh4TDp4';
-
-// Minimum block count to accept a builder-generated castle; below this, fall back to preset
-const MIN_BUILDER_BLOCKS = 15;
 
 /**
  * Manages AI opponent creation, ONNX model loading, and AI turn execution.
@@ -18,7 +14,6 @@ export class AIController {
   constructor() {
     this.ai = null;
     this.difficulty = 'MEDIUM';
-    this._builderSession = null;
   }
 
   /**
@@ -45,11 +40,9 @@ export class AIController {
         await onnxAi.load('/models/cannonfall_agent.onnx');
         // Also load the builder model for castle generation
         try {
-          const runtime = globalThis.ort;
-          this._builderSession = await runtime.InferenceSession.create('/models/builder_agent.onnx');
+          await onnxAi.loadBuilder('/models/builder_agent.onnx');
         } catch (builderErr) {
           console.warn('Builder model load failed (will use presets):', builderErr);
-          this._builderSession = null;
         }
       } catch (err) {
         console.warn('RL model load failed:', err);
@@ -64,16 +57,13 @@ export class AIController {
 
   /**
    * Pick a castle for the AI opponent.
-   * In RL mode (castle game mode), uses the trained builder model to generate
-   * a castle from a DNA vector. If the result is too sparse, nudges the DNA's
-   * structural genes (wall height, density, roof) upward and re-decodes until
-   * viable. Falls back to presets only for non-castle modes or if the builder
-   * model failed to load.
+   * Uses the builder model when available (only on OnnxAI, so only in RL mode).
+   * Falls back to presets for heuristic AI or non-castle modes.
    */
   async getAICastle(gameMode) {
-    if (this._builderSession && this.difficulty === 'RL' && gameMode.id === 'castle') {
+    if (this.ai?.hasBuilder && gameMode.id === 'castle') {
       try {
-        return await this._generateBuilderCastle(gameMode);
+        return await this.ai.generateCastle(gameMode);
       } catch (err) {
         console.warn('Builder inference failed, using preset:', err);
       }
@@ -81,61 +71,6 @@ export class AIController {
     const presets = gameMode.presets;
     const presetName = presets[Math.floor(Math.random() * presets.length)];
     return getPreset(presetName, gameMode.id);
-  }
-
-  /** Run the builder model to generate a castle via DNA decoding. */
-  async _generateBuilderCastle(gameMode) {
-    const ort = globalThis.ort;
-
-    // Builder observation: [attacker_skill, mode, grid_width, grid_depth, max_layers, budget, max_turns, last_reward]
-    const obs = new Float32Array([
-      0.4,  // attacker_skill (moderate opponent)
-      1.0,  // mode (castle)
-      gameMode.gridWidth || 9,
-      gameMode.gridDepth || 9,
-      gameMode.maxLayers || 8,
-      gameMode.budget || 600,
-      15.0, // max_turns
-      0.0,  // last_reward (first generation)
-    ]);
-
-    const tensor = new ort.Tensor('float32', obs, [1, obs.length]);
-    const results = await this._builderSession.run({ observation: tensor });
-    const dna = Array.from(results.action.data); // 32 floats in [-1, 1]
-
-    const decodeOpts = {
-      gridWidth: gameMode.gridWidth || 9,
-      gridDepth: gameMode.gridDepth || 9,
-      maxLayers: gameMode.maxLayers || 8,
-      budget: gameMode.budget || 600,
-    };
-
-    let decoded = decodeDNA(dna, decodeOpts);
-
-    // If the model produced a sparse layout, progressively boost structural
-    // DNA genes and re-decode. Each pass nudges walls taller, interior denser,
-    // and roof wider — preserving the model's other design choices (tower
-    // placement, asymmetry, block type mix, etc.).
-    const MAX_NUDGES = 3;
-    const NUDGE_STEP = 0.3;
-    for (let i = 0; i < MAX_NUDGES && decoded.layout.length < MIN_BUILDER_BLOCKS; i++) {
-      // [0] perimeterHeight — push walls taller
-      dna[0] = Math.min(1, dna[0] + NUDGE_STEP);
-      // [4] interiorDensity — fill more interior cells
-      dna[4] = Math.min(1, dna[4] + NUDGE_STEP);
-      // [5] interiorHeight — raise interior fill layers
-      dna[5] = Math.min(1, dna[5] + NUDGE_STEP * 0.5);
-      // [6] roofCoverage — add roof if nearly absent
-      dna[6] = Math.min(1, dna[6] + NUDGE_STEP * 0.5);
-
-      decoded = decodeDNA(dna, decodeOpts);
-    }
-
-    // Add cannonPos (standard position for castle mode)
-    const gd = gameMode.gridDepth || 9;
-    decoded.cannonPos = { x: (gameMode.gridWidth || 9) - 1, z: Math.floor(gd / 2) };
-
-    return decoded;
   }
 
   /**

@@ -71,7 +71,7 @@ export class AIController {
    * model failed to load.
    */
   async getAICastle(gameMode) {
-    if (this._builderSession && gameMode.id === 'castle') {
+    if (this._builderSession && this.difficulty === 'RL' && gameMode.id === 'castle') {
       try {
         return await this._generateBuilderCastle(gameMode);
       } catch (err) {

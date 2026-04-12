@@ -272,8 +272,8 @@ export class Game {
     }
   }
 
-  _startAIBattle() {
-    this.castleData[1] = this.aiController.getAICastle(this.gameMode);
+  async _startAIBattle() {
+    this.castleData[1] = await this.aiController.getAICastle(this.gameMode);
     this.buildBothCastles(this.castleData[0], this.castleData[1]);
     this.currentTurn = Math.random() < 0.5 ? 0 : 1;
     this.startBattle();

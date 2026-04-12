@@ -13,14 +13,8 @@ export const CANNONBALL_MASS = 4;
 // Block Physics
 export const BLOCK_MASS = 2;
 
-// Aim Limits
-export const MIN_PITCH = -0.15; // allows aiming slightly below horizontal
-export const MAX_PITCH = Math.PI / 3;
-export const MAX_YAW_OFFSET = Math.PI / 4;
-
-// Power
-export const MIN_POWER = 10;
-export const MAX_POWER = 50;
+// Aim Limits & Power — re-exported from shared constants (single source of truth)
+export { MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET, MIN_POWER, MAX_POWER } from '../shared/constants.js';
 export const DEFAULT_POWER = 30;
 
 // Input Speeds
@@ -81,9 +75,8 @@ export const MINIMAP_RING_INNER = 0.6;
 export const MINIMAP_RING_OUTER = 0.9;
 export const MINIMAP_RING_Y = 25;
 
-// Network Timeouts (server)
-export const SHOT_RESOLVE_TIMEOUT = 3000;  // ms
-export const FIRE_SAFETY_TIMEOUT = 10000;  // ms
+// Network Timeouts — re-exported from shared constants
+export { SHOT_RESOLVE_TIMEOUT, FIRE_SAFETY_TIMEOUT } from '../shared/constants.js';
 
 // Replay
 export const REPLAY_TIME_SCALE = 0.25;

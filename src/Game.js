@@ -1,8 +1,6 @@
 import * as THREE from 'three';
 import { SceneManager } from './SceneManager.js';
 import { PhysicsWorld } from './PhysicsWorld.js';
-import { Castle } from './Castle.js';
-import { CannonTower } from './CannonTower.js';
 import { Network } from './Network.js';
 import { UI } from './UI.js';
 import { GAME_MODES } from './GameModes.js';
@@ -12,9 +10,8 @@ import { TargetRepositioner } from './TargetRepositioner.js';
 import { InputHandler } from './InputHandler.js';
 import { BattleController } from './BattleController.js';
 import { decode as decodeDesign } from './DesignCodec.js';
-import { AI } from './AI.js';
-import { OnnxAI } from '../training/inference/OnnxAI.js';
-import { getPreset } from './Presets.js';
+import { AIController } from './AIController.js';
+import { buildBothCastles } from './CastleSetup.js';
 import { setupUIListeners } from './UIListeners.js';
 import { setupNetworkListeners } from './NetworkHandler.js';
 import * as C from './constants.js';
@@ -38,7 +35,7 @@ export class Game {
     this.mode = null; // 'local', 'online', or 'ai'
     this.playerIndex = 0;
     this.currentTurn = 0;
-    this.ai = null;
+    this.aiController = new AIController();
     this.aiDifficulty = 'MEDIUM';
 
     this.castles = [null, null];
@@ -246,46 +243,27 @@ export class Game {
     this.mode = 'ai';
     this.playerIndex = 0;
 
-    if (this.aiDifficulty === 'RL') {
-      const onnxAi = new OnnxAI();
-      try {
-        // Load onnxruntime-web from CDN — the bundled version has issues
-        // with WASM module resolution in production builds.
-        if (!globalThis.ort) {
-          await new Promise((resolve, reject) => {
-            const s = document.createElement('script');
-            s.src = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js';
-            s.onload = resolve;
-            s.onerror = () => reject(new Error('Failed to load onnxruntime-web CDN'));
-            document.head.appendChild(s);
-          });
+    const result = await this.aiController.loadAI(this.aiDifficulty);
+    if (result?.error) {
+      const picker = document.getElementById('diff-picker');
+      if (picker) {
+        let msg = picker.querySelector('.rl-error');
+        if (!msg) {
+          msg = document.createElement('span');
+          msg.className = 'rl-error';
+          picker.appendChild(msg);
         }
-        await onnxAi.load('/models/cannonfall_agent.onnx');
-      } catch (err) {
-        console.warn('RL model load failed:', err);
-        const picker = document.getElementById('diff-picker');
-        if (picker) {
-          let msg = picker.querySelector('.rl-error');
-          if (!msg) {
-            msg = document.createElement('span');
-            msg.className = 'rl-error';
-            picker.appendChild(msg);
-          }
-          msg.textContent = `RL model failed: ${err.message}`;
-          picker.classList.remove('hidden');
-        }
-        return;
+        msg.textContent = `RL model failed: ${result.error.message}`;
+        picker.classList.remove('hidden');
       }
-      this.ai = onnxAi;
-    } else {
-      this.ai = new AI(this.aiDifficulty);
+      return;
     }
 
     this._continueAIMatch();
   }
 
   _continueAIMatch() {
-    if (this.ai && this.ai.resetGame) this.ai.resetGame();
+    this.aiController.resetGame();
     this.castleData[0] = this.getPlayerBuild();
     if (this.castleData[0]) {
       this._startAIBattle();
@@ -295,9 +273,7 @@ export class Game {
   }
 
   _startAIBattle() {
-    const presets = this.gameMode.presets;
-    const presetName = presets[Math.floor(Math.random() * presets.length)];
-    this.castleData[1] = getPreset(presetName, this.gameMode.id);
+    this.castleData[1] = this.aiController.getAICastle(this.gameMode);
     this.buildBothCastles(this.castleData[0], this.castleData[1]);
     this.currentTurn = Math.random() < 0.5 ? 0 : 1;
     this.startBattle();
@@ -403,61 +379,17 @@ export class Game {
   // ── Castle Building ──────────────────────────────────────
 
   buildBothCastles(data0, data1) {
-    this.castles[0] = new Castle(
-      this.sceneManager,
-      this.physicsWorld,
-      -(this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
-      this.gameMode.player0Color,
-      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping, noiseConfig: this.gameMode.noiseConfig }
-    );
-    const mirror = !!this.gameMode.mirrorZ;
-    this.castles[0].buildFromLayout(data0.layout, data0.target, data0.floor, mirror);
-
-    this.castles[1] = new Castle(
-      this.sceneManager,
-      this.physicsWorld,
-      (this.gameMode.castleOffsetX || C.CASTLE_OFFSET_X),
-      this.gameMode.player1Color,
-      { gridWidth: this.gameMode.gridWidth, gridDepth: this.gameMode.gridDepth, blockMassMultiplier: this.gameMode.blockMassMultiplier, blockDamping: this.gameMode.blockDamping, noiseConfig: this.gameMode.noiseConfig }
-    );
-    this.castles[1].buildFromLayout(data1.layout, data1.target, data1.floor);
-
-    // Cannon positions
-    const gw = this.gameMode.gridWidth;
-    const gd = this.gameMode.gridDepth;
-    const cp0 = data0.cannonPos || { x: gw - 1, z: Math.floor(gd / 2) };
-    const cp1Raw = data1.cannonPos || { x: gw - 1, z: Math.floor(gd / 2) };
-    const cp1 = { x: gw - 1 - cp1Raw.x, z: cp1Raw.z };
-    const pos0 = this.castles[0].getCannonWorldPosition(cp0.x, cp0.z);
-    const pos1 = this.castles[1].getCannonWorldPosition(cp1.x, cp1.z);
-    pos0.x += C.CANNON_OFFSET_FROM_CASTLE;
-    pos1.x -= C.CANNON_OFFSET_FROM_CASTLE;
-    const cannonColors = { baseColor: this.gameMode.cannonBaseColor, barrelColor: this.gameMode.cannonBarrelColor };
-    const cannonStyle = this.gameMode.cannonStyle;
-    this.cannons[0] = new CannonTower(this.sceneManager.scene, pos0, 1, cannonColors, cannonStyle);
-    this.cannons[1] = new CannonTower(this.sceneManager.scene, pos1, -1, cannonColors, cannonStyle);
-
-    // Cannons on layer 1 — visible to main camera, hidden from minimap
-    for (const c of this.cannons) {
-      c.group.traverse(obj => { obj.layers.set(1); });
-    }
-
-    // Target markers on layer 2 — minimap only
     this._cleanupTargetMarkers();
-    this.targetMarkers = [];
-    for (let i = 0; i < 2; i++) {
-      const tp = this.castles[i].getTargetPosition();
-      if (!tp) continue;
-      const ring = new THREE.Mesh(
-        new THREE.RingGeometry(C.MINIMAP_RING_INNER, C.MINIMAP_RING_OUTER, 16),
-        new THREE.MeshBasicMaterial({ color: 0xff2222, side: THREE.DoubleSide })
-      );
-      ring.rotation.x = -Math.PI / 2;
-      ring.position.set(tp.x, C.MINIMAP_RING_Y, tp.z);
-      ring.layers.set(2);
-      this.sceneManager.scene.add(ring);
-      this.targetMarkers.push(ring);
-    }
+    const result = buildBothCastles({
+      sceneManager: this.sceneManager,
+      physicsWorld: this.physicsWorld,
+      gameMode: this.gameMode,
+      data0,
+      data1,
+    });
+    this.castles = result.castles;
+    this.cannons = result.cannons;
+    this.targetMarkers = result.targetMarkers;
   }
 
   // ── Battle ───────────────────────────────────────────────
@@ -550,43 +482,18 @@ export class Game {
   }
 
   async _startAITurn() {
-    try {
-      const aiCannon = this.cannons[1];
-      const targetPos = this.castles[0].getTargetPosition();
-      // Feed block spatial data to RL agent before it aims
-      if (this.ai.updateBlockGrid) {
-        this.ai.updateBlockGrid(this.castles[0]);
-      }
-      const idealAim = await this.ai.computeAim(aiCannon, targetPos, this.gameMode);
-      const aim = this.ai.applySpread(idealAim);
-
-      await this.ai.startAiming(aiCannon, aim);
-      if (this.state !== State.AI_AIMING) return; // game was quit
-
-      const hesitation = Math.max(200, (this.ai.difficulty.hesitation || 0.3) * 1000);
-      await new Promise(r => { this._schedule(r, hesitation, State.AI_AIMING); });
-      if (this.state !== State.AI_AIMING) return;
-
-      this.battle.power = aim.power;
-      this.battle._perfectShot = false;
-      this.battle.fire(false);
-      this.transition(State.AI_FIRING);
-    } catch (err) {
-      console.error('AI turn failed:', err);
-      this.ui.setStatus('AI error — firing random shot');
-      // Fall back to a random shot so the game doesn't freeze
-      const aiCannon = this.cannons[1];
-      const yaw = (Math.random() - 0.5) * Math.PI / 4;
-      const pitch = 0.3 + Math.random() * 0.5;
-      const power = 20 + Math.random() * 20;
-      aiCannon.yaw = yaw;
-      aiCannon.pitch = pitch;
-      aiCannon.updateAim();
-      this.battle.power = power;
-      this.battle._perfectShot = false;
-      this.battle.fire(false);
-      this.transition(State.AI_FIRING);
-    }
+    await this.aiController.executeTurn({
+      cannon: this.cannons[1],
+      targetPos: this.castles[0].getTargetPosition(),
+      gameMode: this.gameMode,
+      castle: this.castles[0],
+      battle: this.battle,
+      ui: this.ui,
+      schedule: (fn, delay, ...states) => this._schedule(fn, delay, ...states),
+      getState: () => this.state,
+      aimingState: State.AI_AIMING,
+      onFire: () => this.transition(State.AI_FIRING),
+    });
   }
 
   /**
@@ -658,13 +565,11 @@ export class Game {
     this.ui.updateHP(this.hp[0], this.hp[1]);
 
     // Track hit for RL agent observation state
-    if (this.ai && this.ai.updateAfterShot) {
+    if (this.mode === 'ai') {
       if (this.currentTurn === 1) {
-        // AI just hit the player's target
-        this.ai.updateAfterShot(true, 0);
+        this.aiController.updateAfterShot(true, 0);
       } else {
-        // Player hit the AI's target
-        this.ai.updateAfterOpponentShot(true);
+        this.aiController.updateAfterOpponentShot(true);
       }
     }
     this.debugLog('Target hit!', { damage, perfect: this.battle._perfectShot, hp: [...this.hp] });
@@ -704,11 +609,11 @@ export class Game {
 
   onShotMiss() {
     // Track miss for RL agent observation state
-    if (this.ai && this.ai.updateAfterShot) {
+    if (this.mode === 'ai') {
       if (this.currentTurn === 1) {
-        this.ai.updateAfterShot(false, Infinity);
+        this.aiController.updateAfterShot(false, Infinity);
       } else {
-        this.ai.updateAfterOpponentShot(false);
+        this.aiController.updateAfterOpponentShot(false);
       }
     }
 
@@ -746,7 +651,7 @@ export class Game {
   startRepositionPhase(damagedPlayerIndex) {
     // AI auto-repositions using difficulty-based strategy
     if (this.mode === 'ai' && damagedPlayerIndex === 1) {
-      const newPos = this.ai.chooseRepositionTarget(this.castles[1]);
+      const newPos = this.aiController.chooseRepositionTarget(this.castles[1]);
       this.onRepositionComplete(1, newPos);
       return;
     }
@@ -867,14 +772,12 @@ export class Game {
 
     // AI aiming animation
     if (this.state === State.AI_AIMING) {
-      if (this.ai) {
-        this.ai.updateAiming(dt, this.cannons[this.currentTurn]);
-        // Animate power meter and trajectory during AI aim
-        const progress = this.ai._aimProgress;
-        const aiPower = C.MIN_POWER + (this.ai._targetPower - C.MIN_POWER) * progress;
-        this.battle.power = aiPower;
-        this.ui.updatePower(aiPower, C.MIN_POWER, C.MAX_POWER);
-      }
+      this.aiController.updateAiming(dt, this.cannons[this.currentTurn]);
+      // Animate power meter and trajectory during AI aim
+      const progress = this.aiController.aimProgress;
+      const aiPower = C.MIN_POWER + (this.aiController.targetPower - C.MIN_POWER) * progress;
+      this.battle.power = aiPower;
+      this.ui.updatePower(aiPower, C.MIN_POWER, C.MAX_POWER);
       this.battle.updateCamera();
       this.battle.updateTrajectory();
     }

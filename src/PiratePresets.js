@@ -1,6 +1,6 @@
 import {
   fillRowX, fillRect, fillHull,
-  place, placeMany,
+  place, placeMany, buildKeel, buildMast,
 } from './PresetHelpers.js';
 
 export function getPiratePreset(name) {
@@ -14,36 +14,6 @@ export function getPiratePreset(name) {
 
 // 7×11 grid (x=0-6, z=0-10). Broadside combat.
 // x = beam (faces opponent), z = keel (ship length). z=0 stern, z=10 bow.
-
-function buildKeel(floor, hullRows, depth) {
-  for (const row of hullRows) {
-    const { z, xMin, xMax } = row;
-    const span = xMax - xMin;
-    if (span < 1) {
-      floor.push({ x: xMin, z, type: 'RAMP', yOffset: -depth, flip: true, rotation: 1 });
-      continue;
-    }
-    const center = (xMin + xMax) / 2;
-    for (let x = xMin; x <= xMax; x++) {
-      const dist = Math.abs(x - center) / (span / 2);
-      if (dist > 0.6) {
-        const rot = x < center ? 0 : 2;
-        floor.push({ x, z, type: 'RAMP', rotation: rot, yOffset: -depth, flip: true });
-      } else if (dist > 0.2) {
-        floor.push({ x, z, type: 'CUBE', yOffset: -Math.ceil(depth * 0.6) });
-      } else {
-        floor.push({ x, z, type: 'CUBE', yOffset: -depth });
-      }
-    }
-  }
-}
-
-function buildMast(L, x, z, height) {
-  place(L, x, 0, z, 'CYLINDER');
-  for (let y = 1; y <= height; y++) {
-    place(L, x, y, z, 'COLUMN');
-  }
-}
 
 function galleonPreset() {
   // Three-masted warship: deep hull, raised stern castle, gun deck, tall masts.

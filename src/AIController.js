@@ -5,7 +5,7 @@ import { decodeDNA } from '../training/env/BlueprintDecoder.js';
 import * as C from './constants.js';
 
 const ONNX_CDN_URL = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.21.0/dist/ort.min.js';
-const ONNX_CDN_INTEGRITY = 'sha384-GmLPostqPNEWxSBBEElRSiSgLjlbVPkw2co3UNunaVS+Mh+LqGdPBU/aNLyoN/P';
+const ONNX_CDN_INTEGRITY = 'sha384-ptI8iyyOcINc8kC8ZGnLexw29V7PfIaX46b1GMjaX2QKGvUPH8Jrp5U81Mh4TDp4';
 
 // Minimum block count to accept a builder-generated castle; below this, fall back to preset
 const MIN_BUILDER_BLOCKS = 15;

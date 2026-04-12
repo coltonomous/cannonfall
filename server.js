@@ -2,6 +2,11 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { randomUUID, createHash } from 'crypto';
+import {
+  MIN_POWER, MAX_POWER, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET,
+  MAX_LAYOUT_BLOCKS, MAX_GRID_SIZE, MAX_LAYERS,
+  SHOT_RESOLVE_TIMEOUT, FIRE_SAFETY_TIMEOUT, VALID_MODES,
+} from './shared/constants.js';
 
 const app = express();
 const http = createServer(app);
@@ -34,21 +39,43 @@ const RECONNECT_GRACE = 30;
 const MAX_LOBBIES = 100;
 const MAX_GAMES = 200;
 
-// ── Rate Limiting ────────────────────────────────────
+// ── Rate Limiting (per-action buckets) ───────────────
 
-const rateLimitCounters = new Map(); // sessionId → { count, resetAt }
-const RATE_LIMIT_WINDOW = 2000; // ms
-const RATE_LIMIT_MAX = 30;      // max events per window
+const rateLimitCounters = new Map(); // sessionId → Map<bucket, { count, resetAt }>
 
-function rateLimit(sessionId) {
+const RATE_BUCKETS = {
+  fire:       { window: 5000, max: 2 },
+  'shot-result': { window: 5000, max: 2 },
+  'build-ready': { window: 5000, max: 2 },
+  'reposition-complete': { window: 5000, max: 2 },
+  lobby:      { window: 2000, max: 5 },  // lobby:create, lobby:join, lobby:cancel, etc.
+  _default:   { window: 2000, max: 30 },
+};
+
+function getBucket(event) {
+  if (RATE_BUCKETS[event]) return event;
+  if (event.startsWith('lobby:')) return 'lobby';
+  return '_default';
+}
+
+function rateLimit(sessionId, event) {
+  const bucket = getBucket(event);
+  const config = RATE_BUCKETS[bucket];
   const now = Date.now();
-  let entry = rateLimitCounters.get(sessionId);
+
+  let sessionBuckets = rateLimitCounters.get(sessionId);
+  if (!sessionBuckets) {
+    sessionBuckets = new Map();
+    rateLimitCounters.set(sessionId, sessionBuckets);
+  }
+
+  let entry = sessionBuckets.get(bucket);
   if (!entry || now > entry.resetAt) {
-    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW };
-    rateLimitCounters.set(sessionId, entry);
+    entry = { count: 0, resetAt: now + config.window };
+    sessionBuckets.set(bucket, entry);
   }
   entry.count++;
-  return entry.count > RATE_LIMIT_MAX;
+  return entry.count > config.max;
 }
 
 function cleanupRateLimit(sessionId) {
@@ -56,18 +83,6 @@ function cleanupRateLimit(sessionId) {
 }
 
 // ── Input Validation ──────────────────────────────────
-
-const MIN_POWER = 10;
-const MAX_POWER = 50;
-const MIN_PITCH = -0.15;
-const MAX_PITCH = Math.PI / 3;
-const MAX_YAW_OFFSET = Math.PI / 4;
-const MAX_LAYOUT_BLOCKS = 600;
-const MAX_GRID_SIZE = 20;
-const MAX_LAYERS = 8;
-const SHOT_RESOLVE_TIMEOUT = 3000;
-const FIRE_SAFETY_TIMEOUT = 10000;
-const VALID_MODES = ['castle', 'pirate', 'space'];
 
 function isFiniteNumber(v) {
   return typeof v === 'number' && Number.isFinite(v);
@@ -249,9 +264,9 @@ io.on('connection', (socket) => {
   liveSockets.set(sessionId, socket);
   socket.sessionId = sessionId;
 
-  // Rate-limit wrapper — drop events from abusive clients
+  // Rate-limit wrapper — drop events from abusive clients (per-action buckets)
   socket.use(([event], next) => {
-    if (rateLimit(sessionId)) {
+    if (rateLimit(sessionId, event)) {
       return; // silently drop
     }
     next();
@@ -500,6 +515,45 @@ io.on('connection', (socket) => {
     graceTimers.set(graceKey, timer);
   });
 });
+
+// ── Lobby TTL cleanup ────────────────────────────────
+
+const LOBBY_TTL = 5 * 60 * 1000; // 5 minutes
+
+setInterval(() => {
+  const now = Date.now();
+  let pruned = false;
+  for (const [id, lobby] of lobbies) {
+    if (now - lobby.createdAt > LOBBY_TTL) {
+      lobbies.delete(id);
+      pruned = true;
+    }
+  }
+  if (pruned) broadcastLobbyList();
+}, 60_000); // check every minute
+
+// ── Graceful shutdown ────────────────────────────────
+
+function gracefulShutdown(signal) {
+  console.log(`${signal} received — draining connections...`);
+  io.emit('server-shutdown');
+  io.close(() => {
+    http.close(() => {
+      console.log('Server shut down gracefully.');
+      process.exit(0);
+    });
+  });
+  // Force exit after 15 seconds if draining stalls
+  setTimeout(() => {
+    console.warn('Forced shutdown after timeout.');
+    process.exit(1);
+  }, 15_000).unref();
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+// ── Start ────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {

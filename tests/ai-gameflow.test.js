@@ -96,7 +96,7 @@ function startAIBattle(game, preset0, preset1) {
   game.gameMode = GAME_MODES.CASTLE;
   game.applyGameMode();
   game.mode = 'ai';
-  game.ai = new AI('MEDIUM');
+  game.aiController.ai = new AI('MEDIUM');
   game.playerIndex = 0;
   game.buildBothCastles(preset0, preset1);
   game.hp = [C.MAX_HP, C.MAX_HP];
@@ -115,14 +115,14 @@ describe('AI Game Flow', () => {
     it('should set mode to ai and create AI instance', () => {
       game.startAIMatch();
       expect(game.mode).toBe('ai');
-      expect(game.ai).toBeInstanceOf(AI);
+      expect(game.aiController.ai).toBeInstanceOf(AI);
       expect(game.playerIndex).toBe(0);
     });
 
-    it('should skip build if castleData[0] already exists', () => {
+    it('should skip build if castleData[0] already exists', async () => {
       const preset = getPreset('KEEP', 'castle');
       game.castleBuilds.CASTLE = preset;
-      game.startAIMatch();
+      await game.startAIMatch();
       // Should go directly to battle, not build phase
       expect(game.castles[0]).not.toBeNull();
       expect(game.castles[1]).not.toBeNull();
@@ -161,7 +161,7 @@ describe('AI Game Flow', () => {
 
       const aiCannon = game.cannons[1];
       const targetPos = game.castles[0].getTargetPosition();
-      const aim = game.ai.computeAim(aiCannon, targetPos, game.gameMode);
+      const aim = game.aiController.ai.computeAim(aiCannon, targetPos, game.gameMode);
 
       expect(aim.power).toBeGreaterThanOrEqual(C.MIN_POWER);
       expect(aim.power).toBeLessThanOrEqual(C.MAX_POWER);

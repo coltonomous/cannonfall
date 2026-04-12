@@ -139,6 +139,43 @@ export function fillHull(out, rows, y, fillType = 'CUBE', edgeType = 'RAMP', axi
 }
 
 /**
+ * Build a keel (underwater) structure from hull row definitions.
+ * Each row produces inverted ramps and cubes based on distance from center.
+ */
+export function buildKeel(floor, hullRows, depth) {
+  for (const row of hullRows) {
+    const { z, xMin, xMax } = row;
+    const span = xMax - xMin;
+    if (span < 1) {
+      floor.push({ x: xMin, z, type: 'RAMP', yOffset: -depth, flip: true, rotation: 1 });
+      continue;
+    }
+    const center = (xMin + xMax) / 2;
+    for (let x = xMin; x <= xMax; x++) {
+      const dist = Math.abs(x - center) / (span / 2);
+      if (dist > 0.6) {
+        const rot = x < center ? 0 : 2;
+        floor.push({ x, z, type: 'RAMP', rotation: rot, yOffset: -depth, flip: true });
+      } else if (dist > 0.2) {
+        floor.push({ x, z, type: 'CUBE', yOffset: -Math.ceil(depth * 0.6) });
+      } else {
+        floor.push({ x, z, type: 'CUBE', yOffset: -depth });
+      }
+    }
+  }
+}
+
+/**
+ * Build a mast: cylinder base + column stack, with optional yard arm planks.
+ */
+export function buildMast(out, x, z, height) {
+  place(out, x, 0, z, 'CYLINDER');
+  for (let y = 1; y <= height; y++) {
+    place(out, x, y, z, 'COLUMN');
+  }
+}
+
+/**
  * Build a deck layer with ramp-tapered edges.
  * Same row format as fillHull. Port/starboard edges get ramps sloping outward.
  */

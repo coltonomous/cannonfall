@@ -1105,62 +1105,63 @@ body {
     padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   }
 
-  /* Builder: compact mobile layout */
-  #castle-builder-ui .builder-left {
-    left: 4px !important;
-    top: 45px !important;
-    transform: none !important;
+  /* Builder: compact mobile layout
+     Use #id.class to outweigh .builder-overlay .child selectors without !important */
+  #castle-builder-ui.builder-overlay .builder-left {
+    left: 4px;
+    top: 45px;
+    transform: none;
     max-height: 50vh;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
 
-  #castle-builder-ui button:disabled {
-    opacity: 0.25 !important;
+  #castle-builder-ui.builder-overlay button:disabled {
+    opacity: 0.25;
   }
 
-  #castle-builder-ui .builder-left h3 {
-    font-size: 0.7rem !important;
-    margin: 0 0 2px 0 !important;
+  #castle-builder-ui.builder-overlay .builder-left h3 {
+    font-size: 0.7rem;
+    margin: 0 0 2px 0;
   }
 
-  #castle-builder-ui .builder-left .block-btn {
-    padding: 4px 6px !important;
-    font-size: 0.65rem !important;
-    gap: 4px !important;
+  #castle-builder-ui.builder-overlay .builder-left .block-btn {
+    padding: 4px 6px;
+    font-size: 0.65rem;
+    gap: 4px;
   }
 
-  #castle-builder-ui .builder-left .target-btn {
-    padding: 5px 10px !important;
-    font-size: 0.75rem !important;
+  #castle-builder-ui.builder-overlay .builder-left .target-btn {
+    padding: 5px 10px;
+    font-size: 0.75rem;
   }
 
-  #castle-builder-ui .builder-top {
-    top: 4px !important;
-    left: 50% !important;
-    padding: 5px 16px !important;
-    font-size: 0.6rem !important;
-    gap: 6px !important;
+  #castle-builder-ui.builder-overlay .builder-top {
+    top: 4px;
+    left: 50%;
+    padding: 5px 16px;
+    font-size: 0.6rem;
+    gap: 6px;
     width: auto;
     max-width: 95vw;
     white-space: nowrap;
   }
 
-  #castle-builder-ui .builder-bottom {
-    bottom: 6px !important;
-    gap: 4px !important;
-    width: 95% !important;
+  #castle-builder-ui.builder-overlay .builder-bottom {
+    bottom: 6px;
+    gap: 4px;
+    width: 95%;
   }
 
-  #castle-builder-ui .builder-bottom button,
-  #castle-builder-ui .builder-bottom select {
-    padding: 6px 8px !important;
-    font-size: 0.7rem !important;
+  #castle-builder-ui.builder-overlay .builder-bottom button,
+  #castle-builder-ui.builder-overlay .builder-bottom select {
+    padding: 6px 8px;
+    font-size: 0.7rem;
   }
 
-  #castle-builder-ui .builder-bottom #builder-ready-btn {
-    padding: 10px 0 !important;
-    font-size: 0.95rem !important;
+  #castle-builder-ui.builder-overlay .builder-bottom #builder-ready-btn {
+    padding: 10px 0;
+    font-size: 0.95rem;
   }
 
   /* Difficulty picker: wrap to 2×2 grid on narrow screens */

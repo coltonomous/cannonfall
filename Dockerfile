@@ -6,6 +6,7 @@ RUN pnpm install --frozen-lockfile --prod
 COPY server.js ./
 COPY dist ./dist
 COPY public ./public
+COPY shared ./shared
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

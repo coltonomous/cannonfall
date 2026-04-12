@@ -314,20 +314,32 @@ export class OnnxAI {
     if (!this._builderSession) throw new Error('Builder model not loaded');
     const ort = this._ort || globalThis.ort;
 
+    // Vary the observation each game so the model sees different contexts
+    const attackerSkill = 0.2 + Math.random() * 0.6; // range [0.2, 0.8]
+    const lastReward = (Math.random() - 0.5) * 40;   // range [-20, 20]
+
     const obs = new Float32Array([
-      0.4,  // attacker_skill (moderate opponent)
+      attackerSkill,
       1.0,  // mode (castle)
       gameMode.gridWidth || 9,
       gameMode.gridDepth || 9,
       gameMode.maxLayers || 8,
       gameMode.budget || 600,
       15.0, // max_turns
-      0.0,  // last_reward
+      lastReward,
     ]);
 
     const tensor = new ort.Tensor('float32', obs, [1, obs.length]);
     const results = await this._builderSession.run({ observation: tensor });
-    const dna = Array.from(results.action.data);
+    const mean = results.action.data;
+
+    // Sample from the policy distribution (same approach as the firing model)
+    const logStd = results.action_log_std?.data;
+    const dna = new Array(mean.length);
+    for (let i = 0; i < mean.length; i++) {
+      const noise = logStd ? Math.exp(logStd[i]) * _randn() : _randn() * 0.15;
+      dna[i] = Math.max(-1, Math.min(1, mean[i] + noise));
+    }
 
     const decodeOpts = {
       gridWidth: gameMode.gridWidth || 9,

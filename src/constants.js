@@ -84,3 +84,58 @@ export const REPLAY_DURATION = 5; // seconds (real time)
 
 // HP
 export const MAX_HP = 3;
+
+// ── Trajectory & Aiming Visuals ──────────────────────────
+
+export const TRAJECTORY_COLOR = 0xffff00;
+export const TRAJECTORY_DASH_SIZE = 0.5;
+export const TRAJECTORY_GAP_SIZE = 0.3;
+export const TRAJECTORY_MAX_POINTS = 120;
+export const TRAJECTORY_STEP = 0.05;
+
+// Impact beam (predicted landing indicator)
+export const IMPACT_BEAM_HEIGHT = 8;
+export const IMPACT_BEAM_RADIUS = 0.06;
+export const IMPACT_BEAM_GLOW_RADIUS = 0.2;
+export const IMPACT_RING_INNER = 0.4;
+export const IMPACT_RING_OUTER = 0.7;
+
+// Reticle (zero-G crosshair)
+export const RETICLE_SIZE = 0.6;
+export const RETICLE_COLOR = 0xff4444;
+export const RETICLE_SEGMENTS = 32;
+export const RETICLE_DISTANCE = 40;
+
+// Pulse animation
+export const BEAM_PULSE_SPEED = 0.005;
+export const BEAM_PULSE_BASE = 0.3;
+export const BEAM_PULSE_AMPLITUDE = 0.15;
+export const RETICLE_PULSE_SPEED = 0.004;
+export const RETICLE_PULSE_AMPLITUDE = 0.15;
+
+// ── Physics Tuning ───────────────────────────────────────
+
+export const SOLVER_ITERATIONS = 10;
+export const BUOYANCY_FACTOR = 15;
+export const WATER_DRAG_XZ = 0.98;
+export const WATER_DRAG_Y = 0.95;
+export const SHIP_PHASE_OFFSET = 3.5;
+export const SHIP_ROLL_SCALE = 3.5;
+export const SHIP_PITCH_SCALE = 2.5;
+export const SHIP_SAMPLE_DIST = 5;
+
+// ── Scene Defaults ───────────────────────────────────────
+
+export const DEFAULT_BG_COLOR = 0x87CEEB;
+export const DEFAULT_FOG_NEAR = 100;
+export const DEFAULT_FOG_FAR = 200;
+export const GROUND_SIZE = 120;
+export const SHADOW_MAP_SIZE = 2048;
+export const SHADOW_BOUNDS = 40;
+export const STAR_COUNT = 2000;
+export const STAR_SPHERE_RADIUS = 150;
+
+// ── Fallen Block Cleanup ─────────────────────────────────
+
+export const DEBRIS_BOUNDS = 100;
+export const DEFAULT_BOUNDS = 60;

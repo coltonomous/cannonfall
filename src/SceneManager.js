@@ -1,10 +1,16 @@
 import * as THREE from 'three';
+import { waveHeight, swellAtTime } from './waveUtils.js';
+import {
+  DEFAULT_BG_COLOR, DEFAULT_FOG_NEAR, DEFAULT_FOG_FAR,
+  GROUND_SIZE, SHADOW_MAP_SIZE, SHADOW_BOUNDS,
+  STAR_COUNT, STAR_SPHERE_RADIUS,
+} from './constants.js';
 
 export class SceneManager {
   constructor(canvas) {
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x87CEEB);
-    this.scene.fog = new THREE.Fog(0x87CEEB, 100, 200);
+    this.scene.background = new THREE.Color(DEFAULT_BG_COLOR);
+    this.scene.fog = new THREE.Fog(DEFAULT_BG_COLOR, DEFAULT_FOG_NEAR, DEFAULT_FOG_FAR);
 
     // Layer 0: default (blocks, ground, etc) — both cameras see
     // Layer 1: main-camera-only (cannons)
@@ -56,19 +62,19 @@ export class SceneManager {
     this.dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
     this.dirLight.position.set(10, 20, 10);
     this.dirLight.castShadow = true;
-    this.dirLight.shadow.mapSize.width = 2048;
-    this.dirLight.shadow.mapSize.height = 2048;
+    this.dirLight.shadow.mapSize.width = SHADOW_MAP_SIZE;
+    this.dirLight.shadow.mapSize.height = SHADOW_MAP_SIZE;
     this.dirLight.shadow.camera.near = 0.5;
     this.dirLight.shadow.camera.far = 100;
-    this.dirLight.shadow.camera.left = -40;
-    this.dirLight.shadow.camera.right = 40;
-    this.dirLight.shadow.camera.top = 40;
-    this.dirLight.shadow.camera.bottom = -40;
+    this.dirLight.shadow.camera.left = -SHADOW_BOUNDS;
+    this.dirLight.shadow.camera.right = SHADOW_BOUNDS;
+    this.dirLight.shadow.camera.top = SHADOW_BOUNDS;
+    this.dirLight.shadow.camera.bottom = -SHADOW_BOUNDS;
     this.scene.add(this.dirLight);
   }
 
   setupGround() {
-    const geo = new THREE.PlaneGeometry(120, 120);
+    const geo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
     const mat = new THREE.MeshStandardMaterial({ color: 0x4a7c3f });
     this.ground = new THREE.Mesh(geo, mat);
     this.ground.rotation.x = -Math.PI / 2;
@@ -109,7 +115,7 @@ export class SceneManager {
     if (config.hasGround) {
       if (config.waterSurface) {
         // Animated water surface — semi-transparent blue with subtle vertex displacement
-        const geo = new THREE.PlaneGeometry(120, 120, 60, 60);
+        const geo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE, 60, 60);
         const mat = new THREE.MeshStandardMaterial({
           color: config.groundColor,
           transparent: true,
@@ -125,7 +131,7 @@ export class SceneManager {
         this._waterGeo = geo;
         this._waterBaseY = geo.attributes.position.array.slice(); // store original positions
       } else {
-        const geo = new THREE.PlaneGeometry(120, 120);
+        const geo = new THREE.PlaneGeometry(GROUND_SIZE, GROUND_SIZE);
         const mat = new THREE.MeshStandardMaterial({ color: config.groundColor });
         this.ground = new THREE.Mesh(geo, mat);
         this.ground.rotation.x = -Math.PI / 2;
@@ -134,13 +140,12 @@ export class SceneManager {
       }
     } else {
       // Create starfield
-      const starCount = 2000;
-      const positions = new Float32Array(starCount * 3);
-      const colors = new Float32Array(starCount * 3);
-      for (let i = 0; i < starCount; i++) {
+      const positions = new Float32Array(STAR_COUNT * 3);
+      const colors = new Float32Array(STAR_COUNT * 3);
+      for (let i = 0; i < STAR_COUNT; i++) {
         const theta = Math.random() * Math.PI * 2;
         const phi = Math.acos(2 * Math.random() - 1);
-        const r = 150;
+        const r = STAR_SPHERE_RADIUS;
         positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
         positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
         positions[i * 3 + 2] = r * Math.cos(phi);
@@ -218,14 +223,12 @@ export class SceneManager {
       const base = this._waterBaseY;
       // PlaneGeometry with rotation -π/2 means Y attribute is world Z, Z attribute is world -Y
       // We animate the Z attribute (which is vertical after rotation)
-      const swell = 1.0 + 0.4 * Math.sin(this._waterTime * 0.2);
+      const swell = swellAtTime(this._waterTime);
       for (let i = 0; i < pos.count; i++) {
         const x = base[i * 3];
         const y = base[i * 3 + 1];
         pos.array[i * 3 + 2] = base[i * 3 + 2] +
-          Math.sin(x * 0.15 + this._waterTime * 0.8) * 0.4 * swell +
-          Math.cos(y * 0.12 + this._waterTime * 0.6) * 0.25 * swell +
-          Math.sin(x * 0.08 + y * 0.06 + this._waterTime * 0.4) * 0.15;
+          waveHeight(x, y, this._waterTime, swell);
       }
       pos.needsUpdate = true;
     }

@@ -21,3 +21,16 @@ export const FIRE_SAFETY_TIMEOUT = 10000;  // ms
 
 // Valid game modes
 export const VALID_MODES = ['castle', 'pirate', 'space'];
+
+// Server limits
+export const MAX_LOBBIES = 100;
+export const MAX_GAMES = 200;
+export const RECONNECT_GRACE_SECONDS = 30;
+export const LOBBY_TTL_MS = 5 * 60 * 1000; // 5 minutes
+export const LOBBY_CLEANUP_INTERVAL_MS = 60_000; // 1 minute
+export const GAME_CLEANUP_DELAY_MS = 10_000;
+export const DISCONNECT_CLEANUP_DELAY_MS = 5_000;
+export const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 15_000;
+
+// Starting HP
+export const STARTING_HP = 3;

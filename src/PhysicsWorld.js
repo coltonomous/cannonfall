@@ -1,5 +1,10 @@
 import * as CANNON from 'cannon-es';
-import { PHYSICS_STEP } from './constants.js';
+import {
+  PHYSICS_STEP, SOLVER_ITERATIONS, BUOYANCY_FACTOR,
+  WATER_DRAG_XZ, WATER_DRAG_Y, SHIP_PHASE_OFFSET,
+  SHIP_ROLL_SCALE, SHIP_PITCH_SCALE, SHIP_SAMPLE_DIST,
+} from './constants.js';
+import { waveHeight, swellAtTime } from './waveUtils.js';
 
 export class PhysicsWorld {
   constructor(config) {
@@ -7,7 +12,7 @@ export class PhysicsWorld {
     this.world = new CANNON.World({
       gravity: new CANNON.Vec3(0, gravity, 0),
     });
-    this.world.solver.iterations = 10;
+    this.world.solver.iterations = SOLVER_ITERATIONS;
     this.world.broadphase = new CANNON.SAPBroadphase(this.world);
     this.world.allowSleep = true;
 
@@ -89,21 +94,15 @@ export class PhysicsWorld {
     });
   }
 
-  // Sample the wave height at a world position — same formula as SceneManager water
-  // The swell parameter slowly modulates amplitude over time
   _waveHeight(x, z, t, swell) {
-    return Math.sin(x * 0.15 + t * 0.8) * 0.4 * swell
-         + Math.cos(z * 0.12 + t * 0.6) * 0.25 * swell
-         + Math.sin(x * 0.08 + z * 0.06 + t * 0.4) * 0.15;
+    return waveHeight(x, z, t, swell);
   }
 
   _applyWaterForces(dt) {
     this._waterTime += dt;
     const t = this._waterTime;
 
-    // Swell: slowly varies wave intensity — calm periods and rough periods
-    // Oscillates between 0.6 and 1.4 over ~30 seconds
-    const swell = 1.0 + 0.4 * Math.sin(t * 0.2);
+    const swell = swellAtTime(t);
 
     // Sample wave at each ship's center (not per-block) so the whole ship moves as one.
     // Use castleCenterX to compute per-ship wave response, with a time offset
@@ -116,9 +115,9 @@ export class PhysicsWorld {
 
       if (!this._shipWaveCache.has(castleCenterX)) {
         // Sample at the ship center, with a time phase offset per ship
-        const shipPhase = castleCenterX > 0 ? 0 : 3.5; // offset so ships bob differently
+        const shipPhase = castleCenterX > 0 ? 0 : SHIP_PHASE_OFFSET; // offset so ships bob differently
         const st = t + shipPhase;
-        const sampleDist = 5;
+        const sampleDist = SHIP_SAMPLE_DIST;
         const cx = castleCenterX;
         const hCenter = this._waveHeight(cx, 0, st, swell);
         const hBow    = this._waveHeight(cx, sampleDist, st, swell);
@@ -126,8 +125,8 @@ export class PhysicsWorld {
         const hPort   = this._waveHeight(cx - sampleDist, 0, st, swell);
         const hStbd   = this._waveHeight(cx + sampleDist, 0, st, swell);
 
-        const roll  = Math.atan2(hStbd - hPort, sampleDist * 2) * 3.5;
-        const pitch = Math.atan2(hBow - hStern, sampleDist * 2) * 2.5;
+        const roll  = Math.atan2(hStbd - hPort, sampleDist * 2) * SHIP_ROLL_SCALE;
+        const pitch = Math.atan2(hBow - hStern, sampleDist * 2) * SHIP_PITCH_SCALE;
         const heave = hCenter;
 
         this._shipWaveCache.set(castleCenterX, { roll, pitch, heave });
@@ -146,13 +145,13 @@ export class PhysicsWorld {
       if (y < this.waterLevel) {
         // Buoyancy: stronger the deeper the body is submerged
         const submersion = Math.max(0, this.waterLevel - y);
-        const buoyancy = submersion * 15;
+        const buoyancy = submersion * BUOYANCY_FACTOR;
         body.applyForce(new CANNON.Vec3(0, buoyancy, 0));
 
         // Water drag: slow horizontal + vertical movement
-        body.velocity.x *= 0.98;
-        body.velocity.z *= 0.98;
-        body.velocity.y *= 0.95;
+        body.velocity.x *= WATER_DRAG_XZ;
+        body.velocity.z *= WATER_DRAG_XZ;
+        body.velocity.y *= WATER_DRAG_Y;
 
         // Wake the body so it doesn't freeze mid-water
         body.wakeUp();

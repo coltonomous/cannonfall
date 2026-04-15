@@ -4,20 +4,24 @@ import { Projectile } from './Projectile.js';
 import * as C from './constants.js';
 
 export class BattleController {
-  constructor({ sceneManager, physicsWorld, particles, ui, network }) {
+  constructor({ sceneManager, physicsWorld, particles, ui, network, events, gs }) {
     this.sceneManager = sceneManager;
     this.physicsWorld = physicsWorld;
     this.particles = particles;
     this.ui = ui;
     this.network = network;
+    this.events = events;
 
-    // Synced from Game before each battle
-    this.castles = [null, null];
-    this.cannons = [null, null];
-    this.currentTurn = 0;
-    this.mode = null;
-    this.playerIndex = 0;
-    this.gameMode = null;
+    // Shared game state — reads castles, cannons, currentTurn, mode,
+    // playerIndex, gameMode directly (no manual sync needed)
+    this.gs = gs || {
+      castles: [null, null],
+      cannons: [null, null],
+      currentTurn: 0,
+      mode: null,
+      playerIndex: 0,
+      gameMode: null,
+    };
 
     // Battle state
     this.projectile = null;
@@ -49,39 +53,39 @@ export class BattleController {
     this._createTrajectoryLine();
     this._createImpactBeam();
 
-    // Callbacks into Game (set via setCallbacks)
-    this._onHitLocal = null;
-    this._onShotMiss = null;
-    this._onReportShot = null;
-    this._debugLog = null;
   }
 
-  setCallbacks({ onHitLocal, onShotMiss, onReportShot, debugLog }) {
-    this._onHitLocal = onHitLocal;
-    this._onShotMiss = onShotMiss;
-    this._onReportShot = onReportShot;
-    this._debugLog = debugLog;
-  }
+  // ── GameState delegation ────────────────────────────────
+  get castles() { return this.gs.castles; }
+  get cannons() { return this.gs.cannons; }
+  get currentTurn() { return this.gs.currentTurn; }
+  get mode() { return this.gs.mode; }
+  get playerIndex() { return this.gs.playerIndex; }
+  get gameMode() { return this.gs.gameMode; }
 
+  /**
+   * @deprecated Kept for backward compatibility during transition.
+   * With shared GameState, manual sync is no longer needed.
+   */
   sync({ castles, cannons, currentTurn, mode, playerIndex, gameMode }) {
-    this.castles = castles;
-    this.cannons = cannons;
-    this.currentTurn = currentTurn;
-    this.mode = mode;
-    this.playerIndex = playerIndex;
-    if (gameMode) this.gameMode = gameMode;
+    this.gs.castles = castles;
+    this.gs.cannons = cannons;
+    this.gs.currentTurn = currentTurn;
+    this.gs.mode = mode;
+    this.gs.playerIndex = playerIndex;
+    if (gameMode) this.gs.gameMode = gameMode;
   }
 
   // --- Trajectory ---
 
   _createTrajectoryLine() {
     const mat = new THREE.LineDashedMaterial({
-      color: 0xffff00,
-      dashSize: 0.5,
-      gapSize: 0.3,
+      color: C.TRAJECTORY_COLOR,
+      dashSize: C.TRAJECTORY_DASH_SIZE,
+      gapSize: C.TRAJECTORY_GAP_SIZE,
     });
     // Pre-allocate trajectory buffers to avoid per-frame geometry allocation
-    this._trajMaxPoints = 120;
+    this._trajMaxPoints = C.TRAJECTORY_MAX_POINTS;
     this._trajPositions = new Float32Array(this._trajMaxPoints * 3);
     this._trajDistances = new Float32Array(this._trajMaxPoints);
     const geo = new THREE.BufferGeometry();
@@ -94,8 +98,8 @@ export class BattleController {
 
     // Reticle for zero-G modes (crosshair at aim point)
     const reticleGroup = new THREE.Group();
-    const rMat = new THREE.LineBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.8 });
-    const size = 0.6;
+    const rMat = new THREE.LineBasicMaterial({ color: C.RETICLE_COLOR, transparent: true, opacity: 0.8 });
+    const size = C.RETICLE_SIZE;
     // Horizontal line
     const hGeo = new THREE.BufferGeometry().setFromPoints([
       new THREE.Vector3(-size, 0, 0), new THREE.Vector3(size, 0, 0),
@@ -108,8 +112,8 @@ export class BattleController {
     reticleGroup.add(new THREE.Line(vGeo, rMat));
     // Circle
     const circlePoints = [];
-    for (let i = 0; i <= 32; i++) {
-      const a = (i / 32) * Math.PI * 2;
+    for (let i = 0; i <= C.RETICLE_SEGMENTS; i++) {
+      const a = (i / C.RETICLE_SEGMENTS) * Math.PI * 2;
       circlePoints.push(new THREE.Vector3(Math.cos(a) * size * 0.7, Math.sin(a) * size * 0.7, 0));
     }
     const cGeo = new THREE.BufferGeometry().setFromPoints(circlePoints);
@@ -121,8 +125,8 @@ export class BattleController {
   }
 
   _createImpactBeam() {
-    const beamHeight = 8;
-    const beamGeo = new THREE.CylinderGeometry(0.06, 0.06, beamHeight, 8);
+    const beamHeight = C.IMPACT_BEAM_HEIGHT;
+    const beamGeo = new THREE.CylinderGeometry(C.IMPACT_BEAM_RADIUS, C.IMPACT_BEAM_RADIUS, beamHeight, 8);
     const beamMat = new THREE.MeshBasicMaterial({
       color: 0xff2222,
       transparent: true,
@@ -134,7 +138,7 @@ export class BattleController {
     this.sceneManager.scene.add(this.impactBeam);
 
     // Outer glow cylinder — wider, more transparent
-    const glowGeo = new THREE.CylinderGeometry(0.2, 0.2, beamHeight, 8);
+    const glowGeo = new THREE.CylinderGeometry(C.IMPACT_BEAM_GLOW_RADIUS, C.IMPACT_BEAM_GLOW_RADIUS, beamHeight, 8);
     const glowMat = new THREE.MeshBasicMaterial({
       color: 0xff0000,
       transparent: true,
@@ -145,7 +149,7 @@ export class BattleController {
     this.impactBeam.add(this.impactBeamGlow);
 
     // Base ring
-    const ringGeo = new THREE.RingGeometry(0.4, 0.7, 24);
+    const ringGeo = new THREE.RingGeometry(C.IMPACT_RING_INNER, C.IMPACT_RING_OUTER, 24);
     const ringMat = new THREE.MeshBasicMaterial({
       color: 0xff2222,
       transparent: true,
@@ -173,7 +177,7 @@ export class BattleController {
   }
 
   _findArcImpact(pos, vel, g) {
-    const step = 0.05;
+    const step = C.TRAJECTORY_STEP;
     let px = pos.x, py = pos.y, pz = pos.z;
     let vx = vel.x, vy = vel.y, vz = vel.z;
     let prevX = px, prevY = py, prevZ = pz;
@@ -252,7 +256,7 @@ export class BattleController {
       this.reticle.visible = true;
 
       // Lerp reticle to aim point for smooth feel; snap on first frame
-      const reticleDist = 40;
+      const reticleDist = C.RETICLE_DISTANCE;
       const target = pos.clone().add(dir.clone().multiplyScalar(reticleDist));
       if (!this._reticleInitialized) {
         this.reticle.position.copy(target);
@@ -263,7 +267,7 @@ export class BattleController {
       this.reticle.lookAt(this.sceneManager.camera.position);
 
       // Gentle pulse
-      const pulse = 1.0 + 0.15 * Math.sin(performance.now() * 0.004);
+      const pulse = 1.0 + C.RETICLE_PULSE_AMPLITUDE * Math.sin(performance.now() * C.RETICLE_PULSE_SPEED);
       this.reticle.scale.setScalar(pulse);
     } else {
       // Normal gravity: show impact beam at predicted landing point
@@ -274,24 +278,14 @@ export class BattleController {
       const impact = this._findArcImpact(pos, vel, g);
 
       if (impact) {
-        const beamHeight = 8;
-        this.impactBeam.position.set(impact.x, impact.y + beamHeight / 2, impact.z);
+        this.impactBeam.position.set(impact.x, impact.y + C.IMPACT_BEAM_HEIGHT / 2, impact.z);
         this.impactBeam.visible = true;
 
         this.impactRing.position.set(impact.x, impact.y + 0.05, impact.z);
         this.impactRing.visible = true;
 
         // Pulse
-        const t = performance.now() * 0.005;
-        const pulse = 0.3 + 0.15 * Math.sin(t);
-        this.impactBeam.material.opacity = pulse;
-        this.impactBeamGlow.material.opacity = pulse * 0.3;
-        this.impactRing.material.opacity = pulse + 0.15;
-        this.impactDot.material.opacity = pulse + 0.25;
-
-        // Ring pulse scale
-        const ringPulse = 1.0 + 0.1 * Math.sin(t * 1.5);
-        this.impactRing.scale.setScalar(ringPulse);
+        this._applyBeamPulse();
       } else {
         this.impactBeam.visible = false;
         this.impactRing.visible = false;
@@ -302,19 +296,23 @@ export class BattleController {
   _updateTrajectoryPulse() {
     const g = Math.abs(this.gameMode.gravity);
     if (g === 0) {
-      const pulse = 1.0 + 0.15 * Math.sin(performance.now() * 0.004);
+      const pulse = 1.0 + C.RETICLE_PULSE_AMPLITUDE * Math.sin(performance.now() * C.RETICLE_PULSE_SPEED);
       this.reticle.scale.setScalar(pulse);
       this.reticle.lookAt(this.sceneManager.camera.position);
     } else if (this.impactBeam.visible) {
-      const t = performance.now() * 0.005;
-      const pulse = 0.3 + 0.15 * Math.sin(t);
-      this.impactBeam.material.opacity = pulse;
-      this.impactBeamGlow.material.opacity = pulse * 0.3;
-      this.impactRing.material.opacity = pulse + 0.15;
-      this.impactDot.material.opacity = pulse + 0.25;
-      const ringPulse = 1.0 + 0.1 * Math.sin(t * 1.5);
-      this.impactRing.scale.setScalar(ringPulse);
+      this._applyBeamPulse();
     }
+  }
+
+  _applyBeamPulse() {
+    const t = performance.now() * C.BEAM_PULSE_SPEED;
+    const pulse = C.BEAM_PULSE_BASE + C.BEAM_PULSE_AMPLITUDE * Math.sin(t);
+    this.impactBeam.material.opacity = pulse;
+    this.impactBeamGlow.material.opacity = pulse * 0.3;
+    this.impactRing.material.opacity = pulse + C.BEAM_PULSE_AMPLITUDE;
+    this.impactDot.material.opacity = pulse + 0.25;
+    const ringPulse = 1.0 + 0.1 * Math.sin(t * 1.5);
+    this.impactRing.scale.setScalar(ringPulse);
   }
 
   // --- Projectile Collision Setup ---
@@ -344,10 +342,10 @@ export class BattleController {
     this.projectile = null;
 
     if (this.mode === 'online') {
-      this._onReportShot(true, this._perfectShot);
+      this.events.emit('report-shot', { hit: true, perfect: this._perfectShot });
       this.ui.setStatus('Hit detected...');
     } else {
-      this._onHitLocal();
+      this.events.emit('target-hit');
     }
   }
 
@@ -356,7 +354,7 @@ export class BattleController {
   fire(debugPerfectShot) {
     const powerFrac = (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
     this._perfectShot = debugPerfectShot || (powerFrac >= C.PERFECT_MIN && powerFrac <= C.PERFECT_MAX);
-    if (this._debugLog) this._debugLog('Fire:', { power: this.power.toFixed(1), perfect: this._perfectShot, powerFrac: powerFrac.toFixed(3) });
+    this.events.emit('debug', { msg: 'Fire:', data: { power: this.power.toFixed(1), perfect: this._perfectShot, powerFrac: powerFrac.toFixed(3) } });
 
     const cannon = this.cannons[this.currentTurn];
     const pos = cannon.getFirePosition();
@@ -456,7 +454,7 @@ export class BattleController {
     if (this.projectile.isOutOfBounds()) {
       this.projectile.destroy();
       this.projectile = null;
-      this._onShotMiss();
+      this.events.emit('shot-miss');
       return true;
     }
 
@@ -474,7 +472,7 @@ export class BattleController {
       if (this.settleTimer > C.SETTLE_TIME) {
         this.projectile.destroy();
         this.projectile = null;
-        this._onShotMiss();
+        this.events.emit('shot-miss');
         return true;
       }
     } else {
@@ -585,17 +583,17 @@ export class BattleController {
       this.projectile = null;
 
       if (this.mode === 'online') {
-        this._onReportShot(true, this._perfectShot);
+        this.events.emit('report-shot', { hit: true, perfect: this._perfectShot });
         this.ui.setStatus('Hit detected...');
       } else {
-        this._onHitLocal();
+        this.events.emit('target-hit');
       }
       return;
     }
 
     this.projectile.destroy();
     this.projectile = null;
-    this._onShotMiss();
+    this.events.emit('shot-miss');
   }
 
   // --- Camera ---
@@ -703,8 +701,8 @@ export class BattleController {
 
   cleanupFallenBlocks() {
     const debrisField = this.gameMode.debrisField;
-    const boundsX = debrisField ? 100 : 60;
-    const boundsZ = debrisField ? 100 : 60;
+    const boundsX = debrisField ? C.DEBRIS_BOUNDS : C.DEFAULT_BOUNDS;
+    const boundsZ = debrisField ? C.DEBRIS_BOUNDS : C.DEFAULT_BOUNDS;
 
     for (const castle of this.castles) {
       if (!castle) continue;

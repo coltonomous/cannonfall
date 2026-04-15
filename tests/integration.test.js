@@ -331,7 +331,7 @@ describe('Integration: Hit Detection', () => {
     const target = game.castles[1].getTargetPosition();
 
     let hitDetected = false;
-    game.battle._onHitLocal = () => { hitDetected = true; };
+    game.events.on('target-hit', () => { hitDetected = true; });
 
     // Place projectile near target and step physics so collision fires
     game.battle.projectile.body.position.set(target.x - 0.5, target.y, target.z);
@@ -355,7 +355,7 @@ describe('Integration: Hit Detection', () => {
     game.battle.projectile.body.position.set(0, 50, 0);
 
     let hitDetected = false;
-    game.battle._onHitLocal = () => { hitDetected = true; };
+    game.events.on('target-hit', () => { hitDetected = true; });
 
     game.battle.checkProjectile(1 / 60);
     expect(hitDetected).toBe(false);
@@ -366,7 +366,7 @@ describe('Integration: Hit Detection', () => {
     game.battle.projectile.body.position.set(0, -100, 0);
 
     let missDetected = false;
-    game.battle._onShotMiss = () => { missDetected = true; };
+    game.events.on('shot-miss', () => { missDetected = true; });
 
     game.battle.checkProjectile(1 / 60);
     expect(missDetected).toBe(true);

@@ -1,11 +1,16 @@
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { randomUUID, createHash } from 'crypto';
+import { randomUUID, randomInt, createHash } from 'crypto';
+import { logger } from './server/logger.js';
 import {
   MIN_POWER, MAX_POWER, MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET,
   MAX_LAYOUT_BLOCKS, MAX_GRID_SIZE, MAX_LAYERS,
   SHOT_RESOLVE_TIMEOUT, FIRE_SAFETY_TIMEOUT, VALID_MODES,
+  MAX_LOBBIES, MAX_GAMES, RECONNECT_GRACE_SECONDS,
+  LOBBY_TTL_MS, LOBBY_CLEANUP_INTERVAL_MS,
+  GAME_CLEANUP_DELAY_MS, DISCONNECT_CLEANUP_DELAY_MS,
+  GRACEFUL_SHUTDOWN_TIMEOUT_MS, STARTING_HP,
 } from './shared/constants.js';
 
 const app = express();
@@ -35,9 +40,7 @@ const pendingShots = new Map(); // gameId → { reports, timer }
 const lobbies = new Map();      // lobbyId → { id, hostSessionId, hostName, gameMode, passwordHash, createdAt }
 const lobbyClients = new Set(); // sessionIds currently viewing the lobby
 
-const RECONNECT_GRACE = 30;
-const MAX_LOBBIES = 100;
-const MAX_GAMES = 200;
+const RECONNECT_GRACE = RECONNECT_GRACE_SECONDS;
 
 // ── Rate Limiting (per-action buckets) ───────────────
 
@@ -163,7 +166,7 @@ function removeLobbyByHost(sessionId) {
 function matchPlayers(s1, s2, gameMode) {
   if (games.size >= MAX_GAMES) return;
   const gameId = randomUUID();
-  const currentTurn = Math.random() < 0.5 ? 0 : 1;
+  const currentTurn = randomInt(2); // cryptographically random 0 or 1
 
   const game = {
     id: gameId,
@@ -171,7 +174,7 @@ function matchPlayers(s1, s2, gameMode) {
     currentTurn,
     phase: 'build',
     castles: [null, null],
-    hp: [3, 3],
+    hp: [STARTING_HP, STARTING_HP],
     gameMode,
   };
 
@@ -183,6 +186,8 @@ function matchPlayers(s1, s2, gameMode) {
   s1.playerIndex = 0;
   s2.gameId = gameId;
   s2.playerIndex = 1;
+
+  logger.info('Game matched', { gameId, gameMode, firstTurn: currentTurn });
 
   s1.emit('matched', { playerIndex: 0, firstTurn: currentTurn, gameMode });
   s2.emit('matched', { playerIndex: 1, firstTurn: currentTurn, gameMode });
@@ -225,6 +230,7 @@ function resolveShot(gameId) {
     const damage = perfect ? 2 : 1;
     const damagedPlayer = defender;
     game.hp[damagedPlayer] = Math.max(0, game.hp[damagedPlayer] - damage);
+    logger.info('Shot resolved', { gameId, hit: true, perfect, damage, hp: [...game.hp] });
 
     if (game.hp[damagedPlayer] <= 0) {
       game.phase = 'over';
@@ -235,7 +241,7 @@ function resolveShot(gameId) {
       setTimeout(() => {
         games.delete(gameId);
         for (const sid of game.sessionIds) players.delete(sid);
-      }, 10000);
+      }, GAME_CLEANUP_DELAY_MS);
     } else {
       game.phase = 'reposition';
       for (const sid of game.sessionIds) {
@@ -244,6 +250,7 @@ function resolveShot(gameId) {
       }
     }
   } else {
+    logger.debug('Shot resolved', { gameId, hit: false });
     game.currentTurn = 1 - game.currentTurn;
     for (const sid of game.sessionIds) {
       const s = liveSockets.get(sid);
@@ -267,7 +274,8 @@ io.on('connection', (socket) => {
   // Rate-limit wrapper — drop events from abusive clients (per-action buckets)
   socket.use(([event], next) => {
     if (rateLimit(sessionId, event)) {
-      return; // silently drop
+      logger.debug('Rate limited', { sessionId, event });
+      return;
     }
     next();
   });
@@ -383,7 +391,10 @@ io.on('connection', (socket) => {
 
   socket.on('build-ready', ({ castleData }) => {
     if (!socket.gameId) return;
-    if (!validateCastleData(castleData)) return;
+    if (!validateCastleData(castleData)) {
+      logger.warn('Invalid castle data', { sessionId });
+      return;
+    }
     const game = games.get(socket.gameId);
     if (!game || game.phase !== 'build') return;
 
@@ -406,7 +417,10 @@ io.on('connection', (socket) => {
 
   socket.on('fire', ({ yaw, pitch, power }) => {
     if (!socket.gameId) return;
-    if (!validateFirePayload({ yaw, pitch, power })) return;
+    if (!validateFirePayload({ yaw, pitch, power })) {
+      logger.warn('Invalid fire payload', { sessionId, yaw, pitch, power });
+      return;
+    }
     const game = games.get(socket.gameId);
     if (!game || game.phase !== 'battle') return;
     if (socket.playerIndex !== game.currentTurn) return;
@@ -457,7 +471,10 @@ io.on('connection', (socket) => {
 
   socket.on('reposition-complete', (data) => {
     if (!socket.gameId) return;
-    if (!validateRepositionPayload(data)) return;
+    if (!validateRepositionPayload(data)) {
+      logger.warn('Invalid reposition payload', { sessionId });
+      return;
+    }
     const { targetPos } = data;
     const game = games.get(socket.gameId);
     if (!game || game.phase !== 'reposition') return;
@@ -485,6 +502,7 @@ io.on('connection', (socket) => {
     cleanupRateLimit(sessionId);
 
     if (!socket.gameId) return;
+    logger.info('Player disconnected', { gameId: socket.gameId, playerIndex: socket.playerIndex });
 
     const game = games.get(socket.gameId);
     if (!game || game.phase === 'over') return;
@@ -509,7 +527,7 @@ io.on('connection', (socket) => {
       setTimeout(() => {
         games.delete(game.id);
         for (const sid of game.sessionIds) players.delete(sid);
-      }, 5000);
+      }, DISCONNECT_CLEANUP_DELAY_MS);
     }, RECONNECT_GRACE * 1000);
 
     graceTimers.set(graceKey, timer);
@@ -518,36 +536,34 @@ io.on('connection', (socket) => {
 
 // ── Lobby TTL cleanup ────────────────────────────────
 
-const LOBBY_TTL = 5 * 60 * 1000; // 5 minutes
-
 setInterval(() => {
   const now = Date.now();
   let pruned = false;
   for (const [id, lobby] of lobbies) {
-    if (now - lobby.createdAt > LOBBY_TTL) {
+    if (now - lobby.createdAt > LOBBY_TTL_MS) {
       lobbies.delete(id);
       pruned = true;
     }
   }
   if (pruned) broadcastLobbyList();
-}, 60_000); // check every minute
+}, LOBBY_CLEANUP_INTERVAL_MS);
 
 // ── Graceful shutdown ────────────────────────────────
 
 function gracefulShutdown(signal) {
-  console.log(`${signal} received — draining connections...`);
+  logger.info('Graceful shutdown initiated', { signal });
   io.emit('server-shutdown');
   io.close(() => {
     http.close(() => {
-      console.log('Server shut down gracefully.');
+      logger.info('Server shut down gracefully');
       process.exit(0);
     });
   });
-  // Force exit after 15 seconds if draining stalls
+  // Force exit if draining stalls
   setTimeout(() => {
-    console.warn('Forced shutdown after timeout.');
+    logger.warn('Forced shutdown after timeout');
     process.exit(1);
-  }, 15_000).unref();
+  }, GRACEFUL_SHUTDOWN_TIMEOUT_MS).unref();
 }
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
@@ -557,5 +573,5 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 const PORT = process.env.PORT || 3000;
 http.listen(PORT, () => {
-  console.log(`Cannonfall server listening on port ${PORT}`);
+  logger.info('Cannonfall server listening', { port: PORT });
 });

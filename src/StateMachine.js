@@ -35,9 +35,15 @@ const VALID_TRANSITIONS = {
 };
 
 export class StateMachine {
-  constructor(onTransition) {
+  /**
+   * @param {Function} [onTransition] - callback(prevState, newState)
+   * @param {{ strict?: boolean }} [opts]
+   *   strict: if true, invalid transitions throw instead of returning false
+   */
+  constructor(onTransition, opts) {
     this.current = State.MENU;
     this._onTransition = onTransition || null;
+    this._strict = opts?.strict ?? false;
   }
 
   get state() {
@@ -51,7 +57,11 @@ export class StateMachine {
   transition(newState) {
     const valid = VALID_TRANSITIONS[this.current];
     if (!valid || !valid.includes(newState)) {
-      console.warn(`[Cannonfall] Invalid state transition: ${this.current} → ${newState}`);
+      const msg = `Invalid state transition: ${this.current} → ${newState}`;
+      if (this._strict) {
+        throw new Error(`[Cannonfall] ${msg}`);
+      }
+      console.warn(`[Cannonfall] ${msg}`);
       return false;
     }
     const prev = this.current;

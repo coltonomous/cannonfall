@@ -16,6 +16,8 @@ import { setupUIListeners } from './UIListeners.js';
 import { setupNetworkListeners } from './NetworkHandler.js';
 import * as C from './constants.js';
 import { StateMachine, State } from './StateMachine.js';
+import { EventBus } from './EventBus.js';
+import { GameState } from './GameState.js';
 
 export { State };
 
@@ -30,42 +32,40 @@ export class Game {
     this.isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     this.particles = new ParticleManager(this.sceneManager.scene);
 
-    this._sm = new StateMachine();
-    this.gameMode = GAME_MODES.CASTLE;
-    this.mode = null; // 'local', 'online', or 'ai'
-    this.playerIndex = 0;
-    this.currentTurn = 0;
+    this._sm = new StateMachine(null, { strict: true });
+
+    // Consolidated mutable game state — shared with BattleController
+    this.gs = new GameState();
+
     this.aiController = new AIController();
-    this.aiDifficulty = 'MEDIUM';
-
-    this.castles = [null, null];
-    this.cannons = [null, null];
-    this.castleData = [null, null];
     this.castleBuilds = {}; // per-mode prebuild storage: { CASTLE: data, PIRATE: data, ... }
-
-    this.hp = [C.MAX_HP, C.MAX_HP];
     this._pendingTimers = []; // tracked timeouts, cancelled on cleanup
 
     // Castle builder & repositioner
     this.builder = new CastleBuilder(this.sceneManager);
     this.repositioner = new TargetRepositioner(this.sceneManager);
 
-    // Battle controller
+    // Event bus — decouples BattleController from Game
+    this.events = new EventBus();
+
+    // Battle controller — shares GameState directly
     this.battle = new BattleController({
       sceneManager: this.sceneManager,
       physicsWorld: this.physicsWorld,
       particles: this.particles,
       ui: this.ui,
       network: this.network,
+      events: this.events,
+      gs: this.gs,
     });
-    this.battle.setCallbacks({
-      onHitLocal: () => this.onTargetHit(),
-      onShotMiss: () => this.onShotMiss(),
-      onReportShot: (hit, perfect) => {
-        this.network.sendShotResult(hit, perfect);
-      },
-      debugLog: (...args) => this.debugLog(...args),
+
+    // Subscribe to battle events
+    this.events.on('target-hit', () => this.onTargetHit());
+    this.events.on('shot-miss', () => this.onShotMiss());
+    this.events.on('report-shot', ({ hit, perfect }) => {
+      this.network.sendShotResult(hit, perfect);
     });
+    this.events.on('debug', ({ msg, data }) => this.debugLog(msg, data));
 
     // Debug
     this.debugPhysics = false;
@@ -109,9 +109,34 @@ export class Game {
     // If we have a persisted session, try connecting to see if the server
     // has an active game for us. The 'reconnected' handler takes over if so.
     if (sessionStorage.getItem('cannonfall-session')) {
-      this.network.connect(3000).catch(() => {});
+      this.network.connect(3000).catch(() => {
+        this.debugLog('Reconnect attempt failed — no active server session');
+      });
     }
   }
+
+  // ── GameState delegation ─────────────────────────────────
+  // These getters/setters keep existing `game.hp`, `game.mode`, etc. working
+  // while the canonical source of truth lives in `this.gs`.
+
+  get mode() { return this.gs.mode; }
+  set mode(v) { this.gs.mode = v; }
+  get playerIndex() { return this.gs.playerIndex; }
+  set playerIndex(v) { this.gs.playerIndex = v; }
+  get currentTurn() { return this.gs.currentTurn; }
+  set currentTurn(v) { this.gs.currentTurn = v; }
+  get gameMode() { return this.gs.gameMode; }
+  set gameMode(v) { this.gs.gameMode = v; }
+  get aiDifficulty() { return this.gs.aiDifficulty; }
+  set aiDifficulty(v) { this.gs.aiDifficulty = v; }
+  get hp() { return this.gs.hp; }
+  set hp(v) { this.gs.hp = v; }
+  get castles() { return this.gs.castles; }
+  set castles(v) { this.gs.castles = v; }
+  get cannons() { return this.gs.cannons; }
+  set cannons(v) { this.gs.cannons = v; }
+  get castleData() { return this.gs.castleData; }
+  set castleData(v) { this.gs.castleData = v; }
 
   // ── State Machine ───────────────────────────────────────
 
@@ -691,117 +716,132 @@ export class Game {
 
   update() {
     const dt = this.clock.getDelta();
+    const handler = this._stateHandlers[this.state];
+    if (handler) {
+      handler.call(this, dt);
+    } else {
+      this._updateDefault(dt);
+    }
+  }
 
-    // Non-gameplay states: disable input, just render
-    if (
-      this.state === State.MENU ||
-      this.state === State.BUILD ||
-      this.state === State.PASS_DEVICE ||
-      this.state === State.PASS_DEVICE_REPOSITION ||
-      this.state === State.WAITING_OPPONENT_BUILD ||
-      this.state === State.REPOSITION
-    ) {
-      this.input.enabled = false;
-      this.input.resetTouchState();
-      this.sceneManager.render();
-      return;
+  /** Per-state update handlers — extracted from the monolithic update(). */
+  _stateHandlers = {
+    [State.MENU]:                   Game.prototype._updateInactive,
+    [State.BUILD]:                  Game.prototype._updateInactive,
+    [State.PASS_DEVICE]:            Game.prototype._updateInactive,
+    [State.PASS_DEVICE_REPOSITION]: Game.prototype._updateInactive,
+    [State.WAITING_OPPONENT_BUILD]: Game.prototype._updateInactive,
+    [State.REPOSITION]:             Game.prototype._updateInactive,
+    [State.TURN_TRANSITION]:        Game.prototype._updateTransition,
+    [State.REPLAY]:                 Game.prototype._updateReplay,
+    [State.MY_TURN]:                Game.prototype._updateMyTurn,
+    [State.AI_AIMING]:              Game.prototype._updateAIAiming,
+    [State.FIRING]:                 Game.prototype._updateFiring,
+    [State.OPPONENT_FIRING]:        Game.prototype._updateFiring,
+    [State.AI_FIRING]:              Game.prototype._updateFiring,
+  };
+
+  /** Non-gameplay states: disable input, just render. */
+  _updateInactive(_dt) {
+    this.input.enabled = false;
+    this.input.resetTouchState();
+    this.sceneManager.render();
+  }
+
+  /** Blocks tumbling after a hit — run physics, wait for settle. */
+  _updateTransition(dt) {
+    this.input.enabled = false;
+    this.input.resetTouchState();
+    this.physicsWorld.step(dt);
+    this.physicsWorld.sync();
+    this.battle.cleanupFallenBlocks();
+    this.battle.updateThrusters();
+    this.particles.update(dt);
+    this.sceneManager.updateCamera(dt);
+    this.sceneManager.render();
+  }
+
+  /** Cinematic kill-cam replay. */
+  _updateReplay(dt) {
+    const scaledDt = dt * this.battle._replayTimeScale;
+    this.physicsWorld.step(scaledDt);
+    this.physicsWorld.sync();
+    this.battle.cleanupFallenBlocks();
+
+    if (this.battle.projectile?.alive) {
+      if (this.battle._pendingTargetHit || this.battle._pendingSpaceImpact) {
+        const pos = this.battle.projectile.getPosition();
+        this.battle.onReplayImpact(pos);
+        this.particles.emit(pos, { x: 0, y: 5, z: 0 }, 10, { r: 1, g: 0.3, b: 0.1 }, 60, 1.2);
+        this.sceneManager.shake(0.8, 0.5);
+        this.battle.destroyProjectile();
+        this.battle._pendingTargetHit = false;
+        this.battle._pendingSpaceImpact = null;
+      }
     }
 
-    // Turn transition: run physics so blocks tumble, wait for settling
-    if (this.state === State.TURN_TRANSITION) {
-      this.input.enabled = false;
-      this.input.resetTouchState();
-      this.physicsWorld.step(dt);
-      this.physicsWorld.sync();
-      this.battle.cleanupFallenBlocks();
-      this.battle.updateThrusters();
-      this.particles.update(dt);
-      this.sceneManager.updateCamera(dt);
-      this.sceneManager.render();
-      return;
+    this.battle.updateReplayCamera(scaledDt);
+
+    const realElapsed = (performance.now() - this._replayStartTime) / 1000;
+    if (realElapsed > C.REPLAY_DURATION) this._endReplay();
+    if (this.input.keys['Space'] || this.input._touchTapped) {
+      this.input.keys['Space'] = false;
+      this.input._touchTapped = false;
+      this._endReplay();
     }
+
+    this.particles.update(scaledDt);
+    this.sceneManager.updateCamera(scaledDt);
+    this.sceneManager.render();
+  }
+
+  /** Player aiming — handle input, show trajectory. */
+  _updateMyTurn(dt) {
     this.input.enabled = true;
-
-    // Replay state
-    if (this.state === State.REPLAY) {
-      const scaledDt = dt * this.battle._replayTimeScale;
-      this.physicsWorld.step(scaledDt);
-      this.physicsWorld.sync();
-      this.battle.cleanupFallenBlocks();
-
-      if (this.battle.projectile?.alive) {
-        if (this.battle._pendingTargetHit || this.battle._pendingSpaceImpact) {
-          const pos = this.battle.projectile.getPosition();
-          this.battle.onReplayImpact(pos);
-          this.particles.emit(pos, { x: 0, y: 5, z: 0 }, 10, { r: 1, g: 0.3, b: 0.1 }, 60, 1.2);
-          this.sceneManager.shake(0.8, 0.5);
-          this.battle.destroyProjectile();
-          this.battle._pendingTargetHit = false;
-          this.battle._pendingSpaceImpact = null;
-        }
-      }
-
-      this.battle.updateReplayCamera(scaledDt);
-
-      const realElapsed = (performance.now() - this._replayStartTime) / 1000;
-      if (realElapsed > C.REPLAY_DURATION) this._endReplay();
-      if (this.input.keys['Space'] || this.input._touchTapped) {
-        this.input.keys['Space'] = false;
-        this.input._touchTapped = false;
-        this._endReplay();
-      }
-
-      this.particles.update(scaledDt);
-      this.sceneManager.updateCamera(scaledDt);
-      this.sceneManager.render();
-      return;
-    }
-
-    // Input during aiming
-    if (this.state === State.MY_TURN) {
-      const action = this.input.handleInput(dt, this.cannons[this.currentTurn], this.battle, this.ui);
-      if (action === 'fire') {
-        this.battle.fire(this.debugPerfectShot);
-        this.transition(State.FIRING);
-        this.input.resetTouchState(); // Clear stale tap from aiming so it doesn't trigger skip
-      } else {
-        this.battle.updateCamera();
-        this.battle.updateTrajectory();
-      }
-    }
-
-    // AI aiming animation
-    if (this.state === State.AI_AIMING) {
-      this.aiController.updateAiming(dt, this.cannons[this.currentTurn]);
-      // Animate power meter and trajectory during AI aim
-      const progress = this.aiController.aimProgress;
-      const aiPower = C.MIN_POWER + (this.aiController.targetPower - C.MIN_POWER) * progress;
-      this.battle.power = aiPower;
-      this.ui.updatePower(aiPower, C.MIN_POWER, C.MAX_POWER);
+    const action = this.input.handleInput(dt, this.cannons[this.currentTurn], this.battle, this.ui);
+    if (action === 'fire') {
+      this.battle.fire(this.debugPerfectShot);
+      this.transition(State.FIRING);
+      this.input.resetTouchState();
+    } else {
       this.battle.updateCamera();
       this.battle.updateTrajectory();
     }
+    this._updateBattlePhysics(dt);
+  }
+
+  /** AI aiming animation — animate cannon and power meter. */
+  _updateAIAiming(dt) {
+    this.input.enabled = true;
+    this.aiController.updateAiming(dt, this.cannons[this.currentTurn]);
+    const progress = this.aiController.aimProgress;
+    const aiPower = C.MIN_POWER + (this.aiController.targetPower - C.MIN_POWER) * progress;
+    this.battle.power = aiPower;
+    this.ui.updatePower(aiPower, C.MIN_POWER, C.MAX_POWER);
+    this.battle.updateCamera();
+    this.battle.updateTrajectory();
+    this._updateBattlePhysics(dt);
+  }
+
+  /** Projectile in flight — track, follow camera, skip/timeout. */
+  _updateFiring(dt) {
+    this.input.enabled = true;
 
     // Physics
-    if (this.state !== State.GAME_OVER) {
-      this.physicsWorld.step(dt);
-      this.physicsWorld.sync();
-      this.battle.cleanupFallenBlocks();
-    }
+    this.physicsWorld.step(dt);
+    this.physicsWorld.sync();
+    this.battle.cleanupFallenBlocks();
 
-    // Projectile tracking (before firing block so state changes take effect)
-    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING || this.state === State.AI_FIRING) {
-      this.battle.checkProjectile(dt);
-    }
+    // Projectile tracking
+    this.battle.checkProjectile(dt);
 
-    // Follow projectile + skip/auto-advance (only if still in firing state)
-    if (this.state === State.FIRING || this.state === State.OPPONENT_FIRING || this.state === State.AI_FIRING) {
+    // Follow camera + skip/auto-advance (only if still in a firing state)
+    if (this._sm.is(State.FIRING, State.OPPONENT_FIRING, State.AI_FIRING)) {
       if (this.battle.projectile?.alive) {
         this.battle.followProjectile();
       }
 
       const elapsed = (performance.now() - this.battle.fireTime) / 1000;
-      // Skip prompt — only for the player's own shot, not AI
       if (elapsed > C.SKIP_PROMPT_DELAY && this.state === State.FIRING) {
         this.ui.setStatus(this.isTouch ? 'Tap to skip' : 'Press Space to skip');
         if (this.input.keys['Space'] || this.input._touchTapped) {
@@ -811,7 +851,7 @@ export class Game {
           this.onShotMiss();
         }
       }
-      if (elapsed > C.AUTO_MISS_TIMEOUT && (this.state === State.FIRING || this.state === State.OPPONENT_FIRING || this.state === State.AI_FIRING)) {
+      if (elapsed > C.AUTO_MISS_TIMEOUT) {
         this.battle.destroyProjectile();
         this.onShotMiss();
       }
@@ -821,6 +861,25 @@ export class Game {
     this.particles.update(dt);
     this.sceneManager.updateCamera(dt);
     this.sceneManager.render();
+  }
+
+  /** Shared physics + render tail for MY_TURN, AI_AIMING, OPPONENT_TURN, GAME_OVER. */
+  _updateBattlePhysics(dt) {
+    if (this.state !== State.GAME_OVER) {
+      this.physicsWorld.step(dt);
+      this.physicsWorld.sync();
+      this.battle.cleanupFallenBlocks();
+    }
+    this.battle.updateThrusters();
+    this.particles.update(dt);
+    this.sceneManager.updateCamera(dt);
+    this.sceneManager.render();
+  }
+
+  /** Default handler for states without a specific handler (OPPONENT_TURN, GAME_OVER). */
+  _updateDefault(dt) {
+    this.input.enabled = true;
+    this._updateBattlePhysics(dt);
   }
 
   // ── Target Marker Cleanup ────────────────────────────
@@ -846,14 +905,11 @@ export class Game {
     this.battle.reset();
     this.physicsWorld.clear();
 
-    this.castles = [null, null];
-    this.cannons = [null, null];
-    this.castleData = [null, null];
+    this.gs.reset();
     this.particles.clear();
     this.builder.stop();
     this.repositioner.stop();
     this._cleanupTargetMarkers();
-    this.hp = [C.MAX_HP, C.MAX_HP];
     this.sceneManager.disableMinimap();
     const debugOverlay = document.getElementById('debug-log-overlay');
     if (debugOverlay) debugOverlay.remove();

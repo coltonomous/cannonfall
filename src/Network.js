@@ -11,6 +11,7 @@ const EVENTS = [
   'reconnected',
   'shot-resolved',
   'reposition-done',
+  'server-shutdown',
   'lobby:list',
   'lobby:created',
   'lobby:error',
@@ -33,6 +34,9 @@ export class Network {
   }
 
   connect(timeoutMs = 5000) {
+    // Reuse the socket from the reconnect check on page load instead of opening a second one
+    if (this.socket?.connected) return Promise.resolve(this.socket.id);
+    this.disconnect();
     return new Promise((resolve, reject) => {
       this.socket = io({
         auth: { sessionId: this.sessionId },
@@ -74,10 +78,6 @@ export class Network {
     });
   }
 
-  joinQueue() {
-    this.socket.emit('join-queue');
-  }
-
   sendBuildReady(castleData) {
     this.socket.emit('build-ready', { castleData });
   }
@@ -86,8 +86,8 @@ export class Network {
     this.socket.emit('fire', { yaw, pitch, power });
   }
 
-  sendShotResult(hit, perfect = false) {
-    this.socket.emit('shot-result', { hit, perfect });
+  sendShotResult(hit) {
+    this.socket.emit('shot-result', { hit });
   }
 
   sendRepositionComplete(targetPos) {
@@ -119,14 +119,6 @@ export class Network {
       console.warn(`[Network] Overwriting handler for "${event}"`);
     }
     this.handlers[event] = callback;
-  }
-
-  off(event) {
-    delete this.handlers[event];
-  }
-
-  removeAllHandlers() {
-    this.handlers = {};
   }
 
   disconnect() {

@@ -1,7 +1,8 @@
 import './styles.css';
 import { Game } from './Game.js';
 
-if ('serviceWorker' in navigator) {
+// The service worker caches assets, which only gets in the way of the dev server
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
 

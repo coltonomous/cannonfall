@@ -20,10 +20,7 @@ export function setupNetworkListeners(game, State) {
       // Already built — send immediately, wait for opponent
       game.network.sendBuildReady(game.castleData[0]);
       game.transition(State.WAITING_OPPONENT_BUILD);
-      game.ui.overlay.classList.remove('hidden');
-      document.getElementById('build-screen').classList.remove('hidden');
-      document.getElementById('build-screen').innerHTML =
-        '<h2>Waiting for opponent...</h2><div class="spinner"></div>';
+      game.ui.showWaitingScreen('Waiting for opponent...');
     } else {
       game.startBuildPhase(true);
     }
@@ -58,36 +55,33 @@ export function setupNetworkListeners(game, State) {
   });
 
   game.network.on('shot-resolved', (data) => {
-    if (data.hit) {
-      const damagedPlayer = data.damagedPlayer;
-      game.hp = [...data.hp];
-      game.ui.updateHP(game.hp[0], game.hp[1]);
-
-      if (game.hp[damagedPlayer] <= 0) {
-        const won = damagedPlayer !== game.playerIndex;
-        if (game.battle._replayData && game.battle.startReplay()) {
-          game.transition(State.REPLAY);
-          game._replayStartTime = performance.now();
-          game._replayResult = { local: false, won };
-          game.ui.setStatus('REPLAY');
-        } else {
-          game.transition(State.GAME_OVER);
-          game.ui.showResult(won);
-        }
-      } else {
-        game.ui.setStatus(`HIT! ${game.hp[damagedPlayer]} hit${game.hp[damagedPlayer] > 1 ? 's' : ''} remaining`);
-        if (damagedPlayer === game.playerIndex) {
-          setTimeout(() => game.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY);
-        } else {
-          game.transition(State.OPPONENT_TURN);
-          game.ui.setStatus('Opponent repositioning...');
-        }
-      }
-    } else {
+    if (!data.hit) {
       game.currentTurn = data.nextTurn;
       game.syncBattle();
       game.onTurnStart();
+      return;
     }
+
+    // Non-lethal hit (a lethal one arrives as game-over): the damaged player
+    // repositions their target, then reposition-done starts the next turn.
+    const { damagedPlayer } = data;
+    game.hp = [...data.hp];
+    game.ui.updateHP(game.hp[0], game.hp[1]);
+    const left = game.hp[damagedPlayer];
+    game.ui.setStatus(`HIT! ${left} hit${left > 1 ? 's' : ''} remaining`);
+    if (damagedPlayer === game.playerIndex) {
+      game._schedule(() => game.startRepositionPhase(damagedPlayer), C.HIT_DISPLAY_DELAY,
+        State.OPPONENT_FIRING, State.OPPONENT_TURN);
+    } else {
+      game.transition(State.OPPONENT_TURN);
+      game.ui.setStatus('Opponent repositioning...');
+    }
+  });
+
+  game.network.on('reposition-done', ({ player, targetPos, nextTurn }) => {
+    const castle = game.castles[player];
+    if (!castle) return;
+    game.applyReposition(player, castle.mirrorGridPos(targetPos), nextTurn);
   });
 
   game.network.on('game-over', (data) => {
@@ -96,9 +90,12 @@ export function setupNetworkListeners(game, State) {
   });
 
   game.network.on('opponent-disconnected', () => {
-    game.ui.hideDisconnectBanner();
-    game.transition(State.GAME_OVER);
-    game.ui.showResult(true, 'Opponent left the game');
+    game.endOnlineGame('Opponent left the game');
+  });
+
+  game.network.on('server-shutdown', () => {
+    if (game.mode !== 'online' || game.state === State.MENU || game.state === State.GAME_OVER) return;
+    game.endOnlineGame('Server restarted, game ended');
   });
 
   game.network.on('opponent-disconnected-temp', () => {
@@ -124,25 +121,29 @@ export function setupNetworkListeners(game, State) {
   });
 }
 
+/** Rebuild the game from the server's snapshot after a reload or dropped connection. */
 function handleReconnect(game, State, data) {
-  game.mode = 'online';
-  game.playerIndex = data.playerIndex;
-  game.currentTurn = data.game.currentTurn;
+  const { phase, castles, hp, currentTurn, repositioningPlayer, gameMode } = data.game;
+  const me = data.playerIndex;
 
-  const gameMode = data.game.gameMode || 'CASTLE';
+  // Still building after a dropped connection: nothing was lost
+  if (phase === 'build' && game.state === State.BUILD) return;
+
+  game.resetForResync();
+  game.mode = 'online';
+  game.playerIndex = me;
+  game.currentTurn = currentTurn;
   const modeKey = typeof gameMode === 'string' ? gameMode.toUpperCase() : 'CASTLE';
   if (GAME_MODES[modeKey]) game.gameMode = GAME_MODES[modeKey];
   game.applyGameMode();
 
-  const { phase, castles, hp } = data.game;
-
-  // If still in build phase, we can't fully restore — go to waiting
-  if (phase === 'build' || !castles[0] || !castles[1]) {
-    game.transition(State.WAITING_OPPONENT_BUILD);
-    game.ui.overlay.classList.remove('hidden');
-    document.getElementById('build-screen').classList.remove('hidden');
-    document.getElementById('build-screen').innerHTML =
-      '<h2>Reconnected — waiting for builds...</h2><div class="spinner"></div>';
+  if (phase === 'build') {
+    if (castles[me]) {
+      game.transition(State.WAITING_OPPONENT_BUILD);
+      game.ui.showWaitingScreen('Reconnected — waiting for opponent...');
+    } else {
+      game.startBuildPhase(true);
+    }
     return;
   }
 
@@ -150,27 +151,18 @@ function handleReconnect(game, State, data) {
   game.buildBothCastles(castles[0], castles[1]);
   game.hp = [...hp];
   game.ui.updateHP(game.hp[0], game.hp[1]);
+  game.ui.showGame();
+  game.syncBattle();
 
   if (phase === 'reposition') {
-    // We reconnected during reposition — if it's our turn to reposition, start it
-    // The damaged player is the current turn holder during reposition
-    const damagedPlayer = data.game.currentTurn;
-    if (damagedPlayer === game.playerIndex) {
-      game.ui.showGame();
-      game.syncBattle();
-      game.startRepositionPhase(damagedPlayer);
+    game.transition(State.OPPONENT_TURN);
+    if (repositioningPlayer === me) {
+      game.startRepositionPhase(me);
     } else {
-      // Opponent is repositioning — wait
-      game.ui.showGame();
-      game.syncBattle();
-      game.transition(State.OPPONENT_TURN);
       game.ui.setStatus('Opponent repositioning...');
     }
     return;
   }
 
-  // Default: battle phase — resume normal turn flow
-  game.ui.showGame();
-  game.syncBattle();
   game.onTurnStart();
 }

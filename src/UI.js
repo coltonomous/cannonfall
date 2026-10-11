@@ -6,7 +6,6 @@ export class UI {
 
     // Screens
     this.menuScreen = document.getElementById('menu-screen');
-    this.matchingScreen = document.getElementById('matching-screen');
     this.buildScreen = document.getElementById('build-screen');
     this.passScreen = document.getElementById('pass-device-screen');
     this.resultScreen = document.getElementById('result-screen');
@@ -54,7 +53,7 @@ export class UI {
 
   hideAllScreens() {
     // Hide all overlay screens
-    [this.menuScreen, this.matchingScreen, this.buildScreen, this.passScreen, this.resultScreen, this.lobbyScreen]
+    [this.menuScreen, this.buildScreen, this.passScreen, this.resultScreen, this.lobbyScreen]
       .forEach(s => s && s.classList.add('hidden'));
   }
 
@@ -65,9 +64,16 @@ export class UI {
     this.menuScreen.classList.remove('hidden');
   }
 
-  showMatchmaking() {
+  /** Spinner screen shown while waiting on the opponent in online mode. */
+  showWaitingScreen(message) {
+    this.overlay.classList.remove('hidden');
     this.hideAllScreens();
-    this.matchingScreen.classList.remove('hidden');
+    const title = document.createElement('h2');
+    title.textContent = message;
+    const spinner = document.createElement('div');
+    spinner.className = 'spinner';
+    this.buildScreen.replaceChildren(title, spinner);
+    this.buildScreen.classList.remove('hidden');
   }
 
   showPassDevice(playerNumber) {

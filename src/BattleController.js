@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import * as CANNON from 'cannon-es';
 import { Projectile } from './Projectile.js';
 import * as C from './constants.js';
+import { isPerfectPower } from '../shared/rules.js';
 
 export class BattleController {
   constructor({ sceneManager, physicsWorld, particles, ui, network, events, gs }) {
@@ -342,7 +343,7 @@ export class BattleController {
     this.projectile = null;
 
     if (this.mode === 'online') {
-      this.events.emit('report-shot', { hit: true, perfect: this._perfectShot });
+      this.events.emit('report-shot', { hit: true });
       this.ui.setStatus('Hit detected...');
     } else {
       this.events.emit('target-hit');
@@ -352,15 +353,33 @@ export class BattleController {
   // --- Firing ---
 
   fire(debugPerfectShot) {
-    const powerFrac = (this.power - C.MIN_POWER) / (C.MAX_POWER - C.MIN_POWER);
-    this._perfectShot = debugPerfectShot || (powerFrac >= C.PERFECT_MIN && powerFrac <= C.PERFECT_MAX);
-    this.events.emit('debug', { msg: 'Fire:', data: { power: this.power.toFixed(1), perfect: this._perfectShot, powerFrac: powerFrac.toFixed(3) } });
-
     const cannon = this.cannons[this.currentTurn];
+    const perfect = debugPerfectShot || isPerfectPower(this.power);
+    this.events.emit('debug', { msg: 'Fire:', data: { power: this.power.toFixed(1), perfect } });
+
+    if (this.mode === 'online') {
+      this.network.sendFire(cannon.yaw, cannon.pitch, this.power);
+    }
+    this._launch(cannon, perfect, 'Firing...');
+  }
+
+  /** Replay the opponent's shot locally with the server's perfect-shot verdict. */
+  handleOpponentFire({ yaw, pitch, power, perfect }) {
+    const cannon = this.cannons[1 - this.playerIndex];
+    cannon.yaw = yaw;
+    cannon.pitch = pitch;
+    cannon.updateAim();
+    this.power = power;
+    this._launch(cannon, perfect, 'Incoming!');
+  }
+
+  // Shared by local and opponent shots so both clients simulate the same projectile
+  _launch(cannon, perfect, status) {
+    this._perfectShot = perfect;
     const pos = cannon.getFirePosition();
     const dir = cannon.getFireDirection();
     // Perfect shots guarantee max power — the reward for hitting the sweet spot
-    const power = this._perfectShot ? C.MAX_POWER : this.power;
+    const power = perfect ? C.MAX_POWER : this.power;
 
     this.trajectoryLine.visible = false;
     this.reticle.visible = false;
@@ -372,19 +391,15 @@ export class BattleController {
     this.fireTime = performance.now();
 
     // Capture for potential replay
-    this._replayData = { firePos: pos.clone(), fireDir: dir.clone(), power, isPerfect: this._perfectShot };
-
-    if (this.mode === 'online') {
-      this.network.sendFire(cannon.yaw, cannon.pitch, power);
-    }
+    this._replayData = { firePos: pos.clone(), fireDir: dir.clone(), power, isPerfect: perfect };
 
     const launchProjectile = () => {
       const velocity = dir.clone().multiplyScalar(power);
-      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, this._perfectShot, this.gameMode);
+      this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, perfect, this.gameMode);
       this._setupProjectileCollision();
 
       // Muzzle flash
-      if (this._perfectShot) {
+      if (perfect) {
         this.particles.emit(pos, { x: dir.x * 12, y: dir.y * 12, z: dir.z * 12 },
           7, this.gameMode.perfectMuzzleColor, 60, 1.0);
         this.sceneManager.shake(0.7, 0.4);
@@ -395,39 +410,15 @@ export class BattleController {
       }
     };
 
-    if (this._perfectShot) {
+    if (perfect) {
       this.ui.setStatus('PERFECT!');
       this.sceneManager.shake(0.2, 0.3);
       this.particles.emit(pos, { x: 0, y: 3, z: 0 }, 3, { r: 1, g: 0.9, b: 0.3 }, 25, 0.5);
       this._scheduleTimer(() => launchProjectile(), C.PERFECT_FIRE_DELAY);
     } else {
-      this.ui.setStatus('Firing...');
+      this.ui.setStatus(status);
       launchProjectile();
     }
-  }
-
-  handleOpponentFire(data) {
-    const oppIndex = 1 - this.playerIndex;
-    const cannon = this.cannons[oppIndex];
-
-    cannon.yaw = data.yaw;
-    cannon.pitch = data.pitch;
-    cannon.updateAim();
-
-    const pos = cannon.getFirePosition();
-    const dir = cannon.getFireDirection();
-    const velocity = dir.multiplyScalar(data.power);
-
-    this.projectile = new Projectile(this.sceneManager, this.physicsWorld, pos, velocity, false, this.gameMode);
-    this._setupProjectileCollision();
-
-    this.settleTimer = 0;
-    this.fireTime = performance.now();
-    this.ui.setStatus('Incoming!');
-
-    // Muzzle flash
-    this.particles.emit(pos, { x: dir.x * 8, y: dir.y * 8, z: dir.z * 8 },
-      5, this.gameMode.muzzleColor, 30, 0.6);
   }
 
   // --- Projectile Tracking ---
@@ -583,7 +574,7 @@ export class BattleController {
       this.projectile = null;
 
       if (this.mode === 'online') {
-        this.events.emit('report-shot', { hit: true, perfect: this._perfectShot });
+        this.events.emit('report-shot', { hit: true });
         this.ui.setStatus('Hit detected...');
       } else {
         this.events.emit('target-hit');
@@ -722,26 +713,14 @@ export class BattleController {
             mesh.material.opacity = Math.max(0, mesh.material.opacity - 0.03);
             mesh.material.transparent = true;
             if (mesh.material.opacity <= 0) {
-              castle.sceneManager.scene.remove(mesh);
-              mesh.material.dispose();
-              castle.physicsWorld.world.removeBody(body);
-              const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
-              if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
-              castle.blocks.splice(i, 1);
+              castle.removeBlock(i);
               continue;
             }
           }
         }
 
         if (body.position.y < this.gameMode.outOfBoundsY || Math.abs(body.position.x) > boundsX || Math.abs(body.position.z) > boundsZ) {
-          if (mesh) {
-            castle.sceneManager.scene.remove(mesh);
-            mesh.material?.dispose();
-          }
-          castle.physicsWorld.world.removeBody(body);
-          const pairIdx = castle.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
-          if (pairIdx >= 0) castle.physicsWorld.pairs.splice(pairIdx, 1);
-          castle.blocks.splice(i, 1);
+          castle.removeBlock(i);
         }
       }
     }

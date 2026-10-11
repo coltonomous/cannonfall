@@ -1,3 +1,5 @@
+import { MODE_RULES } from '../shared/constants.js';
+
 // Shared perfect shot visuals — consistent gold across all modes
 const PERFECT_SHOT = {
   perfectColor: 0xffd700,
@@ -18,6 +20,7 @@ const EXPLOSION = {
 export const GAME_MODES = {
   CASTLE: {
     id: 'castle',
+    ...MODE_RULES.castle, // grid size, layers, budget, excluded blocks
     label: 'Castle Siege',
     structureLabel: 'Castle',
 
@@ -56,14 +59,9 @@ export const GAME_MODES = {
     trailColor: { r: 0.5, g: 0.5, b: 0.5 },
 
     presets: ['KEEP', 'BUNKER', 'TOWER'],
-    excludeBlocks: ['THRUSTER', 'SHIELD'],
 
     outOfBoundsY: -5,
     castleOffsetX: 20,
-    gridWidth: 9,
-    gridDepth: 9,
-    budget: 600,
-    maxLayers: 8,
 
     noiseConfig: {
       scaleX: 5, scaleY: 5,     // isotropic — rough stone grain
@@ -77,6 +75,7 @@ export const GAME_MODES = {
 
   PIRATE: {
     id: 'pirate',
+    ...MODE_RULES.pirate, // grid size, layers, budget, excluded blocks
     label: 'Pirate Cove',
     structureLabel: 'Ship',
 
@@ -119,15 +118,10 @@ export const GAME_MODES = {
     trailColor: { r: 0.4, g: 0.4, b: 0.4 },
 
     presets: ['GALLEON', 'SLOOP', 'FORTRESS'],
-    excludeBlocks: ['THRUSTER', 'SHIELD'],
 
     outOfBoundsY: -5,
     castleOffsetX: 16,
     mirrorZ: true,
-    gridWidth: 7,
-    gridDepth: 11,
-    budget: 500,
-    maxLayers: 6,
 
     noiseConfig: {
       scaleX: 10, scaleY: 3.3,  // 3:1 anisotropic — wood grain
@@ -142,6 +136,7 @@ export const GAME_MODES = {
 
   SPACE: {
     id: 'space',
+    ...MODE_RULES.space, // grid size, layers, budget, excluded blocks
     label: 'Space Battle',
     structureLabel: 'Ship',
     defaultPitch: 0, // horizontal aim for zero-G
@@ -184,14 +179,9 @@ export const GAME_MODES = {
     trailColor: { r: 0.2, g: 0.6, b: 0.9 },
 
     presets: ['CORVETTE', 'FRIGATE', 'CRUISER'],
-    excludeBlocks: [],
 
     outOfBoundsY: -60,
     castleOffsetX: 28,
-    gridWidth: 7,
-    gridDepth: 13,
-    budget: 600,
-    maxLayers: 5,
 
     noiseConfig: {
       scaleX: 12, scaleY: 12,   // fine isotropic — brushed metal

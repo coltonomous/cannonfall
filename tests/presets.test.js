@@ -4,6 +4,7 @@ import { getPiratePreset } from '../src/PiratePresets.js';
 import { getSpacePreset } from '../src/SpacePresets.js';
 import { BLOCK_TYPES } from '../src/constants.js';
 import { GAME_MODES } from '../src/GameModes.js';
+import { validateCastle } from '../shared/rules.js';
 
 function presetCost(layout) {
   return layout.reduce((sum, b) => sum + (BLOCK_TYPES[b.type]?.cost || 0), 0);
@@ -85,5 +86,18 @@ describe('Space Presets', () => {
       expect(preset).toHaveProperty('floor');
       expect(preset.floor).toEqual([]);
     });
+  }
+});
+
+describe('Presets pass server validation', () => {
+  // A preset the server rejects would leave an online player stuck waiting
+  const sources = { CASTLE: getPreset, PIRATE: getPiratePreset, SPACE: getSpacePreset };
+  for (const [modeKey, getter] of Object.entries(sources)) {
+    const mode = GAME_MODES[modeKey];
+    for (const name of mode.presets) {
+      it(`${modeKey} ${name}`, () => {
+        expect(validateCastle(getter(name, mode.id), mode.id)).not.toBeNull();
+      });
+    }
   }
 });

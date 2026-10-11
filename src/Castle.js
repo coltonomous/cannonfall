@@ -304,6 +304,16 @@ export class Castle {
     }
   }
 
+  /**
+   * Convert a grid position between layout coords (what the server stores)
+   * and rendered coords (what the scene and repositioner use). Mirroring is
+   * its own inverse, so this works in both directions.
+   */
+  mirrorGridPos(gridPos) {
+    return this.mirrorZ ? { ...gridPos, z: this.gridDepth - 1 - gridPos.z } : { ...gridPos };
+  }
+
+  /** Move the target to a grid position in rendered coords. */
   repositionTarget(gridPos) {
     this.removeTarget();
     const halfW = Math.floor(this.gridWidth / 2);
@@ -315,20 +325,21 @@ export class Castle {
     return this.target ? this.target.position.clone() : null;
   }
 
+  /** Remove one block from the scene, the physics world and this castle. */
+  removeBlock(index) {
+    const { mesh, body } = this.blocks[index];
+    if (mesh) {
+      this.sceneManager.scene.remove(mesh);
+      mesh.material?.dispose();
+    }
+    this.physicsWorld.world.removeBody(body);
+    const pairIdx = this.physicsWorld.pairs.findIndex(p => p.body === body);
+    if (pairIdx >= 0) this.physicsWorld.pairs.splice(pairIdx, 1);
+    this.blocks.splice(index, 1);
+  }
+
   clear() {
-    for (const { mesh, body } of this.blocks) {
-      if (mesh) {
-        this.sceneManager.scene.remove(mesh);
-        if (mesh.material) mesh.material.dispose();
-      }
-      this.physicsWorld.world.removeBody(body);
-    }
-    // Also remove from pairs
-    for (const { mesh } of this.blocks) {
-      const idx = this.physicsWorld.pairs.findIndex(p => p.mesh === mesh);
-      if (idx >= 0) this.physicsWorld.pairs.splice(idx, 1);
-    }
-    this.blocks = [];
+    for (let i = this.blocks.length - 1; i >= 0; i--) this.removeBlock(i);
     this.thrusters = [];
 
     // Dispose shared block geometries (one per block type, reused across meshes)
@@ -344,19 +355,6 @@ export class Castle {
       this._noiseTextures = null;
     }
 
-    if (this.target) {
-      this.sceneManager.scene.remove(this.target);
-      this.target.geometry.dispose();
-      this.target.material.dispose();
-      this.target = null;
-    }
-    if (this.targetLight) {
-      this.sceneManager.scene.remove(this.targetLight);
-      this.targetLight = null;
-    }
-    if (this.targetBody) {
-      this.physicsWorld.world.removeBody(this.targetBody);
-      this.targetBody = null;
-    }
+    this.removeTarget();
   }
 }

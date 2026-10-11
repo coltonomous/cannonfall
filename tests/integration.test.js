@@ -26,76 +26,10 @@ const { getPreset } = await import('../src/Presets.js');
 const { getPiratePreset } = await import('../src/PiratePresets.js');
 const { getSpacePreset } = await import('../src/SpacePresets.js');
 import * as C from '../src/constants.js';
-
-// Setup minimal DOM for UI.js
-function setupDOM() {
-  document.body.innerHTML = `
-    <canvas id="game-canvas"></canvas>
-    <div id="overlay">
-      <div id="menu-screen" class="screen"></div>
-      <div id="lobby-screen" class="screen hidden">
-        <input type="text" id="lobby-name-input" />
-        <button id="lobby-create-btn"></button>
-        <div id="lobby-create-form" class="hidden">
-          <input type="password" id="lobby-password-input" />
-          <button id="lobby-confirm-create-btn"></button>
-          <button id="lobby-cancel-create-btn"></button>
-        </div>
-        <div id="lobby-hosting" class="hidden">
-          <button id="lobby-cancel-host-btn"></button>
-        </div>
-        <div id="lobby-list"></div>
-        <div id="lobby-password-prompt" class="hidden">
-          <input type="password" id="lobby-join-password" />
-          <button id="lobby-join-confirm-btn"></button>
-          <button id="lobby-join-cancel-btn"></button>
-        </div>
-        <button id="lobby-back-btn"></button>
-      </div>
-      <div id="matching-screen" class="screen hidden"></div>
-      <div id="build-screen" class="screen hidden"></div>
-      <div id="pass-device-screen" class="screen hidden">
-        <h1 id="pass-title"></h1>
-        <button id="pass-ready-btn"></button>
-      </div>
-      <div id="result-screen" class="screen hidden">
-        <h2 id="result-text"></h2>
-        <button id="play-again-btn"></button>
-      </div>
-    </div>
-    <div id="game-ui" class="hidden">
-      <button id="hamburger-btn"></button>
-      <div id="menu-panel" class="hidden"></div>
-      <button id="menu-quit-btn"></button>
-      <div id="hp-left" class="hp-bar">
-        <span class="hp-icon full">♥</span><span class="hp-icon full">♥</span><span class="hp-icon full">♥</span>
-      </div>
-      <div id="hp-right" class="hp-bar">
-        <span class="hp-icon full">♥</span><span class="hp-icon full">♥</span><span class="hp-icon full">♥</span>
-      </div>
-      <div id="turn-indicator"></div>
-      <div id="status-text"></div>
-      <div id="controls-hint"></div>
-      <div id="power-sweet-spot"></div>
-      <div id="power-fill"></div>
-      <span id="power-value"></span>
-      <div id="minimap-frame"></div>
-      <input type="checkbox" id="debug-physics">
-      <input type="checkbox" id="debug-perfect">
-      <input type="checkbox" id="debug-logs">
-    </div>
-    <div class="mode-selector">
-      <button class="mode-btn selected" data-mode="CASTLE"></button>
-      <button class="mode-btn" data-mode="PIRATE"></button>
-      <button class="mode-btn" data-mode="SPACE"></button>
-    </div>
-    <button id="local-match-btn"></button>
-    <button id="online-match-btn"></button>
-  `;
-}
+import { loadIndexHtml } from './helpers/dom.js';
 
 function createGame() {
-  setupDOM();
+  loadIndexHtml();
   const canvas = document.getElementById('game-canvas');
   return new Game(canvas);
 }

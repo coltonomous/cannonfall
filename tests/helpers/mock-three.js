@@ -62,7 +62,7 @@ class MockObject3D {
     this.material = { wireframe: false, opacity: 1, transparent: false, color: new Color(), dispose: noop };
   }
   add(child) { this.children.push(child); }
-  remove() {}
+  remove(child) { const i = this.children.indexOf(child); if (i >= 0) this.children.splice(i, 1); }
   traverse(fn) { fn(this); this.children.forEach(c => { if (c.traverse) c.traverse(fn); else fn(c); }); }
   getWorldPosition(target) { target.copy(this.position); return target; }
   lookAt() {}
@@ -72,7 +72,7 @@ class MockGeometry {
   constructor() { this.attributes = { position: { array: new Float32Array(0), needsUpdate: false, count: 0 } }; }
   dispose() {}
   setFromPoints() { return this; }
-  setAttribute() {}
+  setAttribute(name, attribute) { this.attributes[name] = attribute; }
   setDrawRange() {}
   setIndex() {}
   computeVertexNormals() {}
@@ -132,6 +132,7 @@ export class WebGLRenderer {
   setScissorTest() {}
   setViewport() {}
   render() {}
+  clear() {}
 }
 export class Clock {
   constructor() { this._last = Date.now(); }

@@ -27,16 +27,4 @@ export class GameState {
     this.cannons = [null, null];
     this.castleData = [null, null];
   }
-
-  /** Snapshot the state for sync/serialization. */
-  snapshot() {
-    return {
-      castles: this.castles,
-      cannons: this.cannons,
-      currentTurn: this.currentTurn,
-      mode: this.mode,
-      playerIndex: this.playerIndex,
-      gameMode: this.gameMode,
-    };
-  }
 }

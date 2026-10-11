@@ -9,6 +9,15 @@ const MAX_LAYERS = 8;
 const BUDGET = 600;
 const opts = { gridWidth: GRID_WIDTH, gridDepth: GRID_DEPTH, maxLayers: MAX_LAYERS, budget: BUDGET };
 
+// Seeded PRNG (mulberry32) so random-DNA tests are reproducible
+let seed = 12345;
+function random() {
+  seed = (seed + 0x6D2B79F5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 function validateCastle(result) {
   const { layout, target } = result;
 
@@ -83,7 +92,7 @@ describe('BlueprintDecoder', () => {
   it('should produce valid castles from random DNA', () => {
     for (let trial = 0; trial < 50; trial++) {
       const dna = new Float32Array(DNA_SIZE);
-      for (let i = 0; i < DNA_SIZE; i++) dna[i] = Math.random() * 2 - 1;
+      for (let i = 0; i < DNA_SIZE; i++) dna[i] = random() * 2 - 1;
       const result = decodeDNA(dna, opts);
       validateCastle(result);
     }
@@ -144,7 +153,7 @@ describe('BlueprintDecoder', () => {
 
     for (let i = 0; i < 20; i++) {
       const dna = new Float32Array(DNA_SIZE);
-      for (let j = 0; j < DNA_SIZE; j++) dna[j] = Math.random() * 2 - 1;
+      for (let j = 0; j < DNA_SIZE; j++) dna[j] = random() * 2 - 1;
       const result = decodeDNA(dna, opts);
       const maxY = Math.max(...result.layout.map(b => b.y), 0);
       heights.add(maxY);

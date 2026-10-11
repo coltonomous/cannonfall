@@ -6,7 +6,6 @@ RUN pnpm install --frozen-lockfile --prod
 COPY server.js ./
 COPY server ./server
 COPY dist ./dist
-COPY public ./public
 COPY shared ./shared
 EXPOSE 3000
 

@@ -13,42 +13,20 @@ export const CANNONBALL_MASS = 4;
 // Block Physics
 export const BLOCK_MASS = 2;
 
-// Aim Limits & Power — re-exported from shared constants (single source of truth)
-export { MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET, MIN_POWER, MAX_POWER } from '../shared/constants.js';
+// Aim limits, power and block catalog — re-exported from shared constants (single source of truth)
+export {
+  MIN_PITCH, MAX_PITCH, MAX_YAW_OFFSET, MIN_POWER, MAX_POWER, PERFECT_MIN, PERFECT_MAX,
+  BLOCK_TYPES, MAX_HP,
+} from '../shared/constants.js';
 export const DEFAULT_POWER = 30;
 
 // Input Speeds
 export const AIM_SPEED = 0.012;
 export const TOUCH_AIM_SENSITIVITY = 0.004;
 export const CHARGE_FREQ = Math.PI * 1.5; // angular speed — one full swing ~2.1s
-export const PERFECT_MIN = 0.62; // sweet spot: 62-70% of power range — risk/reward: stop early for max power
-export const PERFECT_MAX = 0.70;
 
 // Physics
 export const PHYSICS_STEP = 1 / 60;
-
-// Building
-export const BUILD_BUDGET = 500;
-
-export const BLOCK_TYPES = {
-  CUBE:        { cost: 3, size: [1, 1, 1] },         // vol 1.0
-  HALF_SLAB:   { cost: 2, size: [1, 0.5, 1] },       // vol 0.5
-  WALL:        { cost: 2, size: [1, 1, 0.5] },        // vol 0.5
-  RAMP:        { cost: 2, size: [1, 1, 1] },          // vol 0.5
-  COLUMN:      { cost: 1, size: [0.5, 1, 0.5] },     // vol 0.25
-  QUARTER_DOME:{ cost: 1, size: [1, 1, 1] },          // vol ~0.13
-  BULLNOSE:    { cost: 3, size: [1, 1, 1] },          // vol ~0.85
-  HALF_BULLNOSE:{ cost: 2, size: [1, 1, 1] },         // vol ~0.75
-  THRUSTER:    { cost: 1, size: [0.5, 0.5, 0.5] }, // vol ~0.15
-  SHIELD:      { cost: 1, size: [1, 1, 0.5], mass: 0.3,             // vol 0.5, fragile
-    material: { color: 0x4488ff, transparent: true, opacity: 0.35,
-      emissive: 0x2244aa, emissiveIntensity: 0.3 }},
-  PLANK:       { cost: 1, size: [2, 0.25, 0.5] },     // vol 0.25
-  CYLINDER:    { cost: 2, size: [1, 1, 1] },           // vol ~0.79
-  LATTICE:     { cost: 1, size: [1, 0.1, 1], mass: 0.2,             // vol 0.1, fragile
-    material: { color: 0x887766, transparent: true, opacity: 0.5 }},
-  BARREL:      { cost: 1, size: [0.5, 0.5, 0.5] },    // vol ~0.05
-};
 
 // Hit Detection
 export const TARGET_HIT_RADIUS = 1.2;
@@ -62,10 +40,8 @@ export const IMPACT_SPEED_RATIO = 0.5;
 // Timing (seconds)
 export const SKIP_PROMPT_DELAY = 2;
 export const AUTO_MISS_TIMEOUT = 6;
-export const MISS_TURN_DELAY = 1000;       // ms
 export const HIT_DISPLAY_DELAY = 1500;     // ms
 export const PERFECT_FIRE_DELAY = 350;     // ms
-export const EXPLOSION_SETTLE_DELAY = 2500;// ms
 
 // Cannon Placement
 export const CANNON_OFFSET_FROM_CASTLE = 4;
@@ -83,7 +59,6 @@ export const REPLAY_TIME_SCALE = 0.25;
 export const REPLAY_DURATION = 5; // seconds (real time)
 
 // HP
-export const MAX_HP = 3;
 
 // ── Trajectory & Aiming Visuals ──────────────────────────
 

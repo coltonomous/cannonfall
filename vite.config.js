@@ -18,9 +18,5 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
-    rollupOptions: {
-      // onnxruntime-web is loaded via CDN at runtime, not bundled
-      external: ['onnxruntime-web'],
-    },
   },
 });

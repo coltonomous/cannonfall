@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { BLOCK_SIZE, BUILD_BUDGET, BLOCK_TYPES } from './constants.js';
+import { BLOCK_SIZE, BLOCK_TYPES } from './constants.js';
 import { getPreset } from './Presets.js';
 import { createAllBlockGeometries } from './BlockGeometry.js';
 import { OrbitController } from './OrbitController.js';
@@ -21,7 +21,7 @@ export class CastleBuilder {
     this.selectedRotX = 0;      // X-axis
     this.selectedRotZ = 0;      // Z-axis
     this.currentLayer = 0; // layer above floor (0-4)
-    this.budget = BUILD_BUDGET;
+    this.budget = 0;
     this.placingTarget = false; // true when in target placement mode
 
     // 3D objects
@@ -61,11 +61,11 @@ export class CastleBuilder {
 
   start(onReady, modeConfig) {
     this.onReady = onReady;
-    this.modeConfig = modeConfig || null;
-    this.maxBudget = modeConfig?.budget || BUILD_BUDGET;
-    this.maxLayers = modeConfig?.maxLayers || 5;
-    this.gridW = modeConfig?.gridWidth || 9;
-    this.gridD = modeConfig?.gridDepth || 9;
+    this.modeConfig = modeConfig;
+    this.maxBudget = modeConfig.budget;
+    this.maxLayers = modeConfig.maxLayers;
+    this.gridW = modeConfig.gridWidth;
+    this.gridD = modeConfig.gridDepth;
     this.layout = [];
     this.targetPos = { x: Math.floor(this.gridW / 2), y: 0, z: Math.floor(this.gridD / 2) };
     this.selectedType = 'CUBE';

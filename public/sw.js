@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cannonfall-v1';
+const CACHE_NAME = 'cannonfall-v1'; // bumped to the build number on deploy
 
 self.addEventListener('install', () => self.skipWaiting());
 
@@ -11,31 +11,40 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+function cacheResponse(request) {
+  return (response) => {
+    // Only cache successful same-origin responses
+    if (response.ok && response.type === 'basic') {
+      const copy = response.clone();
+      caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+    }
+    return response;
+  };
+}
+
 self.addEventListener('fetch', (e) => {
   const url = new URL(e.request.url);
 
-  // Skip caching for socket.io, health checks, and non-GET requests
+  // Leave socket.io, health checks, non-GET and cross-origin requests to the network
   if (
+    e.request.method !== 'GET' ||
+    url.origin !== self.location.origin ||
     url.pathname.startsWith('/socket.io') ||
-    url.pathname === '/health' ||
-    e.request.method !== 'GET'
+    url.pathname === '/health'
   ) {
     return;
   }
 
-  // Cache-first for static assets, network-first for navigation
+  // Pages: network first so a deploy shows up on the next load, cached copy when offline
+  if (e.request.mode === 'navigate') {
+    e.respondWith(
+      fetch(e.request).then(cacheResponse(e.request)).catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Built assets are content-hashed and models are versioned per deploy: cache first
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached;
-      return fetch(e.request).then(response => {
-        // Only cache successful same-origin responses
-        if (!response || response.status !== 200 || response.type !== 'basic') {
-          return response;
-        }
-        const clone = response.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
-        return response;
-      });
-    })
+    caches.match(e.request).then(cached => cached || fetch(e.request).then(cacheResponse(e.request)))
   );
 });

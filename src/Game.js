@@ -62,9 +62,7 @@ export class Game {
     // Subscribe to battle events
     this.events.on('target-hit', () => this.onTargetHit());
     this.events.on('shot-miss', () => this.onShotMiss());
-    this.events.on('report-shot', ({ hit, perfect }) => {
-      this.network.sendShotResult(hit, perfect);
-    });
+    this.events.on('report-shot', ({ hit }) => this.network.sendShotResult(hit));
     this.events.on('debug', ({ msg, data }) => this.debugLog(msg, data));
 
     // Debug
@@ -210,14 +208,6 @@ export class Game {
     this.updateMatchButtons();
   }
 
-  _hideCastleReady() {
-    const label = this.gameMode.structureLabel;
-    const readyLabel = document.getElementById('castle-ready-label');
-    const btn = document.getElementById('build-castle-btn');
-    if (readyLabel) readyLabel.classList.add('hidden');
-    if (btn) btn.textContent = `Build Your ${label}`;
-  }
-
   hasBuildForCurrentMode() {
     return !!this.getPlayerBuild();
   }
@@ -232,15 +222,6 @@ export class Game {
     // Hide difficulty picker when buttons change state
     const picker = document.getElementById('diff-picker');
     if (picker) picker.classList.add('hidden');
-  }
-
-  flashBuildRequired() {
-    const btn = document.getElementById('build-castle-btn');
-    if (!btn) return;
-    btn.classList.remove('shake');
-    void btn.offsetWidth;
-    btn.classList.add('shake');
-    setTimeout(() => btn.classList.remove('shake'), 600);
   }
 
   // ── Local Mode ───────────────────────────────────────────
@@ -386,10 +367,7 @@ export class Game {
     } else {
       this.network.sendBuildReady(castleData);
       this.transition(State.WAITING_OPPONENT_BUILD);
-      this.ui.overlay.classList.remove('hidden');
-      document.getElementById('build-screen').classList.remove('hidden');
-      document.getElementById('build-screen').innerHTML =
-        '<h2>Waiting for opponent...</h2><div class="spinner"></div>';
+      this.ui.showWaitingScreen('Waiting for opponent...');
     }
   }
 
@@ -404,6 +382,8 @@ export class Game {
   // ── Castle Building ──────────────────────────────────────
 
   buildBothCastles(data0, data1) {
+    this.castles.forEach((c) => { if (c) c.clear(); });
+    this.cannons.forEach((c) => { if (c) c.destroy(); });
     this._cleanupTargetMarkers();
     const result = buildBothCastles({
       sceneManager: this.sceneManager,
@@ -699,17 +679,49 @@ export class Game {
 
   onRepositionComplete(damagedPlayerIndex, newTargetPos) {
     this.repositioner.stop();
-    this.castles[damagedPlayerIndex].repositionTarget(newTargetPos);
+    if (this.mode === 'online') {
+      // The server answers with reposition-done, which starts the next turn on both clients
+      const castle = this.castles[damagedPlayerIndex];
+      this.network.sendRepositionComplete(castle.mirrorGridPos(newTargetPos));
+      this.ui.showGame();
+      this.transition(State.OPPONENT_TURN);
+      this.ui.setStatus('Waiting...');
+      return;
+    }
+    this.applyReposition(damagedPlayerIndex, newTargetPos, damagedPlayerIndex);
+  }
 
-    const tp = this.castles[damagedPlayerIndex].getTargetPosition();
-    if (tp && this.targetMarkers && this.targetMarkers[damagedPlayerIndex]) {
-      this.targetMarkers[damagedPlayerIndex].position.set(tp.x, C.MINIMAP_RING_Y, tp.z);
+  /** Move a castle's target (rendered grid coords) and start the next turn. */
+  applyReposition(playerIndex, targetPos, nextTurn) {
+    this.castles[playerIndex].repositionTarget(targetPos);
+
+    const tp = this.castles[playerIndex].getTargetPosition();
+    if (tp && this.targetMarkers && this.targetMarkers[playerIndex]) {
+      this.targetMarkers[playerIndex].position.set(tp.x, C.MINIMAP_RING_Y, tp.z);
     }
 
-    this.currentTurn = damagedPlayerIndex;
+    this.currentTurn = nextTurn;
     this.ui.showGame();
     this.syncBattle();
     this.onTurnStart();
+  }
+
+  /** End an online game from whatever phase it is in (opponent left, server restarted). */
+  endOnlineGame(message) {
+    this.builder.stop();
+    this.repositioner.stop();
+    this.ui.hideDisconnectBanner();
+    this.transition(State.GAME_OVER);
+    this.ui.showResult(true, message);
+  }
+
+  /** Drop local turn state so a server snapshot can be applied from scratch. */
+  resetForResync() {
+    this._cancelPendingTimers();
+    this.battle.reset();
+    this.builder.stop();
+    this.repositioner.stop();
+    this._sm.reset();
   }
 
   // ── Main Update Loop ─────────────────────────────────────

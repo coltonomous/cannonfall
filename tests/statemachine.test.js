@@ -1,7 +1,34 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { StateMachine, State } from '../src/StateMachine.js';
 
+// Non-strict machines warn on invalid transitions, which these tests do on purpose
+beforeAll(() => vi.spyOn(console, 'warn').mockImplementation(() => {}));
+afterAll(() => vi.restoreAllMocks());
+
 describe('StateMachine', () => {
+  it('treats re-entering the current state as a no-op, even in strict mode', () => {
+    const calls = [];
+    const sm = new StateMachine((from, to) => calls.push([from, to]), { strict: true });
+    sm.transition(State.BUILD);
+    sm.transition(State.WAITING_OPPONENT_BUILD);
+    sm.transition(State.OPPONENT_TURN);
+    expect(sm.transition(State.OPPONENT_TURN)).toBe(true);
+    expect(sm.state).toBe(State.OPPONENT_TURN);
+    expect(calls).toHaveLength(3);
+  });
+
+  it('can end an online game from the build, waiting and reposition phases', () => {
+    for (const path of [
+      [State.BUILD],
+      [State.BUILD, State.WAITING_OPPONENT_BUILD],
+      [State.OPPONENT_TURN, State.REPOSITION],
+    ]) {
+      const sm = new StateMachine(null, { strict: true });
+      for (const s of path) sm.transition(s);
+      expect(() => sm.transition(State.GAME_OVER), path.join(' → ')).not.toThrow();
+    }
+  });
+
   it('should start in MENU state', () => {
     const sm = new StateMachine();
     expect(sm.state).toBe(State.MENU);

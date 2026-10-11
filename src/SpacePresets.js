@@ -89,7 +89,6 @@ function frigatePreset() {
   placeMany(L, [
     [2,4,2,'RAMP',2], [3,4,2,'BULLNOSE',0], [4,4,2,'RAMP',0],
     [2,4,3,'RAMP',2], [3,4,3,'BULLNOSE',0], [4,4,3,'RAMP',0],
-    [3,5,2,'HALF_SLAB'], [3,5,3,'HALF_SLAB'],
   ]);
 
   // Thrusters + details

@@ -32,16 +32,17 @@ describe('DesignCodec', () => {
         'BULLNOSE', 'HALF_BULLNOSE', 'THRUSTER', 'SHIELD', 'PLANK',
         'CYLINDER', 'LATTICE', 'BARREL',
       ];
+      // Space mode allows every block type; its grid is 7 wide
       const layout = types.map((type, i) => ({
-        x: i, y: 0, z: 0, type, rotation: 0,
+        x: i % 7, y: 0, z: Math.floor(i / 7), type, rotation: 0,
       }));
       const data = {
         layout,
-        target: { x: 0, y: 0, z: 0 },
-        cannonPos: { x: 8, z: 4 },
+        target: { x: 3, y: 0, z: 6 },
+        cannonPos: { x: 6, z: 6 },
         floor: null,
       };
-      const result = decode(encode(data, CASTLE_MODE));
+      const result = decode(encode(data, SPACE_MODE));
       expect(result.castleData.layout).toHaveLength(14);
       for (let i = 0; i < types.length; i++) {
         expect(result.castleData.layout[i].type).toBe(types[i]);
@@ -73,8 +74,8 @@ describe('DesignCodec', () => {
         target: { x: 3, y: 0, z: 5 },
         cannonPos: { x: 6, z: 5 },
         floor: [
-          { x: 0, z: 0, type: 'CUBE', yOffset: 0 },
-          { x: 1, z: 0, type: 'RAMP', yOffset: 1, flip: true, rotation: 2 },
+          { x: 0, z: 0, type: 'CUBE', rotation: 0, yOffset: 0 },
+          { x: 1, z: 0, type: 'RAMP', yOffset: -1, flip: true, rotation: 2 },
         ],
       };
       const result = decode(encode(data, PIRATE_MODE));
@@ -140,25 +141,42 @@ describe('DesignCodec', () => {
   });
 
   describe('input sanitization', () => {
-    it('should reject blocks with out-of-bounds coordinates', () => {
+    it('should reject designs with blocks outside the mode grid', () => {
+      // Castle grid is 9×9 — x=9 is one past the edge
       const data = {
-        layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }, { x: 999, y: 0, z: 0, type: 'CUBE' }],
+        layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }, { x: 9, y: 0, z: 0, type: 'CUBE' }],
         target: { x: 0, y: 0, z: 0 },
         cannonPos: { x: 8, z: 4 },
       };
-      const result = decode(encode(data, CASTLE_MODE));
-      expect(result.castleData.layout).toHaveLength(1);
+      expect(decode(encode(data, CASTLE_MODE))).toBeNull();
     });
 
-    it('should reject blocks with unknown types', () => {
+    it('should reject designs with unknown block types', () => {
       const data = {
         layout: [{ x: 0, y: 0, z: 0, type: 'CUBE' }, { x: 1, y: 0, z: 0, type: 'EVIL_BLOCK' }],
         target: { x: 0, y: 0, z: 0 },
         cannonPos: { x: 8, z: 4 },
       };
-      const result = decode(encode(data, CASTLE_MODE));
-      expect(result.castleData.layout).toHaveLength(1);
-      expect(result.castleData.layout[0].type).toBe('CUBE');
+      expect(decode(encode(data, CASTLE_MODE))).toBeNull();
+    });
+
+    it('should reject block types the mode excludes', () => {
+      const data = {
+        layout: [{ x: 0, y: 0, z: 0, type: 'THRUSTER' }],
+        target: { x: 4, y: 0, z: 4 },
+        cannonPos: { x: 8, z: 4 },
+      };
+      expect(decode(encode(data, CASTLE_MODE))).toBeNull();
+    });
+
+    it('should reject floors that rise above the deck', () => {
+      const data = {
+        layout: [{ x: 3, y: 0, z: 5, type: 'CUBE' }],
+        target: { x: 3, y: 0, z: 4 },
+        cannonPos: { x: 6, z: 5 },
+        floor: [{ x: 0, z: 0, type: 'CUBE', yOffset: 2 }],
+      };
+      expect(decode(encode(data, PIRATE_MODE))).toBeNull();
     });
 
     it('should reject NaN/Infinity coordinates', () => {
